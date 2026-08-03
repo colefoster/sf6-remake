@@ -65,8 +65,17 @@ export function punish(
   if (punisher) {
     return punishAssessment(blockedMove, requireMove(def, punisher));
   }
-  // No specific punisher: find the fastest normal/special that punishes.
-  return fastestPunish(blockedMove, def.moves);
+  // No specific punisher: find the fastest *strike* that punishes. Restrict the
+  // pool to real attacks — a hitting move with a startup ≥ 1 and damage — so
+  // taunts, parries, and other non-attacks (which parse to 0/1f) don't win.
+  const strikes = def.moves.filter(
+    (m) =>
+      (m.category === "normal" || m.category === "special" || m.category === "super") &&
+      m.startup >= 1 &&
+      m.damage !== undefined &&
+      (m.onHit !== undefined || m.hitReaction !== undefined),
+  );
+  return fastestPunish(blockedMove, strikes);
 }
 
 /** Gap between two blocked moves. */
