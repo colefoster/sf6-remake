@@ -29,7 +29,8 @@ describe("stunFrom (fallback derivation)", () => {
     expect(stunFrom(ryu5mp, "hit")).toBe(22);
   });
   it("is undefined when advantage is missing", () => {
-    expect(stunFrom({ ...ryu5mp, onBlock: undefined }, "block")).toBeUndefined();
+    const { onBlock: _omit, ...noBlock } = ryu5mp;
+    expect(stunFrom(noBlock, "block")).toBeUndefined();
   });
 });
 
