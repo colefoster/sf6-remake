@@ -154,6 +154,9 @@ export function cancelInto(x: Move, y: Move, guard: Guard, meaty = 0): CancelRes
 export interface StringStep {
   from: string;
   to: string;
+  /** How `to` follows `from`: cancelled into it, or a fresh move (link). */
+  connection: "cancel" | "link";
+  /** Gap analysis — only meaningful for a link; a valid cancel has no gap. */
   gap: GapResult;
 }
 
