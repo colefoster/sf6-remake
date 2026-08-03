@@ -229,7 +229,7 @@ function main(): void {
         const attacker = p[0] ?? fail("punish <char> <blockedMove> [--by <char> [move]]");
         const blocked = p[1] ?? fail("punish <char> <blockedMove>");
         const defender = args.by ?? attacker;
-        const punisher = args.by ? p[2] : p[2];
+        const punisher = p[2];
         const r = punish(attacker, blocked, defender, punisher);
         printPunish(r, defender);
         return;
