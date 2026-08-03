@@ -37,7 +37,8 @@ describe("punishAssessment", () => {
   });
 
   it("is not applicable when onBlock is missing", () => {
-    expect(punishAssessment(mk({ onBlock: undefined }), mk({})).applicable).toBe(false);
+    // mk() defaults have no onBlock, so this move genuinely lacks block data.
+    expect(punishAssessment(mk({}), mk({})).applicable).toBe(false);
   });
 });
 
