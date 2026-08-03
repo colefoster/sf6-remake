@@ -127,6 +127,12 @@ function requiredCancelTag(target: Move): string {
   }
 }
 
+/** Can X cancel its recovery into Y? (X has the cancel class Y needs.) */
+export function canCancelInto(x: Move, y: Move): boolean {
+  const required = requiredCancelTag(y);
+  return (x.cancelTags ?? []).some((t) => t === required || t.startsWith(required));
+}
+
 /** Cancel move X into move Y; report whether it's legal and the ending advantage. */
 export function cancelInto(x: Move, y: Move, guard: Guard, meaty = 0): CancelResult {
   const requiredTag = requiredCancelTag(y);
