@@ -107,6 +107,8 @@ export function blockGap(a: Move, b: Move): GapResult {
 export interface CancelResult {
   cancelable: boolean;
   requiredTag: string;
+  // eslint-disable-next-line -- kept adjacent to canCancelInto below
+
   /** Ending advantage of the cancel (Y's own advantage, or an override). */
   endingAdvantage?: number;
   endingSign?: Sign;
