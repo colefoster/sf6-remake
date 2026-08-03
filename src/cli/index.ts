@@ -170,12 +170,14 @@ function main(): void {
         const r = sequence(char, moves, { guard: args.guard, meaty: args.meaty });
         console.log(`${r.moves.join(" -> ")}  (on ${r.guard})`);
         for (const s of r.steps) {
-          if (!s.gap.applicable) {
-            console.log(`  ${s.from} -> ${s.to}: gap n/a (no block data on ${s.from})`);
+          if (s.connection === "cancel") {
+            console.log(`  ${s.from} xx ${s.to}: CANCEL (no gap — recovery erased)`);
+          } else if (!s.gap.applicable) {
+            console.log(`  ${s.from} -> ${s.to}: link, gap n/a (no block data on ${s.from})`);
           } else {
             const tag = s.gap.trueBlockstring
-              ? "TRUE (uninterruptable)"
-              : `${s.gap.gap}f gap — interruptible by ≤${s.gap.interruptibleBy}f moves`;
+              ? "link, TRUE (uninterruptable)"
+              : `link, ${s.gap.gap}f gap — interruptible by ≤${s.gap.interruptibleBy}f moves`;
             console.log(`  ${s.from} -> ${s.to}: ${tag}`);
           }
         }
