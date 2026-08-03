@@ -1,0 +1,23 @@
+{
+  "name": "sf6-engine",
+  "version": "0.1.0",
+  "description": "A headless (CLI) Street Fighter 6 frame-data engine. Ask it whether X into Y from scenario Z ends plus or minus, is punishable, or leaves a gap.",
+  "type": "module",
+  "bin": {
+    "sf6": "./src/cli/index.ts"
+  },
+  "scripts": {
+    "sf6": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["street-fighter", "sf6", "frame-data", "fgc", "engine"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
