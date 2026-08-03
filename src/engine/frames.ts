@@ -16,17 +16,17 @@ export function totalFrames(move: Pick<Move, "startup" | "active" | "recovery">)
 }
 
 /**
- * Derive blockstun (or hitstun) from listed advantage.
+ * Derive blockstun (or hitstun) from listed advantage. This is a *fallback*:
+ * the source data usually carries real blockstun/hitstun and should be
+ * preferred. Calibrated against FAT's own numbers, e.g. Ryu 5MP
+ * (onBlock −1, active 4, recovery 11) → blockstun 14 = −1 + 4 + 11:
  *
- *   onBlock = stun − ((active − 1) + recovery)
- *   =>  stun = onBlock + (active − 1) + recovery
- *
- * This keeps advantage as the single source of truth in the data.
+ *   onBlock = stun − (active + recovery)   =>   stun = onBlock + active + recovery
  */
 export function stunFrom(move: Move, guard: Guard): number | undefined {
   const adv = guard === "block" ? move.onBlock : move.onHit;
   if (adv === undefined) return undefined;
-  return adv + (move.active - 1) + move.recovery;
+  return adv + move.active + move.recovery;
 }
 
 /**
