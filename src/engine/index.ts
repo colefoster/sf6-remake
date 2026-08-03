@@ -73,7 +73,10 @@ export function punish(
       (m.category === "normal" || m.category === "special" || m.category === "super") &&
       m.startup >= 1 &&
       m.damage !== undefined &&
-      (m.onHit !== undefined || m.hitReaction !== undefined),
+      (m.onHit !== undefined || m.hitReaction !== undefined) &&
+      // exclude aerials — they can't punish a grounded recovery from neutral
+      !/^j|air/i.test(m.input) &&
+      !/jump|air/i.test(m.name),
   );
   return fastestPunish(blockedMove, strikes);
 }
