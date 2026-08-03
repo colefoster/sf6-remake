@@ -64,8 +64,24 @@ export interface Move {
   /** Damage on a clean hit. */
   damage?: number;
 
-  /** Move ids this move can cancel into (special-cancel, target-combo, etc.). */
+  /** Cancel classes this move can cancel into (from source `xx`). */
+  cancelTags?: CancelTag[];
+
+  /** Specific target move ids this move can cancel into, when known. */
   cancelsInto?: string[];
+
+  /**
+   * On a hit that ends in a special state (knockdown, crumple, wall-bounce),
+   * the reaction type. When set, `onHit` holds the resulting oki/advantage
+   * frames (e.g. "KD +40" -> onHit 40, hitReaction "knockdown").
+   */
+  hitReaction?: "knockdown" | "hard-knockdown" | "crumple" | "launch" | "wall-bounce";
+
+  /**
+   * Raw source strings for fields we parsed to integers, kept for provenance
+   * and for multi-hit moves whose single-integer parse is lossy.
+   */
+  raw?: Partial<Record<"startup" | "active" | "recovery" | "onBlock" | "onHit" | "damage", string>>;
 
   /**
    * Known exact ending advantage for specific cancel targets, overriding the
