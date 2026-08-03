@@ -187,7 +187,13 @@ export function analyzeSequence(moves: Move[], guard: Guard, meaty = 0): StringR
   for (let i = 0; i < moves.length - 1; i++) {
     const a = moves[i]!;
     const b = moves[i + 1]!;
-    steps.push({ from: a.name, to: b.name, gap: blockGap(a, b) });
+    // A cancel (A xx B) erases A's recovery, so there is no gap by construction.
+    // Only a fresh move performed after A recovers (a "link") can leave a gap.
+    if (canCancelInto(a, b)) {
+      steps.push({ from: a.name, to: b.name, connection: "cancel", gap: blockGap(a, b) });
+    } else {
+      steps.push({ from: a.name, to: b.name, connection: "link", gap: blockGap(a, b) });
+    }
   }
   const last = moves[moves.length - 1]!;
   const endAdv = advantage(last, guard, meaty);
@@ -195,7 +201,10 @@ export function analyzeSequence(moves: Move[], guard: Guard, meaty = 0): StringR
     moves: moves.map((m) => m.name),
     guard,
     steps,
-    trueBlockstring: steps.every((s) => !s.gap.applicable || s.gap.trueBlockstring),
+    // Uninterruptable if every step is either a cancel or a gap-free link.
+    trueBlockstring: steps.every(
+      (s) => s.connection === "cancel" || !s.gap.applicable || s.gap.trueBlockstring,
+    ),
   };
   if (endAdv !== undefined) {
     result.endingAdvantage = endAdv;
