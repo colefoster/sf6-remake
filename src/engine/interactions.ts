@@ -136,8 +136,7 @@ export function canCancelInto(x: Move, y: Move): boolean {
 /** Cancel move X into move Y; report whether it's legal and the ending advantage. */
 export function cancelInto(x: Move, y: Move, guard: Guard, meaty = 0): CancelResult {
   const requiredTag = requiredCancelTag(y);
-  const tags = x.cancelTags ?? [];
-  const cancelable = tags.some((t) => t === requiredTag || t.startsWith(requiredTag));
+  const cancelable = canCancelInto(x, y);
 
   const override = x.comboAdvantage?.[y.id]?.[guard === "block" ? "onBlock" : "onHit"];
   const adv = override ?? advantage(y, guard, meaty);
