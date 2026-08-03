@@ -7,12 +7,19 @@
 
 export type MoveCategory =
   | "normal"
-  | "command-normal"
   | "special"
   | "super"
   | "throw"
-  | "drive-impact"
-  | "drive-rush";
+  | "drive"
+  | "taunt";
+
+/**
+ * Cancel tags as used by the source data (FAT `xx`): what a move can be
+ * cancelled INTO, by class rather than by specific target.
+ *  - "ch" chain / target-normal   - "sp" special   - "su"/"su1".."su3" super (by level)
+ *  - "tc" target combo            - "dr" drive rush
+ */
+export type CancelTag = string;
 
 /** A single collision box in game units, relative to the character origin. */
 export interface Box {
