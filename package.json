@@ -11,8 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "web:build": "node scripts/build-ryu-site.mjs",
-    "web": "node scripts/build-ryu-site.mjs && python3 -m http.server 8777 --directory web"
+    "web:build": "node scripts/build-site.mjs",
+    "web": "node scripts/build-site.mjs && python3 -m http.server 8777 --directory web"
   },
   "keywords": ["street-fighter", "sf6", "frame-data", "fgc", "engine"],
   "license": "MIT",

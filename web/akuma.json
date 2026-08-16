@@ -1,21 +1,20 @@
 {
-  "character": "Ryu",
-  "id": "ryu",
-  "health": "10000",
+  "character": "Akuma",
+  "id": "akuma",
+  "health": "9000",
   "fastestNormal": "4f",
   "specials": [
-    "Hadoken",
-    "Shoryuken",
-    "Tatsumaki Senpukyaku",
-    "High Blade Kick",
-    "Hashogeki"
+    "Gou Hadoken",
+    "Gou Shoryuken",
+    "Adamant Flame",
+    "Tatsumaki Zanku-kyaku"
   ],
   "supers": [
-    "Shinku Hadoken",
-    "Denjin Hadoken",
-    "Shin Hashogeki",
-    "Denjin Hashogeki",
-    "Shin Shoryuken"
+    "Messatsu Gohado",
+    "Empyrean's End",
+    "Sip of Calamity",
+    "Kongou Kokuretsuzan",
+    "Misogi"
   ],
   "source": "FAT (D4RKONION/FrameDataAssistantTool) SF6FrameData.json",
   "images": "wiki.supercombo.gg (CC BY-SA)",
@@ -44,21 +43,20 @@
         {
           "label": "Special cancel",
           "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
           ]
         },
         {
           "label": "Super cancel",
           "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
           ]
         }
       ],
@@ -71,8 +69,8 @@
         "Chains into stand LP / crouch LP / crouch LK",
         "Incurs 20% damage scaling penalty if used as the first hit of a combo"
       ],
-      "image": "assets/ryu/5lp.png",
-      "hitbox": "assets/ryu/5lp-hitbox.png",
+      "image": "assets/akuma/5lp.png",
+      "hitbox": "assets/akuma/5lp-hitbox.png",
       "states": [
         {
           "state": "block",
@@ -199,11 +197,18 @@
               "slack": 2
             },
             {
-              "name": "Short Uppercut",
-              "input": "4HP",
+              "name": "Stand MK",
+              "input": "5MK",
               "startup": 7,
-              "dmg": 800,
+              "dmg": 700,
               "slack": 1
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 0
             },
             {
               "name": "Crouch MK",
@@ -232,842 +237,40 @@
         {
           "label": "Special cancel",
           "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
           ]
         },
         {
           "label": "Super cancel",
           "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        },
+        {
+          "label": "Target combo",
+          "into": [
+            "MP (Viscera Piercer)"
           ]
         }
       ],
       "cancelTags": [
         "sp",
-        "su"
+        "su",
+        "tc"
       ],
       "notes": [
-        "Combo / oki frametrap tool",
-        "+2F extra recovery frames (13F) on whiff"
+        "Primary combo / frametrap tool with good amount of active frames for oki as well",
+        "+2 extra recovery frames (13F) on whiff"
       ],
-      "image": "assets/ryu/5mp.png",
-      "hitbox": "assets/ryu/5mp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -1,
-          "derived": false,
-          "raw": "-1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 1,
-            "text": "Nothing punishes (1f window), but you lose your turn."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 7,
-          "derived": false,
-          "raw": "7",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 1
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 9,
-          "derived": true,
-          "raw": "7",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 4
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 3
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 1
-            },
-            {
-              "name": "Stand MK",
-              "input": "5MK",
-              "startup": 9,
-              "dmg": 700,
-              "slack": 0
-            },
-            {
-              "name": "Crouch HP",
-              "input": "2HP",
-              "startup": 9,
-              "dmg": 800,
-              "slack": 0
-            },
-            {
-              "name": "Crouch HK",
-              "input": "2HK",
-              "startup": 9,
-              "dmg": 900,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 11,
-          "derived": false,
-          "raw": "11",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 7
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 7
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 6
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 6
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 5
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 4
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 3
-            },
-            {
-              "name": "Stand MK",
-              "input": "5MK",
-              "startup": 9,
-              "dmg": 700,
-              "slack": 2
-            },
-            {
-              "name": "Crouch HP",
-              "input": "2HP",
-              "startup": 9,
-              "dmg": 800,
-              "slack": 2
-            },
-            {
-              "name": "Crouch HK",
-              "input": "2HK",
-              "startup": 9,
-              "dmg": 900,
-              "slack": 2
-            },
-            {
-              "name": "Stand HP",
-              "input": "5HP",
-              "startup": 10,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Axe Kick",
-              "input": "4HK",
-              "startup": 10,
-              "dmg": 800,
-              "slack": 1
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "5hp",
-      "name": "Stand HP",
-      "input": "5HP",
-      "startup": 10,
-      "active": 5,
-      "recovery": 18,
-      "damage": 800,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": 19,
-      "cancels": [
-        {
-          "label": "Special cancel",
-          "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
-          ]
-        },
-        {
-          "label": "Super cancel",
-          "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "sp",
-        "su"
-      ],
-      "notes": [
-        "Fantastic combo / poke tool that's hit confirmable with a lot of active frames",
-        "Forces stand (vital for the HP > HK target combo follow-up)",
-        "Shoto stand HP privilege"
-      ],
-      "image": "assets/ryu/5hp.png",
-      "hitbox": "assets/ryu/5hp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -2,
-          "derived": false,
-          "raw": "-2",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 2,
-            "text": "Nothing punishes (2f window), but you lose your turn."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 4,
-          "derived": false,
-          "raw": "4",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 6,
-          "derived": true,
-          "raw": "4",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 1
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 8,
-          "derived": false,
-          "raw": "8",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 3
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "5lk",
-      "name": "Stand LK",
-      "input": "5LK",
-      "startup": 5,
-      "active": 3,
-      "recovery": 11,
-      "damage": 300,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": 13,
-      "cancels": [
-        {
-          "label": "Special cancel",
-          "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
-          ]
-        },
-        {
-          "label": "Super cancel",
-          "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "sp",
-        "su"
-      ],
-      "notes": [
-        "Good range for a light normal",
-        "Incurs 20% damage scaling penalty if used as the first hit of a combo"
-      ],
-      "image": "assets/ryu/5lk.png",
-      "hitbox": "assets/ryu/5lk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -4,
-          "derived": false,
-          "raw": "-4",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 4,
-            "text": "Jab-punishable — a 4f button gets a Punish Counter."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 2,
-          "derived": false,
-          "raw": "2",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 4,
-          "derived": true,
-          "raw": "2",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 6,
-          "derived": false,
-          "raw": "6",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 1
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "5mk",
-      "name": "Stand MK",
-      "input": "5MK",
-      "startup": 9,
-      "active": 3,
-      "recovery": 18,
-      "damage": 700,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Good poke tool with good hitbox priority (disjoint)",
-        "Ryu lifts up his front leg hurtbox on frames 4-11 making this a good tool against low attacks"
-      ],
-      "image": "assets/ryu/5mk.png",
-      "hitbox": "assets/ryu/5mk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -4,
-          "derived": false,
-          "raw": "-4",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 4,
-            "text": "Jab-punishable — a 4f button gets a Punish Counter."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 4,
-          "derived": false,
-          "raw": "4",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 6,
-          "derived": true,
-          "raw": "4",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 1
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 8,
-          "derived": false,
-          "raw": "8",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 3
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "5hk",
-      "name": "Stand HK",
-      "input": "5HK",
-      "startup": 12,
-      "active": 4,
-      "recovery": 20,
-      "damage": 900,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Whiffs on most crouching moves (can still hit some like crouch HP)",
-        "Good horizontal anti-air",
-        "Puts airborne opponents into a juggle state",
-        "Crumples on Punish Counter (+11 frames before the crumple state goes airborne)",
-        "The brief extended leg hurtbox on frame 11 of start-up (1F before active) is strike invincible (cannot counter-poke projectiles)"
-      ],
-      "image": "assets/ryu/5hk.png",
-      "hitbox": "assets/ryu/5hk-hitbox.png",
+      "image": "assets/akuma/5mp.png",
+      "hitbox": "assets/akuma/5mp-hitbox.png",
       "states": [
         {
           "state": "block",
@@ -1086,280 +289,6 @@
         {
           "state": "hit",
           "label": "On hit",
-          "advantage": 9,
-          "derived": false,
-          "raw": "9",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 4
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 3
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 3
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 1
-            },
-            {
-              "name": "Stand MK",
-              "input": "5MK",
-              "startup": 9,
-              "dmg": 700,
-              "slack": 0
-            },
-            {
-              "name": "Crouch HP",
-              "input": "2HP",
-              "startup": 9,
-              "dmg": 800,
-              "slack": 0
-            },
-            {
-              "name": "Crouch HK",
-              "input": "2HK",
-              "startup": 9,
-              "dmg": 900,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 11,
-          "derived": true,
-          "raw": "9",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 7
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 7
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 6
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 6
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 5
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 5
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 4
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 3
-            },
-            {
-              "name": "Stand MK",
-              "input": "5MK",
-              "startup": 9,
-              "dmg": 700,
-              "slack": 2
-            },
-            {
-              "name": "Crouch HP",
-              "input": "2HP",
-              "startup": 9,
-              "dmg": 800,
-              "slack": 2
-            },
-            {
-              "name": "Crouch HK",
-              "input": "2HK",
-              "startup": 9,
-              "dmg": 900,
-              "slack": 2
-            },
-            {
-              "name": "Stand HP",
-              "input": "5HP",
-              "startup": 10,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Axe Kick",
-              "input": "4HK",
-              "startup": 10,
-              "dmg": 800,
-              "slack": 1
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "Crumple +84",
-          "reaction": "crumple",
-          "oki": 84,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "2lp",
-      "name": "Crouch LP",
-      "input": "2LP",
-      "startup": 4,
-      "active": 2,
-      "recovery": 9,
-      "damage": 300,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": 11,
-      "cancels": [
-        {
-          "label": "Chain",
-          "into": [
-            "5LP",
-            "2LP",
-            "5LK",
-            "2LK"
-          ]
-        },
-        {
-          "label": "Special cancel",
-          "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
-          ]
-        },
-        {
-          "label": "Super cancel",
-          "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "ch",
-        "sp",
-        "su"
-      ],
-      "notes": [
-        "Chains into stand LP / crouch LP / crouch LK",
-        "Incurs 20% damage scaling penalty if used as the first hit of a combo",
-        "Topmost hurtboxes on frames 1-5 are vulnerable only to airborne attacks (this is to discourage its use as an anti-air)"
-      ],
-      "image": "assets/ryu/2lp.png",
-      "hitbox": "assets/ryu/2lp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -1,
-          "derived": false,
-          "raw": "-1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 1,
-            "text": "Nothing punishes (1f window), but you lose your turn."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
           "advantage": 4,
           "derived": false,
           "raw": "4",
@@ -1369,6 +298,13 @@
             {
               "name": "Stand LP",
               "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
               "startup": 4,
               "dmg": 300,
               "slack": 0
@@ -1393,6 +329,13 @@
               "slack": 2
             },
             {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
               "name": "Stand LK",
               "input": "5LK",
               "startup": 5,
@@ -1405,13 +348,6 @@
               "startup": 5,
               "dmg": 200,
               "slack": 1
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
             },
             {
               "name": "Crouch MP",
@@ -1440,6 +376,13 @@
               "slack": 4
             },
             {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
               "name": "Stand LK",
               "input": "5LK",
               "startup": 5,
@@ -1452,13 +395,6 @@
               "startup": 5,
               "dmg": 200,
               "slack": 3
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
             },
             {
               "name": "Crouch MP",
@@ -1466,257 +402,26 @@
               "startup": 6,
               "dmg": 600,
               "slack": 2
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "2mp",
-      "name": "Crouch MP",
-      "input": "2MP",
-      "startup": 6,
-      "active": 4,
-      "recovery": 13,
-      "damage": 600,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": 16,
-      "cancels": [
-        {
-          "label": "Special cancel",
-          "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
-          ]
-        },
-        {
-          "label": "Super cancel",
-          "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "sp",
-        "su"
-      ],
-      "notes": [
-        "Great combo / poke / buffer / pressure tool",
-        "4 active frames and solid frame advantage makes this an ideal oki tool as well",
-        "+2F extra recovery frames (15F) on whiff",
-        "Topmost hurtboxes on frames 1-9 are vulnerable only to airborne attacks (this is to discourage its use as an anti-air)"
-      ],
-      "image": "assets/ryu/2mp.png",
-      "hitbox": "assets/ryu/2mp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": 0,
-          "derived": false,
-          "raw": "0",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 0,
-            "text": "You are +0 — your turn continues."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 5,
-          "derived": false,
-          "raw": "5",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 7,
-          "derived": true,
-          "raw": "5",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 2
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 1
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 9,
-          "derived": false,
-          "raw": "9",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 4
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 3
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 1
             },
             {
               "name": "Stand MK",
               "input": "5MK",
-              "startup": 9,
+              "startup": 7,
               "dmg": 700,
-              "slack": 0
+              "slack": 1
             },
             {
               "name": "Crouch HP",
               "input": "2HP",
-              "startup": 9,
-              "dmg": 800,
+              "startup": 8,
+              "dmg": 900,
               "slack": 0
             },
             {
-              "name": "Crouch HK",
-              "input": "2HK",
-              "startup": 9,
-              "dmg": 900,
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
               "slack": 0
             }
           ],
@@ -1725,35 +430,34 @@
       ]
     },
     {
-      "id": "2hp",
-      "name": "Crouch HP",
-      "input": "2HP",
+      "id": "5hp",
+      "name": "Stand HP",
+      "input": "5HP",
       "startup": 9,
-      "active": 6,
-      "recovery": 21,
+      "active": 5,
+      "recovery": 18,
       "damage": 800,
       "level": "H",
       "airborne": false,
-      "hitConfirmWindow": 18,
+      "hitConfirmWindow": 19,
       "cancels": [
         {
           "label": "Special cancel",
           "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
           ]
         },
         {
           "label": "Super cancel",
           "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
           ]
         }
       ],
@@ -1762,859 +466,11 @@
         "su"
       ],
       "notes": [
-        "Extended fist hurtbox is invincible to airborne strikes on frame 9",
-        "Head hurtbox is invincible to airborne strikes on frames 10-14",
-        "Forces stand on hit",
-        "Solid anti-air",
-        "Cannot hit cross-up (behind Ryu)",
-        "Only cancelable on the first active frame",
-        "Deals 5F less hitstun after the first active frame resulting in worse frame advantage on hit beyond the first active frame (can't get any meaty combos on oki)"
+        "Fantastic combo / poke tool that's hit confirmable with a lot of active frames",
+        "Shoto stand HP privilege"
       ],
-      "image": "assets/ryu/2hp.png",
-      "hitbox": "assets/ryu/2hp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -7,
-          "derived": false,
-          "raw": "-7",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 7,
-            "text": "Medium-punishable (7f) — real damage."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 1,
-          "derived": false,
-          "raw": "1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 3,
-          "derived": true,
-          "raw": "1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 5,
-          "derived": false,
-          "raw": "5",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "2lk",
-      "name": "Crouch LK",
-      "input": "2LK",
-      "startup": 5,
-      "active": 2,
-      "recovery": 10,
-      "damage": 200,
-      "level": "L",
-      "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [
-        {
-          "label": "Chain",
-          "into": [
-            "5LP",
-            "2LP",
-            "5LK",
-            "2LK"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "ch"
-      ],
-      "notes": [
-        "Chains into stand LP / crouch LP / crouch LK",
-        "Incurs 20% damage scaling penalty if used as the first hit of a combo"
-      ],
-      "image": "assets/ryu/2lk.png",
-      "hitbox": "assets/ryu/2lk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -1,
-          "derived": false,
-          "raw": "-1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 1,
-            "text": "Nothing punishes (1f window), but you lose your turn."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 3,
-          "derived": false,
-          "raw": "3",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 5,
-          "derived": true,
-          "raw": "3",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 7,
-          "derived": false,
-          "raw": "7",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 1
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 1
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "2mk",
-      "name": "Crouch MK",
-      "input": "2MK",
-      "startup": 8,
-      "active": 3,
-      "recovery": 19,
-      "damage": 500,
-      "level": "L",
-      "airborne": false,
-      "hitConfirmWindow": 13,
-      "cancels": [
-        {
-          "label": "Special cancel",
-          "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
-          ]
-        },
-        {
-          "label": "Super cancel",
-          "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "sp",
-        "su"
-      ],
-      "notes": [
-        "Standard shoto crouch MK",
-        "If blocked, Ryu can safely cancel into Hadoken while recovering in time to counter Drive Impact",
-        "Incurs a 20% damage scaling penalty if used as the first hit of a combo",
-        "Footsies!"
-      ],
-      "image": "assets/ryu/2mk.png",
-      "hitbox": "assets/ryu/2mk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -6,
-          "derived": false,
-          "raw": "-6",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 6,
-            "text": "Medium-punishable (6f) — real damage."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 1,
-          "derived": false,
-          "raw": "1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 3,
-          "derived": true,
-          "raw": "1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 5,
-          "derived": false,
-          "raw": "5",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "2hk",
-      "name": "Crouch HK",
-      "input": "2HK",
-      "startup": 9,
-      "active": 3,
-      "recovery": 23,
-      "damage": 900,
-      "level": "L",
-      "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Has very good range and hitbox priority",
-        "Has some Juggle potential naturally without Drive Rush",
-        "Has fixed framedata on block (always -12 on block even with meaty timing) with +6F extra recovery frames (29F)"
-      ],
-      "image": "assets/ryu/2hk.png",
-      "hitbox": "assets/ryu/2hk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -12,
-          "derived": false,
-          "raw": "-12",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 12,
-            "text": "Heavily punishable (12f) — full Punish Counter combo / super."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "KD +40",
-          "reaction": "knockdown",
-          "oki": 40,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "KD +40",
-          "reaction": "knockdown",
-          "oki": 40,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "HKD +47",
-          "reaction": "hard knockdown",
-          "oki": 47,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "jlp",
-      "name": "Jump LP",
-      "input": "8LP",
-      "startup": 4,
-      "active": 10,
-      "recovery": null,
-      "damage": 300,
-      "level": "M",
-      "airborne": true,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Can be used as a fuzzy instant Overhead after a deep jump-in Medium / Heavy"
-      ],
-      "image": "assets/ryu/jlp.png",
-      "hitbox": "assets/ryu/jlp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": null,
-          "derived": false,
-          "raw": "0~5",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "4~9",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "4~9",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "8~13",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "jmp",
-      "name": "Jump MP",
-      "input": "8MP",
-      "startup": 8,
-      "active": 2,
-      "recovery": null,
-      "damage": "700 (350*350)",
-      "level": "M",
-      "airborne": true,
-      "hitConfirmWindow": 32,
-      "cancels": [
-        {
-          "label": "Special cancel",
-          "into": [
-            "Tatsumaki Senpukyaku"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "sp"
-      ],
-      "notes": [
-        "Both hits put airborne opponents into a limited juggle state",
-        "Both hits are cancelable into Air Tatsus",
-        "Great air-to-air hitbox priority",
-        "Shifts the normal jumping hurtbox upward during start-up (helps with avoiding some attacks)"
-      ],
-      "image": "assets/ryu/jmp.png",
-      "hitbox": "assets/ryu/jmp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": null,
-          "derived": false,
-          "raw": "7~9",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "11~12 (KD)",
-          "reaction": "knockdown",
-          "oki": 11,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "11~12 (KD)",
-          "reaction": "knockdown",
-          "oki": 11,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "15~17 (KD)",
-          "reaction": "knockdown",
-          "oki": 15,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "jhp",
-      "name": "Jump HP",
-      "input": "8HP",
-      "startup": 9,
-      "active": 6,
-      "recovery": null,
-      "damage": 800,
-      "level": "M",
-      "airborne": true,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Spikes down airborne opponents on Counter-Hit or Punish Counter"
-      ],
-      "image": "assets/ryu/jhp.png",
-      "hitbox": "assets/ryu/jhp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": null,
-          "derived": false,
-          "raw": "4~11",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "8~15",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "8~15",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "12~19 (KD)",
-          "reaction": "knockdown",
-          "oki": 12,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "jlk",
-      "name": "Jump LK",
-      "input": "8LK",
-      "startup": 6,
-      "active": 10,
-      "recovery": null,
-      "damage": 300,
-      "level": "M",
-      "airborne": true,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Cross-up"
-      ],
-      "image": "assets/ryu/jlk.png",
-      "hitbox": "assets/ryu/jlk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": null,
-          "derived": false,
-          "raw": "1~6",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "5~10",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "5~10",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "9~14",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "jmk",
-      "name": "Jump MK",
-      "input": "8MK",
-      "startup": 7,
-      "active": 6,
-      "recovery": null,
-      "damage": 500,
-      "level": "M",
-      "airborne": true,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Cross-up",
-        "Shifts the normal jumping hurtbox upward during start-up (helps with avoiding some attacks)"
-      ],
-      "image": "assets/ryu/jmk.png",
-      "hitbox": "assets/ryu/jmk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": null,
-          "derived": false,
-          "raw": "4~9",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "8~13",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "8~13",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "12~17",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "jhk",
-      "name": "Jump HK",
-      "input": "8HK",
-      "startup": 10,
-      "active": 8,
-      "recovery": null,
-      "damage": 800,
-      "level": "M",
-      "airborne": true,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Pretty standard jump-in attack"
-      ],
-      "image": "assets/ryu/jhk.png",
-      "hitbox": "assets/ryu/jhk-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": null,
-          "derived": false,
-          "raw": "5~11",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "9~15",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "9~15",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": null,
-          "derived": false,
-          "raw": "13~19",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "6mp",
-      "name": "Collarbone Breaker",
-      "input": "6MP",
-      "startup": 20,
-      "active": 1,
-      "recovery": 19,
-      "damage": "600 (300*300)",
-      "level": "M",
-      "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Great overhead with good start-up and frame advantage on hit, decent range, as well as hitting two times to blow through some armored moves",
-        "Can hit meaty on last active frame for +5/-1 frame advantage",
-        "Carries over Counter-Hit / Punish Counter bonus frame advantage to both hits",
-        "Second hit is not an Overhead if the first hit connects"
-      ],
-      "image": "assets/ryu/6mp.png",
-      "hitbox": "assets/ryu/6mp-hitbox.png",
+      "image": "assets/akuma/5hp.png",
+      "hitbox": "assets/akuma/5hp-hitbox.png",
       "states": [
         {
           "state": "block",
@@ -2733,399 +589,10 @@
               "slack": 1
             },
             {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "4hp",
-      "name": "Short Uppercut",
-      "input": "4HP",
-      "startup": 7,
-      "active": 4,
-      "recovery": 25,
-      "damage": 800,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": 17,
-      "cancels": [
-        {
-          "label": "Special cancel",
-          "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
-          ]
-        },
-        {
-          "label": "Super cancel",
-          "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
-          ]
-        }
-      ],
-      "cancelTags": [
-        "sp",
-        "su"
-      ],
-      "notes": [
-        "Very short range combo tool",
-        "Forces stand on hit",
-        "Only cancelable on the first active frame",
-        "OK anti-air option",
-        "Deals 8F less hitstun after the first active frame (don't try to use this as a meaty tool on oki, it's actually punishable on HIT then)",
-        "Last 2 active frames whiff on crouching opponents"
-      ],
-      "image": "assets/ryu/4hp.png",
-      "hitbox": "assets/ryu/4hp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -13,
-          "derived": false,
-          "raw": "-13",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 13,
-            "text": "Heavily punishable (13f) — full Punish Counter combo / super."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 1,
-          "derived": false,
-          "raw": "1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 3,
-          "derived": true,
-          "raw": "1",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 5,
-          "derived": false,
-          "raw": "5",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "6hp",
-      "name": "Solar Plexus Strike",
-      "input": "6HP",
-      "startup": 20,
-      "active": 2,
-      "recovery": 16,
-      "damage": "800 (400*400)",
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Forward moving and + on Hit and Block makes this a very good combo / pressure tool",
-        "Second hit can whiff when whiff punishing, resulting in +8 on Punish",
-        "Carries over Counter-Hit / Punish Counter bonus frame advantage to both hits",
-        "First hit puts airborne opponents into a free juggle state (to prevent the second hit from whiffing, so that Ryu doesn't get punishes on airborne juggles)"
-      ],
-      "image": "assets/ryu/6hp.png",
-      "hitbox": "assets/ryu/6hp-hitbox.png",
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": 3,
-          "derived": false,
-          "raw": "3",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 0,
-            "text": "You are +3 — your turn continues."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": 6,
-          "derived": false,
-          "raw": "6",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 2
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 1
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 1
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": 8,
-          "derived": true,
-          "raw": "6",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 4
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 3
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 3
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 2
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 10,
-          "derived": false,
-          "raw": "10",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 6
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 6
-            },
-            {
-              "name": "Stand LK",
-              "input": "5LK",
-              "startup": 5,
-              "dmg": 300,
-              "slack": 5
-            },
-            {
-              "name": "Crouch LK",
-              "input": "2LK",
-              "startup": 5,
-              "dmg": 200,
-              "slack": 5
-            },
-            {
-              "name": "Stand MP",
-              "input": "5MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 4
-            },
-            {
-              "name": "Crouch MP",
-              "input": "2MP",
-              "startup": 6,
-              "dmg": 600,
-              "slack": 4
-            },
-            {
-              "name": "Short Uppercut",
-              "input": "4HP",
-              "startup": 7,
-              "dmg": 800,
-              "slack": 3
-            },
-            {
-              "name": "Crouch MK",
-              "input": "2MK",
-              "startup": 8,
-              "dmg": 500,
-              "slack": 2
-            },
-            {
               "name": "Stand MK",
               "input": "5MK",
-              "startup": 9,
+              "startup": 7,
               "dmg": 700,
-              "slack": 1
-            },
-            {
-              "name": "Crouch HP",
-              "input": "2HP",
-              "startup": 9,
-              "dmg": 800,
-              "slack": 1
-            },
-            {
-              "name": "Crouch HK",
-              "input": "2HK",
-              "startup": 9,
-              "dmg": 900,
-              "slack": 1
-            },
-            {
-              "name": "Stand HP",
-              "input": "5HP",
-              "startup": 10,
-              "dmg": 800,
-              "slack": 0
-            },
-            {
-              "name": "Axe Kick",
-              "input": "4HK",
-              "startup": 10,
-              "dmg": 800,
               "slack": 0
             }
           ],
@@ -3134,35 +601,34 @@
       ]
     },
     {
-      "id": "4hk",
-      "name": "Axe Kick",
-      "input": "4HK",
-      "startup": 10,
-      "active": 5,
-      "recovery": 21,
-      "damage": "800 (400*400)",
+      "id": "5lk",
+      "name": "Stand LK",
+      "input": "5LK",
+      "startup": 5,
+      "active": 3,
+      "recovery": 11,
+      "damage": 300,
       "level": "H",
       "airborne": false,
-      "hitConfirmWindow": 37,
+      "hitConfirmWindow": 13,
       "cancels": [
         {
           "label": "Special cancel",
           "into": [
-            "Hadoken",
-            "Shoryuken",
-            "Tatsumaki Senpukyaku",
-            "High Blade Kick",
-            "Hashogeki"
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
           ]
         },
         {
           "label": "Super cancel",
           "into": [
-            "Shinku Hadoken",
-            "Denjin Hadoken",
-            "Shin Hashogeki",
-            "Denjin Hashogeki",
-            "Shin Shoryuken"
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
           ]
         }
       ],
@@ -3171,100 +637,11 @@
         "su"
       ],
       "notes": [
-        "First hit forces stand on hit",
-        "First hit puts airborne opponents into a limited juggle state",
-        "Second hit puts airborne opponents into a limited OTG juggle state (usually +14 KD)",
-        "Carries over Counter-Hit / Punish Counter bonus frame advantage to both hits"
+        "Good range for a light normal",
+        "Incurs 20% damage scaling penalty if used as the first hit of a combo"
       ],
-      "image": "assets/ryu/4hk.png",
-      "hitbox": null,
-      "states": [
-        {
-          "state": "block",
-          "label": "On block",
-          "advantage": -4,
-          "derived": false,
-          "raw": "-4",
-          "reaction": null,
-          "oki": null,
-          "links": [],
-          "punish": {
-            "window": 4,
-            "text": "Jab-punishable — a 4f button gets a Punish Counter."
-          }
-        },
-        {
-          "state": "hit",
-          "label": "On hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "0 (KD +14)",
-          "reaction": "knockdown",
-          "oki": 0,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "ch",
-          "label": "Counter hit",
-          "advantage": null,
-          "derived": false,
-          "raw": "0 (KD +14)",
-          "reaction": "knockdown",
-          "oki": 0,
-          "links": [],
-          "punish": null
-        },
-        {
-          "state": "pc",
-          "label": "Punish counter",
-          "advantage": 4,
-          "derived": false,
-          "raw": "4",
-          "reaction": null,
-          "oki": null,
-          "links": [
-            {
-              "name": "Stand LP",
-              "input": "5LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            },
-            {
-              "name": "Crouch LP",
-              "input": "2LP",
-              "startup": 4,
-              "dmg": 300,
-              "slack": 0
-            }
-          ],
-          "punish": null
-        }
-      ]
-    },
-    {
-      "id": "6hk",
-      "name": "Whirlwind Kick",
-      "input": "6HK",
-      "startup": 16,
-      "active": 4,
-      "recovery": 20,
-      "damage": 800,
-      "level": "H",
-      "airborne": false,
-      "hitConfirmWindow": 19,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Low crushes on frames 13-20",
-        "Cancelable into regular/OD Air Tatsu on Hit or Block",
-        "Puts airborne opponents into a limited juggle state on hit",
-        "Very useful for juggling after midscreen OD High Blade Kick (the cancel into Air Tatsu gives Ryu solid damage, corner carry, and oki)",
-        "Extends a proximity guard box on frame 2 that reaches the attack's maximum range (prevents opponents from walking back out of its startup)"
-      ],
-      "image": "assets/ryu/6hk.png",
-      "hitbox": "assets/ryu/6hk-hitbox.png",
+      "image": "assets/akuma/5lk.png",
+      "hitbox": "assets/akuma/5lk-hitbox.png",
       "states": [
         {
           "state": "block",
@@ -3341,6 +718,2393 @@
               "slack": 2
             },
             {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 1
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 0
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "5mk",
+      "name": "Stand MK",
+      "input": "5MK",
+      "startup": 7,
+      "active": 5,
+      "recovery": 15,
+      "damage": 700,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": 17,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        },
+        {
+          "label": "Target combo",
+          "into": [
+            "HK (Bone Crusher Axe Kick)"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su",
+        "tc"
+      ],
+      "notes": [
+        "Forces stand on hit making this an important combo / whiff punish tool",
+        "Lots of active frames and good hitbox priority makes this a good button for counterpoking / buffering / oki",
+        "Deals more damage than most fully cancelable Medium buttons"
+      ],
+      "image": "assets/akuma/5mk.png",
+      "hitbox": "assets/akuma/5mk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -3,
+          "derived": false,
+          "raw": "-3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 3,
+            "text": "Nothing punishes (3f window), but you lose your turn."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 3,
+          "derived": false,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 5,
+          "derived": true,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 7,
+          "derived": false,
+          "raw": "7",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 2
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "5hk",
+      "name": "Stand HK",
+      "input": "5HK",
+      "startup": 13,
+      "active": 3,
+      "recovery": 15,
+      "damage": "800 (400*400)",
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "First hit forces stand on hit making this an important combo / whiff punish tool",
+        "Second hit cannot hit crouch (-13 on block on if they crouch under the second hit)",
+        "Cannot be crouched under after blocking the first hit standing",
+        "Carries over Counter-Hit / Punish Counter bonus frame advantage to both hits",
+        "Great button for combos (despite the damage scaling it adds) and for whiff punishing and block pressure against standing opponents",
+        "Both hits put airborne opponents into a limited juggle state on hit",
+        "Situational anti-air despite its juggle properties, due to not having a great hurtbox for vertical approaches",
+        "+1 extra recovery frames (16F) on whiff"
+      ],
+      "image": "assets/akuma/5hk.png",
+      "hitbox": "assets/akuma/5hk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "3(-13)",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 7,
+          "derived": false,
+          "raw": "7",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 2
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 9,
+          "derived": true,
+          "raw": "7",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 5
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 5
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 4
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 3
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 3
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 2
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 1
+            },
+            {
+              "name": "Stand HP",
+              "input": "5HP",
+              "startup": 9,
+              "dmg": 800,
+              "slack": 0
+            },
+            {
+              "name": "Crouch HK",
+              "input": "2HK",
+              "startup": 9,
+              "dmg": 900,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 11,
+          "derived": false,
+          "raw": "11",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 7
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 7
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 6
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 6
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 5
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 5
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 4
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 3
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 3
+            },
+            {
+              "name": "Stand HP",
+              "input": "5HP",
+              "startup": 9,
+              "dmg": 800,
+              "slack": 2
+            },
+            {
+              "name": "Crouch HK",
+              "input": "2HK",
+              "startup": 9,
+              "dmg": 900,
+              "slack": 2
+            },
+            {
+              "name": "Resso Snap Kick",
+              "input": "6MK",
+              "startup": 10,
+              "dmg": 700,
+              "slack": 1
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "2lp",
+      "name": "Crouch LP",
+      "input": "2LP",
+      "startup": 4,
+      "active": 2,
+      "recovery": 9,
+      "damage": 300,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": 13,
+      "cancels": [
+        {
+          "label": "Chain",
+          "into": [
+            "5LP",
+            "2LP",
+            "5LK",
+            "2LK"
+          ]
+        },
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "ch",
+        "sp",
+        "su"
+      ],
+      "notes": [
+        "Important tool for Akuma's combo routes as it leads into more combos than Akuma's other light buttons",
+        "Chains into stand LP / crouch LP / crouch LK",
+        "Incurs 20% damage scaling penalty if used as the first hit of a combo",
+        "Topmost hurtboxes on frames 1-5 are vulnerable only to airborne attacks (this is to discourage its use as an anti-air)"
+      ],
+      "image": "assets/akuma/2lp.png",
+      "hitbox": "assets/akuma/2lp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -1,
+          "derived": false,
+          "raw": "-1",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 1,
+            "text": "Nothing punishes (1f window), but you lose your turn."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 5,
+          "derived": false,
+          "raw": "5",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 7,
+          "derived": true,
+          "raw": "5",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 2
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 9,
+          "derived": false,
+          "raw": "9",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 5
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 4
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 3
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 3
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 2
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 1
+            },
+            {
+              "name": "Stand HP",
+              "input": "5HP",
+              "startup": 9,
+              "dmg": 800,
+              "slack": 0
+            },
+            {
+              "name": "Crouch HK",
+              "input": "2HK",
+              "startup": 9,
+              "dmg": 900,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "2mp",
+      "name": "Crouch MP",
+      "input": "2MP",
+      "startup": 6,
+      "active": 3,
+      "recovery": 14,
+      "damage": 600,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": 16,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su"
+      ],
+      "notes": [
+        "Fantastic combo / poke / buffer / pressure tool that even combos into itself",
+        "Topmost hurtboxes on frames 1-8 are vulnerable only to airborne attacks (this is to discourage its use as an anti-air)",
+        "+2 extra recovery frames (16F) on whiff",
+        "When spaced out properly (1.53~1.57) away from the opponent, you can delay cancel (usually a 2F window timing) into LK Tatsu (QCB+LK) and follow-up into MK Tatsu (QCB+MK) for good damage and oki"
+      ],
+      "image": "assets/akuma/2mp.png",
+      "hitbox": "assets/akuma/2mp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -1,
+          "derived": false,
+          "raw": "-1",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 1,
+            "text": "Nothing punishes (1f window), but you lose your turn."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 6,
+          "derived": false,
+          "raw": "6",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 1
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 8,
+          "derived": true,
+          "raw": "6",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 3
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 2
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 1
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 0
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 10,
+          "derived": false,
+          "raw": "10",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 6
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 6
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 5
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 5
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 4
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 3
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 2
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 2
+            },
+            {
+              "name": "Stand HP",
+              "input": "5HP",
+              "startup": 9,
+              "dmg": 800,
+              "slack": 1
+            },
+            {
+              "name": "Crouch HK",
+              "input": "2HK",
+              "startup": 9,
+              "dmg": 900,
+              "slack": 1
+            },
+            {
+              "name": "Resso Snap Kick",
+              "input": "6MK",
+              "startup": 10,
+              "dmg": 700,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "2hp",
+      "name": "Crouch HP",
+      "input": "2HP",
+      "startup": 8,
+      "active": 8,
+      "recovery": 19,
+      "damage": 900,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": 17,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su"
+      ],
+      "notes": [
+        "Head and arm are invincible to airborne strikes on frames 8-15 (during the active frames)",
+        "Good anti-air tool for vertical approaches but cannot hit cross-up (behind Akuma)",
+        "Forces stand on hit making this an important combo / whiff punish tool as well",
+        "Only cancelable on the first 3 active frames",
+        "Has +1 extra hitstun (28) on first 3 active frames"
+      ],
+      "image": "assets/akuma/2hp.png",
+      "hitbox": "assets/akuma/2hp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -8,
+          "derived": false,
+          "raw": "-8",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 8,
+            "text": "Medium-punishable (8f) — real damage."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 1,
+          "derived": false,
+          "raw": "1",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 3,
+          "derived": true,
+          "raw": "1",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 5,
+          "derived": false,
+          "raw": "5",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "2lk",
+      "name": "Crouch LK",
+      "input": "2LK",
+      "startup": 5,
+      "active": 2,
+      "recovery": 10,
+      "damage": 200,
+      "level": "L",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [
+        {
+          "label": "Chain",
+          "into": [
+            "5LP",
+            "2LP",
+            "5LK",
+            "2LK"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "ch"
+      ],
+      "notes": [
+        "Chains into stand LP / crouch LP / crouch LK",
+        "Incurs 20% damage scaling penalty if used as the first hit of a combo"
+      ],
+      "image": "assets/akuma/2lk.png",
+      "hitbox": "assets/akuma/2lk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -3,
+          "derived": false,
+          "raw": "-3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 3,
+            "text": "Nothing punishes (3f window), but you lose your turn."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 3,
+          "derived": false,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 5,
+          "derived": true,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 7,
+          "derived": false,
+          "raw": "7",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "2mk",
+      "name": "Crouch MK",
+      "input": "2MK",
+      "startup": 8,
+      "active": 3,
+      "recovery": 19,
+      "damage": 500,
+      "level": "L",
+      "airborne": false,
+      "hitConfirmWindow": 13,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su"
+      ],
+      "notes": [
+        "Standard shoto crouch MK but has quite a bit of hurtbox extensions before the active frames",
+        "Incurs a 20% damage scaling penalty if used as the first hit of a combo",
+        "The first 2 active frames are cancelable into Drive Impact only (guarantees that a counter-DI is possible when it connects with DI armor)"
+      ],
+      "image": "assets/akuma/2mk.png",
+      "hitbox": "assets/akuma/2mk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -6,
+          "derived": false,
+          "raw": "-6",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 6,
+            "text": "Medium-punishable (6f) — real damage."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 0,
+          "derived": false,
+          "raw": "0",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 2,
+          "derived": true,
+          "raw": "0",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 4,
+          "derived": false,
+          "raw": "4",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "2hk",
+      "name": "Crouch HK",
+      "input": "2HK",
+      "startup": 9,
+      "active": 3,
+      "recovery": 23,
+      "damage": 900,
+      "level": "L",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Has very good range and hitbox priority",
+        "Has some Juggle potential naturally without Drive Rush",
+        "Has fixed framedata on block (always -12 on block even if blocked meaty) with +6F extra recovery frames (29F)"
+      ],
+      "image": "assets/akuma/2hk.png",
+      "hitbox": "assets/akuma/2hk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -12,
+          "derived": false,
+          "raw": "-12",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 12,
+            "text": "Heavily punishable (12f) — full Punish Counter combo / super."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "KD +40",
+          "reaction": "knockdown",
+          "oki": 40,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "KD +40",
+          "reaction": "knockdown",
+          "oki": 40,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "HKD +47",
+          "reaction": "hard knockdown",
+          "oki": 47,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "jlp",
+      "name": "Jump LP",
+      "input": "8LP",
+      "startup": 4,
+      "active": 10,
+      "recovery": null,
+      "damage": 300,
+      "level": "M",
+      "airborne": true,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Quick air-to-air button",
+        "Can be used as an instant Overhead after opponent blocks a deep jump-in HP / HK / MK",
+        "Shifts Akuma's positioning / hurtboxes downards a little bit on frame 1"
+      ],
+      "image": "assets/akuma/jlp.png",
+      "hitbox": "assets/akuma/jlp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "0~5",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "4~9",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "4~9",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "8~13",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "jmp",
+      "name": "Jump MP",
+      "input": "8MP",
+      "startup": 8,
+      "active": 4,
+      "recovery": null,
+      "damage": 700,
+      "level": "M",
+      "airborne": true,
+      "hitConfirmWindow": 23,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Zanku Hadoken",
+            "Tatsumaki Zanku-kyaku",
+            "Double Zanku Hadoken"
+          ]
+        },
+        {
+          "label": "Super cancel (SA1+)",
+          "into": [
+            "Tenma Gozanku"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su1"
+      ],
+      "notes": [
+        "Primary air-to-air tool that puts airborne opponents into a limited juggle state",
+        "Cancelable into Air Tatsu / Air Fireballs / Air Super Art 1",
+        "Has a very lenient cancel window (delaying the cancel is often better for combo conversions)"
+      ],
+      "image": "assets/akuma/jmp.png",
+      "hitbox": "assets/akuma/jmp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "5~7",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "9~11 (KD)",
+          "reaction": "knockdown",
+          "oki": 9,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "9~11 (KD)",
+          "reaction": "knockdown",
+          "oki": 9,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "13~15 (KD)",
+          "reaction": "knockdown",
+          "oki": 13,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "jhp",
+      "name": "Jump HP",
+      "input": "8HP",
+      "startup": 9,
+      "active": 6,
+      "recovery": null,
+      "damage": 800,
+      "level": "M",
+      "airborne": true,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Strong horizontal jump-in hitbox priority",
+        "Spikes down airborne opponents on Counter-Hit or Punish Counter"
+      ],
+      "image": "assets/akuma/jhp.png",
+      "hitbox": "assets/akuma/jhp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "4~11",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "8~15 (KD)",
+          "reaction": "knockdown",
+          "oki": 8,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "8~15 (KD)",
+          "reaction": "knockdown",
+          "oki": 8,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "12~19 (KD)",
+          "reaction": "knockdown",
+          "oki": 12,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "jlk",
+      "name": "Jump LK",
+      "input": "8LK",
+      "startup": 6,
+      "active": 10,
+      "recovery": null,
+      "damage": 300,
+      "level": "M",
+      "airborne": true,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Cross-up"
+      ],
+      "image": "assets/akuma/jlk.png",
+      "hitbox": "assets/akuma/jlk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "1~6",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "5~10",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "5~10",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "9~14",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "jmk",
+      "name": "Jump MK",
+      "input": "8MK",
+      "startup": 7,
+      "active": 6,
+      "recovery": null,
+      "damage": 500,
+      "level": "M",
+      "airborne": true,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Cross-up"
+      ],
+      "image": "assets/akuma/jmk.png",
+      "hitbox": "assets/akuma/jmk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "4~9",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "8~13",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "8~13",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "12~17",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "jhk",
+      "name": "Jump HK",
+      "input": "8HK",
+      "startup": 12,
+      "active": 6,
+      "recovery": null,
+      "damage": 800,
+      "level": "M",
+      "airborne": true,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Furthest horizontal range of Akuma's jump normals"
+      ],
+      "image": "assets/akuma/jhk.png",
+      "hitbox": "assets/akuma/jhk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "5~11",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "9~15",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "9~15",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "13~19",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "j2mk",
+      "name": "Tenmaku Blade Kick",
+      "input": "9 > 2MK",
+      "startup": 16,
+      "active": null,
+      "recovery": 7,
+      "damage": 800,
+      "level": "H",
+      "airborne": true,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Can only be performed during a forward jump",
+        "Great tool to mix up your jump-in timings and bait early anti-airs from the opponent",
+        "Small hurtbox extensions compared to other Divekicks in the game",
+        "Can't hit cross-up (behind Akuma)",
+        "+6F extra (13F) landing recovery frames on whiff",
+        "Crouch size hurtboxes on frames 3-6 (3-12 on whiff) during landing recovery (but doesn't actually transition into a crouch state until the final recovery frame)"
+      ],
+      "image": "assets/akuma/j2mk.png",
+      "hitbox": "assets/akuma/j2mk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": null,
+          "derived": false,
+          "raw": "-4(6)",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "1(11)",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "1(11)",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "5(15)",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "6mp",
+      "name": "Skull Splitter",
+      "input": "6MP",
+      "startup": 20,
+      "active": 1,
+      "recovery": 18,
+      "damage": "600 (200*400)",
+      "level": "M",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Great overhead with good start-up and frame advantage on hit, decent range, as well as hitting two times to blow through some armored moves",
+        "Combos into stand MK after Drive Rush f+MP, which forces stand for the follow-up combos (very useful for when the opponent didn't react to your Drive Rush Overhead and got hit while crouching)",
+        "Second hit is not an Overhead if the first hit connects"
+      ],
+      "image": "assets/akuma/6mp.png",
+      "hitbox": "assets/akuma/6mp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -3,
+          "derived": false,
+          "raw": "-3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 3,
+            "text": "Nothing punishes (3f window), but you lose your turn."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 3,
+          "derived": false,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 5,
+          "derived": true,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 7,
+          "derived": false,
+          "raw": "7",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 2
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "6mk",
+      "name": "Resso Snap Kick",
+      "input": "6MK",
+      "startup": 10,
+      "active": 3,
+      "recovery": 15,
+      "damage": 700,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Fantastic poke tool with good range and hitbox priority, as well as good frame advantage on hit (can combo into 2HK or SA2 on Punish from decent range away)",
+        "+4F extra recovery frames (19F) on whiff"
+      ],
+      "image": "assets/akuma/6mk.png",
+      "hitbox": "assets/akuma/6mk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -4,
+          "derived": false,
+          "raw": "-4",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 4,
+            "text": "Jab-punishable — a 4f button gets a Punish Counter."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 5,
+          "derived": false,
+          "raw": "5",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 7,
+          "derived": true,
+          "raw": "5",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 2
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 1
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 9,
+          "derived": false,
+          "raw": "9",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 5
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 5
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 4
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 3
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 3
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 2
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 1
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 1
+            },
+            {
+              "name": "Stand HP",
+              "input": "5HP",
+              "startup": 9,
+              "dmg": 800,
+              "slack": 0
+            },
+            {
+              "name": "Crouch HK",
+              "input": "2HK",
+              "startup": 9,
+              "dmg": 900,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "6hp",
+      "name": "Kikoku",
+      "input": "6HP",
+      "startup": 13,
+      "active": 4,
+      "recovery": 20,
+      "damage": 800,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [
+        {
+          "label": "Target combo",
+          "into": [
+            "6HP (Kikoku Combination 1)",
+            "HK (Kikoku Combination 2)"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "tc"
+      ],
+      "notes": [
+        "Solid poke as well as a combo or punish starter tool",
+        "Can easily be hit confirmed into its target combo follow-up"
+      ],
+      "image": "assets/akuma/6hp.png",
+      "hitbox": "assets/akuma/6hp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -3,
+          "derived": false,
+          "raw": "-3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 3,
+            "text": "Nothing punishes (3f window), but you lose your turn."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": 4,
+          "derived": false,
+          "raw": "4",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 0
+            }
+          ],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 6,
+          "derived": true,
+          "raw": "4",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 2
+            },
+            {
               "name": "Stand LK",
               "input": "5LK",
               "startup": 5,
@@ -3370,38 +3134,306 @@
             }
           ],
           "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 8,
+          "derived": false,
+          "raw": "8",
+          "reaction": null,
+          "oki": null,
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 4
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 3
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 3
+            },
+            {
+              "name": "Stand MP",
+              "input": "5MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 2
+            },
+            {
+              "name": "Crouch MP",
+              "input": "2MP",
+              "startup": 6,
+              "dmg": 600,
+              "slack": 2
+            },
+            {
+              "name": "Stand MK",
+              "input": "5MK",
+              "startup": 7,
+              "dmg": 700,
+              "slack": 1
+            },
+            {
+              "name": "Crouch HP",
+              "input": "2HP",
+              "startup": 8,
+              "dmg": 900,
+              "slack": 0
+            },
+            {
+              "name": "Crouch MK",
+              "input": "2MK",
+              "startup": 8,
+              "dmg": 500,
+              "slack": 0
+            }
+          ],
+          "punish": null
         }
       ]
     },
     {
-      "id": "5mp_lk",
-      "name": "Fuwa Triple Strike 1",
-      "input": "5MP > LK",
-      "startup": 5,
-      "active": 3,
-      "recovery": 16,
-      "damage": 300,
+      "id": "4hk",
+      "name": "Rago High Kick",
+      "input": "4HK",
+      "startup": 12,
+      "active": 5,
+      "recovery": 27,
+      "damage": 800,
       "level": "H",
       "airborne": false,
-      "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [],
-      "image": "assets/ryu/5mp_lk.png",
-      "hitbox": "assets/ryu/5mp_lk-hitbox.png",
+      "hitConfirmWindow": 19,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su"
+      ],
+      "notes": [
+        "The kicking leg is invincible to airborne strikes on frames 12-16 (during the active frames)",
+        "Not the most reliable anti-air despite the upper air invincibility during the active frames, due to hurtbox extensions that reach into the air before the invincibility kicks in",
+        "Launches the opponent into a limited juggle state",
+        "Fully cancelable launcher that's vital for a lot of Akuma's combo routes"
+      ],
+      "image": "assets/akuma/4hk.png",
+      "hitbox": "assets/akuma/4hk-hitbox.png",
       "states": [
         {
           "state": "block",
           "label": "On block",
-          "advantage": -4,
+          "advantage": -15,
           "derived": false,
-          "raw": "-4",
+          "raw": "-15",
           "reaction": null,
           "oki": null,
           "links": [],
           "punish": {
-            "window": 4,
-            "text": "Jab-punishable — a 4f button gets a Punish Counter."
+            "window": 15,
+            "text": "Heavily punishable (15f) — full Punish Counter combo / super."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "KD +47",
+          "reaction": "knockdown",
+          "oki": 47,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": null,
+          "derived": false,
+          "raw": "KD +47",
+          "reaction": "knockdown",
+          "oki": 47,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": null,
+          "derived": false,
+          "raw": "KD +47",
+          "reaction": "knockdown",
+          "oki": 47,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "5mp_mp",
+      "name": "Viscera Piercer",
+      "input": "5MP > MP",
+      "startup": 7,
+      "active": 3,
+      "recovery": 21,
+      "damage": 700,
+      "level": "H",
+      "airborne": false,
+      "hitConfirmWindow": 38,
+      "cancels": [
+        {
+          "label": "Special cancel",
+          "into": [
+            "Gou Hadoken",
+            "Gou Shoryuken",
+            "Adamant Flame",
+            "Tatsumaki Zanku-kyaku"
+          ]
+        },
+        {
+          "label": "Super cancel",
+          "into": [
+            "Messatsu Gohado",
+            "Empyrean's End",
+            "Sip of Calamity",
+            "Kongou Kokuretsuzan",
+            "Misogi"
+          ]
+        }
+      ],
+      "cancelTags": [
+        "sp",
+        "su"
+      ],
+      "notes": [
+        "Primary combo tool",
+        "Counts as 2 hits of damage scaling when both hits land"
+      ],
+      "image": "assets/akuma/5mp_mp.png",
+      "hitbox": "assets/akuma/5mp_mp-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -6,
+          "derived": false,
+          "raw": "-6",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 6,
+            "text": "Medium-punishable (6f) — real damage."
+          }
+        },
+        {
+          "state": "hit",
+          "label": "On hit",
+          "advantage": -1,
+          "derived": false,
+          "raw": "-1",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "ch",
+          "label": "Counter hit",
+          "advantage": 1,
+          "derived": true,
+          "raw": "-1",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        },
+        {
+          "state": "pc",
+          "label": "Punish counter",
+          "advantage": 3,
+          "derived": false,
+          "raw": "3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": null
+        }
+      ]
+    },
+    {
+      "id": "5mk_hk",
+      "name": "Bone Crusher Axe Kick",
+      "input": "5MK > HK",
+      "startup": 20,
+      "active": 3,
+      "recovery": 20,
+      "damage": 600,
+      "level": "H*M",
+      "airborne": false,
+      "hitConfirmWindow": null,
+      "cancels": [],
+      "cancelTags": [],
+      "notes": [
+        "Second hit (HK) is an Overhead",
+        "Puts airborne opponents into a limited OTG juggle state",
+        "Safe on block Overhead target combo that deals almost a whole drive bar of chip on block",
+        "4F gap on block (trades with 5F) but the follow-up HK can be delayed for up to 7F gap on block (trades with 8F)",
+        "Combos naturally but required Counter-Hit to combo on a delayed cancel, like when you want to hit confirm the follow-up Overhead",
+        "Counts as 2 hits of damage scaling when used in the middle of a combo"
+      ],
+      "image": "assets/akuma/5mk_hk.png",
+      "hitbox": "assets/akuma/5mk_hk-hitbox.png",
+      "states": [
+        {
+          "state": "block",
+          "label": "On block",
+          "advantage": -3,
+          "derived": false,
+          "raw": "-3",
+          "reaction": null,
+          "oki": null,
+          "links": [],
+          "punish": {
+            "window": 3,
+            "text": "Nothing punishes (3f window), but you lose your turn."
           }
         },
         {
@@ -3429,48 +3461,86 @@
         {
           "state": "pc",
           "label": "Punish counter",
-          "advantage": 1,
+          "advantage": 5,
           "derived": false,
-          "raw": "1",
+          "raw": "5",
           "reaction": null,
           "oki": null,
-          "links": [],
+          "links": [
+            {
+              "name": "Stand LP",
+              "input": "5LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Crouch LP",
+              "input": "2LP",
+              "startup": 4,
+              "dmg": 300,
+              "slack": 1
+            },
+            {
+              "name": "Stand LK",
+              "input": "5LK",
+              "startup": 5,
+              "dmg": 300,
+              "slack": 0
+            },
+            {
+              "name": "Crouch LK",
+              "input": "2LK",
+              "startup": 5,
+              "dmg": 200,
+              "slack": 0
+            }
+          ],
           "punish": null
         }
       ]
     },
     {
-      "id": "5mp_lk_hk",
-      "name": "Fuwa Triple Strike 2",
-      "input": "5MP > LK > HK",
-      "startup": 17,
-      "active": 4,
-      "recovery": 20,
-      "damage": 900,
+      "id": "6hp_6hp",
+      "name": "Kikoku Combination 1",
+      "input": "6HP > 6HP",
+      "startup": 10,
+      "active": 3,
+      "recovery": 21,
+      "damage": 600,
       "level": "H",
       "airborne": false,
       "hitConfirmWindow": null,
-      "cancels": [],
-      "cancelTags": [],
-      "notes": [
-        "Last hit (HK) can be canceled into Denjin Charge (down+Punch on Classic / down+attack on Modern) on HIT only for a +7 Knockdown (can even maintain pressure in corner)",
-        "Hits consistently even at max range of MP where his other combo routes drop"
+      "cancels": [
+        {
+          "label": "Target combo",
+          "into": [
+            "HK (Kikoku Combination 2)"
+          ]
+        }
       ],
-      "image": "assets/ryu/5mp_lk_hk.png",
-      "hitbox": "assets/ryu/5mp_lk_hk-hitbox.png",
+      "cancelTags": [
+        "tc"
+      ],
+      "notes": [
+        "Hit confirmable from the first f+HP",
+        "Puts the opponent into a limited juggle state on hit (can juggle afterwards in the corner)"
+      ],
+      "image": "assets/akuma/6hp_6hp.png",
+      "hitbox": "assets/akuma/6hp_6hp-hitbox.png",
       "states": [
         {
           "state": "block",
           "label": "On block",
-          "advantage": -8,
+          "advantage": -10,
           "derived": false,
-          "raw": "-8",
+          "raw": "-10",
           "reaction": null,
           "oki": null,
           "links": [],
           "punish": {
-            "window": 8,
-            "text": "Medium-punishable (8f) — real damage."
+            "window": 10,
+            "text": "Heavily punishable (10f) — full Punish Counter combo / super."
           }
         },
         {
@@ -3478,9 +3548,9 @@
           "label": "On hit",
           "advantage": null,
           "derived": false,
-          "raw": "KD +36",
+          "raw": "KD +39",
           "reaction": "knockdown",
-          "oki": 36,
+          "oki": 39,
           "links": [],
           "punish": null
         },
@@ -3489,9 +3559,9 @@
           "label": "Counter hit",
           "advantage": null,
           "derived": false,
-          "raw": "KD +36",
+          "raw": "KD +39",
           "reaction": "knockdown",
-          "oki": 36,
+          "oki": 39,
           "links": [],
           "punish": null
         },
@@ -3500,55 +3570,57 @@
           "label": "Punish counter",
           "advantage": null,
           "derived": false,
-          "raw": "KD +36",
+          "raw": "KD +39",
           "reaction": "knockdown",
-          "oki": 36,
+          "oki": 39,
           "links": [],
           "punish": null
         }
       ]
     },
     {
-      "id": "5hp_hk",
-      "name": "High Double Strike",
-      "input": "5HP > HK",
+      "id": "6hp_6hp_hk",
+      "name": "Kikoku Combination 2",
+      "input": "6HP > 6HP > HK",
       "startup": 9,
-      "active": 4,
-      "recovery": 20,
-      "damage": 1000,
+      "active": 3,
+      "recovery": 24,
+      "damage": 875,
       "level": "H",
       "airborne": false,
       "hitConfirmWindow": null,
       "cancels": [],
       "cancelTags": [],
       "notes": [
-        "Second hit (HK) can be canceled into Denjin Charge (down+Punch on Classic / down+attack on Modern) on HIT only for a +10 Knockdown (can even maintain pressure in corner)",
-        "Second hit (HK) whiffs on crouching (-18 on block on crouching when it whiffs)",
-        "Puts the opponent into a limited juggle state on hit (but the second hit maintains current juggle state, so Drive Rush HP>HK can result in free juggle state after Crumples or Wall splats)",
-        "Can juggle into MP / OD Shoryuken or SA3 in the corner if not canceled into Denjin Charge"
+        "Hit confirmable target combo",
+        "Puts the opponent into a limited juggle state on hit",
+        "This full version is decent to use mid-screen where you don't get a juggle opportunity after the 2nd f+HP like in the corner"
       ],
-      "image": "assets/ryu/5hp_hk.png",
-      "hitbox": "assets/ryu/5hp_hk-hitbox.png",
+      "image": "assets/akuma/6hp_6hp_hk.png",
+      "hitbox": "assets/akuma/6hp_6hp_hk-hitbox.png",
       "states": [
         {
           "state": "block",
           "label": "On block",
-          "advantage": null,
+          "advantage": -13,
           "derived": false,
-          "raw": "-8(-18)",
+          "raw": "-13",
           "reaction": null,
           "oki": null,
           "links": [],
-          "punish": null
+          "punish": {
+            "window": 13,
+            "text": "Heavily punishable (13f) — full Punish Counter combo / super."
+          }
         },
         {
           "state": "hit",
           "label": "On hit",
           "advantage": null,
           "derived": false,
-          "raw": "KD +39",
+          "raw": "KD +35",
           "reaction": "knockdown",
-          "oki": 39,
+          "oki": 35,
           "links": [],
           "punish": null
         },
@@ -3557,9 +3629,9 @@
           "label": "Counter hit",
           "advantage": null,
           "derived": false,
-          "raw": "KD +39",
+          "raw": "KD +35",
           "reaction": "knockdown",
-          "oki": 39,
+          "oki": 35,
           "links": [],
           "punish": null
         },
@@ -3568,9 +3640,9 @@
           "label": "Punish counter",
           "advantage": null,
           "derived": false,
-          "raw": "KD +37",
+          "raw": "KD +35",
           "reaction": "knockdown",
-          "oki": 37,
+          "oki": 35,
           "links": [],
           "punish": null
         }
