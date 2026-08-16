@@ -10,7 +10,9 @@
     "sf6": "tsx src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "web:build": "node scripts/build-ryu-site.mjs",
+    "web": "node scripts/build-ryu-site.mjs && python3 -m http.server 8777 --directory web"
   },
   "keywords": ["street-fighter", "sf6", "frame-data", "fgc", "engine"],
   "license": "MIT",
@@ -19,5 +21,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "esbuild@0.21.5": true
   }
 }
