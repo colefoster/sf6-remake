@@ -24,10 +24,9 @@
  * Key frames are 0-indexed with an EXCLUSIVE end; we emit 1-indexed inclusive
  * frames so "first active frame == startup" holds as CONTEXT.md defines it.
  *
+ *   PushCollisionKey    BoxNo                     -> rects[5] then rects[7] (pushbox)
+ *
  * DELIBERATE OMISSIONS
- * - Pushboxes. `PushCollisionKey` carries a `BoxNo`, but which rect list it
- *   indexes is unresolved upstream too ("fixme, 5 or 9 or 10?" — MMDK.lua:402),
- *   and none of the candidates produce a plausible symmetric standing box.
  * - General branch chasing. Actions branch mid-move for hit-confirms, follow-ups
  *   and rebalanced variants, and following them blindly double-counts active
  *   frames. Only the wind-up handoff is spliced (see `spliceContinuations`);
@@ -46,9 +45,23 @@ const OUT = path.join(root, "data/geometry");
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/** Rect list ids, per MMDK.lua. */
+/** Rect list ids. Hit lists are `CollisionType`; the rest were derived — see below. */
 const RECT_PROXIMITY = 3;
 const RECT_HURT = 8;
+/**
+ * Pushboxes live in two lists and MMDK's own code never settled which
+ * ("fixme, 5 or 9 or 10?" — MMDK.lua:402). Resolved here from usage:
+ * list 7 holds the base body boxes that `BoxNo` 1/2/3 point at — and those
+ * are used by, respectively, every standing damage reaction, every crouching
+ * one, and every jumping attack, with exactly the geometry that implies
+ * (x +/-33 y 0-130 standing, y 0-100 crouching, y 90-180 airborne).
+ * List 5 holds per-move overrides at `BoxNo` 32+: the box that rises through a
+ * Shoryuken, the raised one a Tatsumaki spins in, a fireball's own body.
+ * Overrides win, which is what makes Akuma's jumping HP (`BoxNo` 37, present in
+ * both lists) take the raised box rather than the grounded one.
+ */
+const RECT_PUSH_OVERRIDE = 5;
+const RECT_PUSH_BASE = 7;
 
 /** First signed integer in a FAT value ("10*20" -> 10), or undefined. */
 const int = (v) => {
@@ -114,7 +127,7 @@ function attackKind(key) {
   return "strike";
 }
 
-function extractAction(action, rect) {
+function extractAction(action, rect, unresolvedPush) {
   const fab = action.fab ?? {};
   const af = fab.ActionFrame ?? {};
   const cat = fab.Category ?? {};
@@ -162,6 +175,20 @@ function extractAction(action, rect) {
     hurt.push(entry);
   }
 
+  const push = [];
+  for (const key of ordered(action.PushCollisionKey)) {
+    const start = key._StartFrame + 1;
+    const end = key._EndFrame;
+    if (end < start) continue;
+    const rct = rect(RECT_PUSH_OVERRIDE, key.BoxNo) ?? rect(RECT_PUSH_BASE, key.BoxNo);
+    const box = toBox(rct, key.RootOffset);
+    if (!box) {
+      unresolvedPush.add(key.BoxNo);
+      continue;
+    }
+    push.push({ start, end, boxNo: key.BoxNo, box });
+  }
+
   const branches = ordered(action.BranchKey)
     .filter((k) => typeof k.Action === "number" && k.Action > 0)
     .map((k) => ({ frame: (k._StartFrame ?? 0) + 1, action: k.Action, type: k.Type ?? null }));
@@ -185,6 +212,7 @@ function extractAction(action, rect) {
     hit,
     prox,
     hurt,
+    push,
   };
   if (branches.length) out.branches = dedupeBranches(branches);
   if (action.mot_name) out.mot = action.mot_name;
@@ -372,15 +400,26 @@ function frameUnique(fatMove, sigs, actions) {
 
 const isPlainInt = (v) => typeof v === "number" || (typeof v === "string" && /^\d+$/.test(v.trim()));
 
-/** Standing height / width, for the viewer to scale by something real. */
+/**
+ * Standing height, and the pushbox half-widths that set how close two
+ * characters can stand — the minimum distance between their origins is the sum
+ * of their facing half-widths.
+ */
 function calibrate(actions) {
-  const stand = actions.find((a) => a.name === "BAS_STD_Loop") ?? actions.find((a) => a.hurt.length);
+  const byName = (name) => actions.find((a) => a.name === name);
+  const stand = byName("BAS_STD_Loop") ?? actions.find((a) => a.hurt.length);
   const boxes = stand?.hurt.flatMap((h) => [...h.head, ...h.body, ...h.leg]) ?? [];
   if (!boxes.length) return null;
+  const halfWidth = (action) => {
+    const box = action?.push[0]?.box;
+    return box ? Math.max(Math.abs(box.x), Math.abs(box.x + box.width)) : null;
+  };
   return {
     standingHeight: Math.max(...boxes.map((b) => b.y + b.height)),
     standingHalfWidth: Math.max(...boxes.map((b) => Math.max(Math.abs(b.x), Math.abs(b.x + b.width)))),
     standAction: stand.id,
+    crouchAction: byName("BAS_CRH_Loop")?.id ?? null,
+    pushHalfWidth: { stand: halfWidth(stand), crouch: halfWidth(byName("BAS_CRH_Loop")) },
   };
 }
 
@@ -393,10 +432,13 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   const rect = makeRects(rectsFile);
 
   const actions = [];
+  const unresolvedPush = new Set();
   for (const action of Object.values(movesFile)) {
     if (typeof action?.id !== "number" || !action.name) continue;
-    const extracted = extractAction(action, rect);
-    if (!extracted.hit.length && !extracted.hurt.length && !extracted.prox.length) continue;
+    const extracted = extractAction(action, rect, unresolvedPush);
+    if (!extracted.hit.length && !extracted.hurt.length && !extracted.prox.length && !extracted.push.length) {
+      continue;
+    }
     actions.push(extracted);
   }
   actions.sort((a, b) => a.id - b.id);
@@ -425,6 +467,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     calibration: calibrate(actions),
     counts: {
       actions: actions.length,
+      withPushboxes: actions.filter((a) => a.push.length).length,
       withHitboxes: actions.filter((a) => a.hit.some((h) => h.kind !== "proximity")).length,
       mapped: moves.length,
       exact: moves.filter((m) => m.match === "exact").length,
@@ -445,6 +488,11 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     `${fatName}: ${n} actions (${withHitboxes} with hitboxes), ` +
       `${mapped} moves mapped (${exact} name+frame exact) -> data/geometry/${id}.json`,
   );
+  if (unresolvedPush.size) {
+    // BoxNo 6 is the downed-state pushbox, which lives in a shared asset MMDK
+    // does not dump per fighter. Only knockdown/tech actions reference it.
+    console.log(`  ! pushbox BoxNo not in either rect list: ${[...unresolvedPush].sort((a, b) => a - b).join(", ")}`);
+  }
   return {
     id,
     name: fatName,

@@ -16,6 +16,7 @@
     --hit: #ff4d4d;
     --hurt: #4d8cff;
     --prox: #d8b74a;
+    --push: #a06cff;
     --throw: #26c99a;
     --opp: #6d7488;
     --plus: #45d17a;
@@ -141,6 +142,7 @@
       <label><input type="checkbox" id="t-hurt" checked> hurtboxes</label>
       <label><input type="checkbox" id="t-hit" checked> hitboxes</label>
       <label><input type="checkbox" id="t-prox"> proximity</label>
+      <label><input type="checkbox" id="t-push" checked> pushboxes</label>
       <button id="fit">snap to max range</button>
     </div>
 
@@ -156,7 +158,7 @@
         <div class="sub" id="r-connect-sub"></div>
       </div>
       <div class="card">
-        <h3>Max range</h3>
+        <h3>Usable spacing</h3>
         <div class="big" id="r-range">—</div>
         <div class="sub" id="r-range-sub"></div>
       </div>
@@ -172,6 +174,7 @@
       <span><i style="background:var(--hurt)"></i>hurtbox</span>
       <span><i style="background:var(--throw)"></i>throwable / throw box</span>
       <span><i style="background:var(--prox)"></i>proximity guard</span>
+      <span><i style="background:var(--push)"></i>pushbox</span>
       <span><i style="background:var(--opp)"></i>opponent</span>
     </div>
 
@@ -191,13 +194,13 @@
 const COLORS = {
   hit: "#ff4d4d", strike: "#ff4d4d", projectile: "#ff8a3d", throw: "#26c99a",
   hurt: "#4d8cff", head: "#6fa4ff", body: "#4d8cff", leg: "#3f74d8",
-  prox: "#d8b74a", opp: "#6d7488",
+  prox: "#d8b74a", push: "#a06cff", opp: "#6d7488",
 };
 
 const state = {
   chars: [], data: null, action: null, frame: 1, playing: false, timer: null,
   distance: 120, stance: "stand",
-  show: { hurt: true, hit: true, prox: false },
+  show: { hurt: true, hit: true, prox: false, push: true },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -225,6 +228,28 @@ function hurtAt(action, frame) {
   return out;
 }
 
+function pushAt(action, frame) {
+  return action.push.filter((p) => covers(p, frame)).map((p) => p.box);
+}
+
+/** How far a stance's pushbox reaches in front of the origin. */
+function pushHalfWidth(stance) {
+  const calibrated = state.data.calibration?.pushHalfWidth?.[stance];
+  if (typeof calibrated === "number") return calibrated;
+  const src = stanceAction(stance);
+  const box = src?.push[0]?.box;
+  return box ? Math.max(Math.abs(box.x), Math.abs(box.x + box.width)) : 0;
+}
+
+/**
+ * The closest the two origins can be: pushboxes touching. Spacing below this is
+ * a position the game cannot produce, so the slider stops there.
+ */
+function minDistance() {
+  if (state.stance === "none") return 0;
+  return pushHalfWidth("stand") + pushHalfWidth(state.stance);
+}
+
 /** Every strike/projectile/throw window, merged into contiguous active spans. */
 function activeWindows(action) {
   const hits = action.hit.filter((h) => h.kind !== "proximity").sort((a, b) => a.start - b.start);
@@ -241,17 +266,25 @@ function actionById(id) {
   return state.data.actions.find((a) => a.id === id);
 }
 
+function stanceAction(stance) {
+  const id = stance === "crouch" ? state.data.calibration?.crouchAction : state.data.calibration?.standAction;
+  return actionById(id) ?? state.data.actions.find((a) => a.hurt.length);
+}
+
 /** The opponent's idle hurtboxes, taken from its stance action's first frame. */
 function opponentBoxes() {
   if (state.stance === "none") return [];
-  const name = state.stance === "crouch" ? "BAS_CRH_Loop" : null;
-  const stand = name
-    ? state.data.actions.find((a) => a.name === name)
-    : actionById(state.data.calibration?.standAction);
-  const src = stand ?? state.data.actions.find((a) => a.hurt.length);
+  const src = stanceAction(state.stance);
   if (!src) return [];
   const frame = src.hurt[0]?.start ?? 1;
   return hurtAt(src, frame).filter((b) => b.part !== "throw");
+}
+
+/** The opponent's pushbox, same idle frame. */
+function opponentPush() {
+  if (state.stance === "none") return [];
+  const src = stanceAction(state.stance);
+  return src ? pushAt(src, src.push[0]?.start ?? 1) : [];
 }
 
 /** Mirror an opponent box (local, facing +x) into world space at `distance`. */
@@ -374,6 +407,10 @@ function draw() {
 
   const opponent = opponentBoxes();
   for (const b of opponent) rect(view, mirrored(b, state.distance), COLORS.opp, alpha(COLORS.opp, 0.16), true);
+  if (state.show.push) {
+    for (const b of opponentPush()) rect(view, mirrored(b, state.distance), COLORS.push, alpha(COLORS.push, 0.1), true);
+    for (const b of pushAt(action, frame)) rect(view, b, COLORS.push, alpha(COLORS.push, 0.14));
+  }
 
   if (state.show.prox) {
     for (const key of proxAt(action, frame)) {
@@ -437,11 +474,13 @@ function updateReadouts() {
 
   const allBoxes = action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes);
   const reach = maxReach(allBoxes, opponent);
-  $("r-range").textContent = reach === null ? "—" : `${reach}u`;
+  const closest = minDistance();
+  $("r-range").textContent = reach === null ? "—" : `${closest}-${reach}u`;
   $("r-range-sub").textContent =
     reach === null
       ? "no hitbox overlaps the opponent at any distance"
-      : `furthest the opponent's ${state.stance === "crouch" ? "crouching" : "standing"} hurtbox is still caught`;
+      : `point blank is ${closest}u (pushboxes touching), so ${Math.max(0, reach - closest)}u of usable spacing ` +
+        `against a ${state.stance === "crouch" ? "crouching" : "standing"} opponent`;
 
   $("r-frames").textContent = windows.length
     ? windows.map((w) => `${w.start}-${w.end}`).join(", ")
@@ -531,6 +570,7 @@ function selectAction(action, move) {
     }
   }
 
+  applyDistanceLimits();
   $("scrub").max = String(action.frames ?? 1);
   for (const b of document.querySelectorAll("nav button")) {
     b.setAttribute("aria-current", String(Number(b.dataset.action) === action.id));
@@ -597,11 +637,22 @@ async function loadCharacter(id) {
     `Geometry extracted from MMDK's dump of the game's own collision data; frames from FAT. ` +
     `x = 0 is the character origin, y = 0 the ground, +x forward; ` +
     `${state.data.calibration?.standingHeight ?? "?"} units is this fighter's standing height. ` +
-    `Pushboxes are not included, so "connects" means hitbox-vs-hurtbox overlap only — ` +
-    `it ignores the minimum distance pushboxes would enforce.`;
+    `Pushboxes set point blank: the distance slider will not go below the point where the two ` +
+    `pushboxes touch, because the game cannot put the characters closer than that.`;
   buildNav();
   const first = state.data.moves.find((m) => actionById(m.action));
   selectAction(actionById(first.action), first);
+}
+
+/** Pushboxes make anything below point blank impossible, so the slider stops there. */
+function applyDistanceLimits() {
+  const closest = minDistance();
+  $("dist").min = String(closest);
+  if (state.distance < closest) {
+    state.distance = closest;
+    $("dist").value = String(closest);
+    $("distval").textContent = `${closest}u`;
+  }
 }
 
 function play() {
@@ -628,10 +679,11 @@ $("dist").oninput = (e) => {
 };
 $("stance").onchange = (e) => {
   state.stance = e.target.value;
+  applyDistanceLimits();
   draw();
   updateReadouts();
 };
-for (const [key, id] of [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"]]) {
+for (const [key, id] of [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"], ["push", "t-push"]]) {
   $(id).onchange = (e) => {
     state.show[key] = e.target.checked;
     draw();
@@ -641,7 +693,7 @@ $("fit").onclick = () => {
   const boxes = state.action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes);
   const reach = maxReach(boxes, opponentBoxes());
   if (reach === null) return;
-  state.distance = clamp(reach - 1, 0, Number($("dist").max));
+  state.distance = clamp(reach - 1, minDistance(), Number($("dist").max));
   $("dist").value = String(state.distance);
   $("distval").textContent = `${state.distance}u`;
   draw();

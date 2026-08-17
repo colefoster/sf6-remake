@@ -4,7 +4,7 @@
  * Loaded from `data/geometry/<char>.json`, produced by
  * `scripts/extract-geometry.mjs` out of MMDK's dump of the game's own
  * CharacterAsset data. Coordinates are game units: `x = 0` is the character
- * origin, `y = 0` the ground, `+x` forward. See docs/adr/0003.
+ * origin, `y = 0` the ground, `+x` forward. See docs/adr/0004.
  *
  * The engine proper still answers frame questions from frame data alone; this
  * module is what spacing questions ("does 2MK reach from here?") are built on.
@@ -47,6 +47,15 @@ export interface HurtKey {
   immune?: number;
 }
 
+/** A pushbox: what stops two characters occupying the same space. */
+export interface PushKey {
+  start: number;
+  end: number;
+  /** Index into the fighter's push rect lists; 1 standing, 2 crouching, 3 airborne. */
+  boxNo: number;
+  box: Box;
+}
+
 export interface GeometryAction {
   id: number;
   name: string;
@@ -65,6 +74,7 @@ export interface GeometryAction {
   hit: HitKey[];
   prox: { start: number; end: number; boxes: Box[] }[];
   hurt: HurtKey[];
+  push: PushKey[];
   branches?: { frame: number; action: number; type: number | null }[];
   continues?: number;
   mot?: string;
@@ -92,7 +102,14 @@ export interface GeometryFile {
   character: string;
   id: string;
   source: Record<string, string>;
-  calibration: { standingHeight: number; standingHalfWidth: number; standAction: number } | null;
+  calibration: {
+    standingHeight: number;
+    standingHalfWidth: number;
+    standAction: number;
+    crouchAction: number | null;
+    /** Pushbox half-widths: what sets the closest two characters can stand. */
+    pushHalfWidth: { stand: number | null; crouch: number | null };
+  } | null;
   counts: Record<string, number>;
   moves: MoveMapping[];
   unmapped: { input: string; name: string; category: string }[];
@@ -168,15 +185,66 @@ export function geometryFor(character: Character, move: Move): Geometry | undefi
   return { hitboxes, hurtboxes };
 }
 
+export type Stance = "stand" | "crouch";
+
+/** Pushboxes live this frame. */
+export function pushboxesAt(action: GeometryAction, frame: number): Box[] {
+  return action.push.filter((p) => covers(p, frame)).map((p) => p.box);
+}
+
+function idleAction(geo: GeometryFile, stance: Stance): GeometryAction | undefined {
+  const id = stance === "crouch" ? geo.calibration?.crouchAction : geo.calibration?.standAction;
+  const byId = typeof id === "number" ? actionById(geo, id) : undefined;
+  return byId ?? geo.actions.find((a) => a.hurt.length);
+}
+
 /** Idle hurtboxes for the defender side of a spacing question. */
-export function idleHurtboxes(geo: GeometryFile, stance: "stand" | "crouch" = "stand"): Box[] {
-  const action =
-    stance === "crouch"
-      ? geo.actions.find((a) => a.name === "BAS_CRH_Loop")
-      : geo.calibration && actionById(geo, geo.calibration.standAction);
-  const src = action ?? geo.actions.find((a) => a.hurt.length);
+export function idleHurtboxes(geo: GeometryFile, stance: Stance = "stand"): Box[] {
+  const src = idleAction(geo, stance);
   if (!src) return [];
   return hurtboxesAt(src, src.hurt[0]?.start ?? 1);
+}
+
+/** How far a character's pushbox reaches in front of its own origin. */
+export function pushHalfWidth(geo: GeometryFile, stance: Stance = "stand"): number | undefined {
+  const fromCalibration = geo.calibration?.pushHalfWidth?.[stance];
+  if (typeof fromCalibration === "number") return fromCalibration;
+  const box = idleAction(geo, stance)?.push[0]?.box;
+  return box ? Math.max(Math.abs(box.x), Math.abs(box.x + box.width)) : undefined;
+}
+
+/**
+ * The closest the two characters' origins can be: their pushboxes touch. Any
+ * spacing question below this is asking about a position the game can't produce.
+ */
+export function minDistance(
+  attacker: GeometryFile,
+  defender: GeometryFile,
+  stances: { attacker?: Stance; defender?: Stance } = {},
+): number | undefined {
+  const a = pushHalfWidth(attacker, stances.attacker ?? "stand");
+  const d = pushHalfWidth(defender, stances.defender ?? "stand");
+  return a === undefined || d === undefined ? undefined : a + d;
+}
+
+/**
+ * Where a move can connect, as a distance band. `min` is the closest the
+ * characters can legally stand, `max` the furthest the boxes still touch;
+ * `reachable` is false for a move that can't reach even point blank.
+ */
+export interface ContactBand {
+  min: number;
+  max: number | undefined;
+  reachable: boolean;
+}
+
+export function contactBand(
+  action: GeometryAction,
+  opponent: Box[],
+  closest: number,
+): ContactBand {
+  const max = reach(action, opponent);
+  return { min: closest, max, reachable: max !== undefined && max > closest };
 }
 
 /**

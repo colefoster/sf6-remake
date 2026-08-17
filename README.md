@@ -72,7 +72,9 @@ Ryu — Crouch MK (2MK)
   action       ATK_2MK_Y2 (#640)
   active       8-10
   vs           Ryu, standing (3 hurtboxes)
+  point blank  66u (pushboxes touching)
   max reach    142u
+  connects in  66-142u (76u of usable spacing)
   properties   low
   at 140u      CONNECTS on frames 8-10
 ```
@@ -131,7 +133,7 @@ tests/                   51 tests, incl. assertions against the real data
 ## Known limitations
 
 - **Geometry covers Ryu and Akuma so far**, and the dumps it comes from are a late-2024 snapshot of the game — so pre-Season-3 balance. Characters without geometry fall back to FAT's coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
-- **Pushboxes are not modeled**, so "connects" is hitbox-vs-hurtbox overlap only: it ignores the minimum distance two characters can actually stand at. Nor is per-frame character movement, so a jumping attack's boxes are the right shape at the wrong world position.
+- **Per-frame character movement is not modeled**, so a dash-in or jump-in's boxes are the right shape at the wrong world position over time. Standing spacing is unaffected.
 - **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
 - **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
 

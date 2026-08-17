@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   actionFor,
+  minDistance,
+  pushHalfWidth,
+  pushboxesAt,
   activeWindows,
   connectFrames,
   geometryFor,
@@ -80,6 +83,44 @@ describe("spacing", () => {
     const box = { x: 10, y: 0, width: 20, height: 100 };
     expect(mirrored(box, 100)).toMatchObject({ x: 70, width: 20 });
     expect(overlaps({ x: 60, y: 0, width: 20, height: 10 }, mirrored(box, 100))).toBe(true);
+  });
+});
+
+describe("pushboxes", () => {
+  const akuma = requireCharacter("Akuma");
+  const akumaGeo = loadGeometry("akuma")!;
+
+  it("resolves the standing box to the one every standing reaction uses", () => {
+    const stand = geo.actions.find((a) => a.id === geo.calibration!.standAction)!;
+    const box = pushboxesAt(stand, 1)[0]!;
+    expect(box).toMatchObject({ x: -33, y: 0, width: 66, height: 130 });
+  });
+
+  it("gives crouching the same width but less height", () => {
+    const crouch = geo.actions.find((a) => a.id === geo.calibration!.crouchAction)!;
+    const box = pushboxesAt(crouch, 1)[0]!;
+    expect(box.width).toBe(66);
+    expect(box.height).toBeLessThan(130);
+  });
+
+  it("raises the box off the ground while airborne", () => {
+    const { action } = actionFor(geo, requireMove(ryu, "8HP"))!;
+    expect(pushboxesAt(action, 1).every((b) => b.y > 0)).toBe(true);
+  });
+
+  it("sets point blank at the sum of the two facing half-widths", () => {
+    expect(pushHalfWidth(geo)).toBe(33);
+    expect(minDistance(geo, akumaGeo)).toBe(66);
+    expect(akuma.name).toBe("Akuma");
+  });
+
+  it("lets every grounded normal connect at point blank", () => {
+    const closest = minDistance(geo, geo)!;
+    const opponent = idleHurtboxes(geo);
+    for (const input of ["5LP", "2MK", "5HK", "2HP"]) {
+      const { action } = actionFor(geo, requireMove(ryu, input))!;
+      expect(connectFrames(action, opponent, closest).length).toBeGreaterThan(0);
+    }
   });
 });
 

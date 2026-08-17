@@ -42,7 +42,10 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 - **Hitbox** — a box that, while active, can make contact. **Hurtbox** — a box that can be hit, split into `head` / `body` / `leg` and a separate throwable box. **Proximity box** — triggers the defender's guard animation without hitting.
 - **Action** — the game's own unit of animation + collision (`ATK_2MK_Y2`, `SPA_SYORYU_START`). A **move** in this engine's sense maps onto an action; the mapping carries a **match quality** (`exact`, `close`, `frame-unique`, `weak`).
 - **Reach** — the furthest distance at which a move's hitboxes still overlap the defender's hurtboxes. Distinct from FAT's coarse `range` scalar, which `Move.reach` holds as a fallback.
-- **Connect** — a hitbox overlapping a hurtbox at a given distance, on a given frame. Pushboxes are not modeled, so connecting ignores the minimum separation two characters can actually stand at.
+- **Pushbox** — the box that stops two characters occupying the same space. One per frame, by stance: standing, crouching, airborne, plus per-move overrides (a Shoryuken's pushbox rises with it).
+- **Point blank** — the closest two characters' origins can be: the distance at which their pushboxes touch (66 units for two standing fighters). Spacing below this is unreachable in game, not merely unlikely.
+- **Connect** — a hitbox overlapping a hurtbox at a given distance, on a given frame.
+- **Usable spacing** — the band from point blank out to a move's reach. This is the honest answer to "how much room does this button cover".
 
 ## Move taxonomy
 
@@ -55,4 +58,4 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 
 - **Frame data (startup/active/recovery/onBlock/onHit/damage/cancels) is real** and sourced from public frame-data references; see `docs/adr/0002-data-sourcing.md`.
 - **Hitbox/hurtbox geometry is real** for the characters extracted so far, taken from MMDK's dumps of the game's own collision data; see `docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md`. It is keyed by **action**, and moves reach it through the mapping described above.
-- **Pushboxes and per-frame positional movement are NOT modeled.** So spacing answers are exact about box overlap and silent about how close two characters can stand, or where a jumping attack's origin has travelled to.
+- **Per-frame positional movement is NOT modeled.** Boxes are placed relative to the character origin, and the origin does not travel — so a dash-in or jump-in's boxes are the right shape at the wrong world position over time. Standing spacing questions are unaffected.

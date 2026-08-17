@@ -22,6 +22,7 @@ import {
   connectFrames,
   idleHurtboxes,
   loadGeometry,
+  minDistance,
   reach,
   type GeometryAction,
 } from "../data/geometry.js";
@@ -320,12 +321,17 @@ function printBoxes(character: Character, move: Move, args: Args): void {
 
   const windows = activeWindows(action);
   const maxReach = reach(action, opponent);
+  const closest = minDistance(geo, defGeo, { defender: stance });
 
   console.log(`${character.name} — ${move.name} (${move.input})`);
   console.log(`  action       ${action.name} (#${action.id})`);
   console.log(`  active       ${windows.map((w) => `${w.start}-${w.end}`).join(", ") || "no hitboxes"}`);
   console.log(`  vs           ${defender.name}, ${stance}ing (${opponent.length} hurtboxes)`);
+  if (closest !== undefined) console.log(`  point blank  ${closest}u (pushboxes touching)`);
   console.log(`  max reach    ${maxReach === undefined ? "never connects" : `${maxReach}u`}`);
+  if (maxReach !== undefined && closest !== undefined) {
+    console.log(`  connects in  ${closest}-${maxReach}u (${maxReach - closest}u of usable spacing)`);
+  }
 
   const props = [
     action.flags.low ? "low" : null,
@@ -338,6 +344,10 @@ function printBoxes(character: Character, move: Move, args: Args): void {
   }
 
   if (args.at !== undefined) {
+    if (closest !== undefined && args.at < closest) {
+      console.log(`  at ${args.at}u      IMPOSSIBLE — pushboxes stop them closer than ${closest}u`);
+      return;
+    }
     const frames = connectFrames(action, opponent, args.at);
     console.log(
       frames.length
@@ -345,19 +355,28 @@ function printBoxes(character: Character, move: Move, args: Args): void {
         : `  at ${args.at}u      WHIFFS (needs ${maxReach === undefined ? "—" : `< ${maxReach}u`})`,
     );
   } else if (maxReach !== undefined) {
-    printReachTable(action, opponent, maxReach);
+    printReachTable(action, opponent, maxReach, closest);
   }
 }
 
 /** A quick feel for how the move's reach changes across its active frames. */
-function printReachTable(action: GeometryAction, opponent: Parameters<typeof reach>[1], maxReach: number): void {
+function printReachTable(
+  action: GeometryAction,
+  opponent: Parameters<typeof reach>[1],
+  maxReach: number,
+  closest: number | undefined,
+): void {
   const rows: string[] = [];
   for (const key of action.hit.filter((h) => h.kind !== "proximity")) {
     const per = reach({ ...action, hit: [key] }, opponent);
     rows.push(`    frames ${key.start}-${key.end}  ${key.kind.padEnd(10)} reach ${per ?? "—"}u`);
   }
   if (rows.length > 1) console.log(rows.join("\n"));
-  console.log(`  try:         --at ${Math.max(0, maxReach - 1)} (max) / --at ${maxReach + 1} (whiff)`);
+  const pointBlank = closest ?? 0;
+  console.log(
+    `  try:         --at ${pointBlank} (point blank) / --at ${Math.max(pointBlank, maxReach - 1)} (max) ` +
+      `/ --at ${maxReach + 1} (whiff)`,
+  );
 }
 
 function isFastest(r: PunishResult | FastestPunish): r is FastestPunish {
