@@ -25,7 +25,7 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 ## Scenario modifiers
 
 - **Meaty** — timing a move so it contacts on a **later active frame** rather than its first. Hitting `d` frames deep (on active frame `d+1`) adds `d` to both `onBlock` and `onHit`, because the attacker spends `d` fewer of its own frames after contact. `d ∈ 0 .. active−1`.
-- **Point-blank / spacing** — spacing is expressed as a coarse `distance`; a move whiffs if `distance > reach`. Full per-frame hitbox/hurtbox geometry is modeled in the schema but not required for advantage math (see Data reality below).
+- **Point-blank / spacing** — spacing is a **distance** in game units between the two characters' origins. A move connects at a distance when one of its hitboxes overlaps one of the defender's hurtboxes there (see Geometry below). Where geometry is missing, spacing falls back to the coarse `reach` scalar: a whiff if `distance > reach`.
 
 ## Interactions
 
@@ -35,6 +35,14 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
   - `gap > 0` → **frame trap** of `gap` frames: a defender move with `startup ≤ gap` can contest it; a slower one gets counter-hit by `B`.
 - **String / sequence** — an ordered list of moves the attacker performs. The **ending advantage** of a string equals the advantage of the **last move** in the scenario it connected (adjusted for meaty), because each earlier move's recovery is consumed by the next. The engine additionally reports every internal gap so you can see if the string is actually a true blockstring or has holes.
 - **Cancel** — interrupting a move's recovery into another move (e.g. `2MK xx Hadoken`). First-order, the ending advantage is the cancelled-into move's own `onBlock`/`onHit`; exact per-cancel values can be supplied as `comboAdvantage` overrides in data when known.
+
+## Geometry
+
+- **Box** — an axis-aligned rectangle in **game units**: `x = 0` is the character origin, `y = 0` the ground, `+x` forward. A fighter is roughly 166 units tall.
+- **Hitbox** — a box that, while active, can make contact. **Hurtbox** — a box that can be hit, split into `head` / `body` / `leg` and a separate throwable box. **Proximity box** — triggers the defender's guard animation without hitting.
+- **Action** — the game's own unit of animation + collision (`ATK_2MK_Y2`, `SPA_SYORYU_START`). A **move** in this engine's sense maps onto an action; the mapping carries a **match quality** (`exact`, `close`, `frame-unique`, `weak`).
+- **Reach** — the furthest distance at which a move's hitboxes still overlap the defender's hurtboxes. Distinct from FAT's coarse `range` scalar, which `Move.reach` holds as a fallback.
+- **Connect** — a hitbox overlapping a hurtbox at a given distance, on a given frame. Pushboxes are not modeled, so connecting ignores the minimum separation two characters can actually stand at.
 
 ## Move taxonomy
 
@@ -46,4 +54,5 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 ## Data reality (important assumption)
 
 - **Frame data (startup/active/recovery/onBlock/onHit/damage/cancels) is real** and sourced from public frame-data references; see `docs/adr/0002-data-sourcing.md`.
-- **Pixel-accurate hitbox/hurtbox geometry is NOT publicly available** in machine-readable form — it exists only as hitbox-viewer imagery. The schema (`Box`, `hitboxes`, `hurtboxes`) is therefore present and typed for future population, but spacing/whiff queries fall back to a coarse `reach` scalar. This is a deliberate, documented limitation, not an oversight.
+- **Hitbox/hurtbox geometry is real** for the characters extracted so far, taken from MMDK's dumps of the game's own collision data; see `docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md`. It is keyed by **action**, and moves reach it through the mapping described above.
+- **Pushboxes and per-frame positional movement are NOT modeled.** So spacing answers are exact about box overlap and silent about how close two characters can stand, or where a jumping attack's origin has travelled to.

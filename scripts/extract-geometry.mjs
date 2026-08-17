@@ -1,0 +1,484 @@
+/**
+ * Turns MMDK's raw fighter dumps into data/geometry/<char>.json — per-frame
+ * hitbox / hurtbox / proximity-box geometry, plus a mapping from FAT move
+ * notation onto the game's action ids.
+ *
+ *   node scripts/fetch-mmdk.mjs Ryu Akuma      # once, populates data/raw/mmdk/
+ *   node scripts/extract-geometry.mjs          # Ryu Akuma
+ *   node scripts/extract-geometry.mjs Ken      # any fetched character
+ *
+ * HOW THE RAW DATA WORKS (reverse-engineered from MMDK.lua:350-403)
+ *
+ * `moves_dict.json` is every action (`fab` = fight action block) keyed by name.
+ * An action's collision comes from typed key lists, each key covering a frame
+ * range and naming box ids into the fighter's rect tables in `rects.json`:
+ *
+ *   AttackCollisionKey, AttackDataListIndex > -1  -> rects[CollisionType]  (hitbox)
+ *   AttackCollisionKey, AttackDataListIndex = -1, CollisionType 3 -> rects[3] (proximity)
+ *   DamageCollisionKey  Head/Body/Leg/ThrowList   -> rects[8]              (hurtbox)
+ *
+ * A rect is a CENTRE plus HALF-EXTENTS (`OffsetX/Y`, `SizeX/Y`), which is why
+ * Ryu's standing head/body/leg hurtboxes tile exactly 0-54, 54-138, 138-166
+ * game units. We convert to the min-corner + full-size `Box` of domain/types.ts.
+ *
+ * Key frames are 0-indexed with an EXCLUSIVE end; we emit 1-indexed inclusive
+ * frames so "first active frame == startup" holds as CONTEXT.md defines it.
+ *
+ * DELIBERATE OMISSIONS
+ * - Pushboxes. `PushCollisionKey` carries a `BoxNo`, but which rect list it
+ *   indexes is unresolved upstream too ("fixme, 5 or 9 or 10?" — MMDK.lua:402),
+ *   and none of the candidates produce a plausible symmetric standing box.
+ * - General branch chasing. Actions branch mid-move for hit-confirms, follow-ups
+ *   and rebalanced variants, and following them blindly double-counts active
+ *   frames. Only the wind-up handoff is spliced (see `spliceContinuations`);
+ *   every other branch is recorded as metadata for the viewer to link.
+ */
+
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const RAW = path.join(root, "data/raw/mmdk");
+const OUT = path.join(root, "data/geometry");
+
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Rect list ids, per MMDK.lua. */
+const RECT_PROXIMITY = 3;
+const RECT_HURT = 8;
+
+/** First signed integer in a FAT value ("10*20" -> 10), or undefined. */
+const int = (v) => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v !== "string") return undefined;
+  const m = v.match(/-?\d+/);
+  return m ? Number.parseInt(m[0], 10) : undefined;
+};
+
+/** Rect centre + half-extents -> min-corner + full size, in game units, y up. */
+function toBox(rect, rootOffset) {
+  if (!rect) return null;
+  const ox = rootOffset?.X ?? 0;
+  const oy = rootOffset?.Y ?? 0;
+  const w = rect.SizeX * 2;
+  const h = rect.SizeY * 2;
+  if (w === 0 && h === 0) return null;
+  return {
+    x: rect.OffsetX - rect.SizeX + ox,
+    y: rect.OffsetY - rect.SizeY + oy,
+    width: w,
+    height: h,
+  };
+}
+
+/** Values of a MMDK-dumped dict-as-object, in numeric key order. */
+function ordered(obj) {
+  if (!obj || typeof obj !== "object") return [];
+  return Object.entries(obj)
+    .filter(([k, v]) => /^\d+$/.test(k) && v && typeof v === "object")
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([, v]) => v);
+}
+
+function makeRects(rectsFile) {
+  const lists = new Map();
+  for (const [listId, list] of Object.entries(rectsFile)) {
+    if (!list || typeof list !== "object") continue;
+    const byId = new Map();
+    for (const [boxId, rect] of Object.entries(list)) byId.set(Number(boxId), rect);
+    lists.set(Number(listId), byId);
+  }
+  return (listId, boxId) => lists.get(listId)?.get(Number(boxId));
+}
+
+/** Resolve a key's BoxList / HeadList / ... into boxes. */
+function boxesFrom(rect, listId, idList, rootOffset) {
+  const out = [];
+  for (const id of Object.values(idList ?? {})) {
+    const boxId = typeof id === "object" ? id.mValue : id;
+    if (typeof boxId !== "number") continue;
+    const box = toBox(rect(listId, boxId), rootOffset);
+    if (box) out.push(box);
+  }
+  return out;
+}
+
+/** Attack kind, from the flags MMDK derives off KindFlag. */
+function attackKind(key) {
+  if (key._isThr) return "throw";
+  if (key._isPrj) return "projectile";
+  if (key._isPrx) return "proximity";
+  return "strike";
+}
+
+function extractAction(action, rect) {
+  const fab = action.fab ?? {};
+  const af = fab.ActionFrame ?? {};
+  const cat = fab.Category ?? {};
+
+  const hit = [];
+  const prox = [];
+  for (const kind of ["AttackCollisionKey", "GimmickCollisionKey", "OtherCollisionKey"]) {
+    for (const key of ordered(action[kind])) {
+      const start = key._StartFrame + 1;
+      const end = key._EndFrame;
+      if (end < start) continue;
+      if ((key.AttackDataListIndex ?? -1) > -1) {
+        const boxes = boxesFrom(rect, key.CollisionType, key.BoxList, key.RootOffset);
+        if (!boxes.length) continue;
+        hit.push({
+          start,
+          end,
+          kind: attackKind(key),
+          attackData: key.AttackDataListIndex,
+          guardBit: key.GuardBit ?? null,
+          hitId: key.HitID ?? 0,
+          boxes,
+        });
+      } else if (key.CollisionType === RECT_PROXIMITY) {
+        const boxes = boxesFrom(rect, RECT_PROXIMITY, key.BoxList, key.RootOffset);
+        if (boxes.length) prox.push({ start, end, boxes });
+      }
+    }
+  }
+
+  const hurt = [];
+  for (const key of ordered(action.DamageCollisionKey)) {
+    const start = key._StartFrame + 1;
+    const end = key._EndFrame;
+    if (end < start) continue;
+    const parts = {
+      head: boxesFrom(rect, RECT_HURT, key.HeadList, key.RootOffset),
+      body: boxesFrom(rect, RECT_HURT, key.BodyList, key.RootOffset),
+      leg: boxesFrom(rect, RECT_HURT, key.LegList, key.RootOffset),
+      throw: boxesFrom(rect, RECT_HURT, key.ThrowList, key.RootOffset),
+    };
+    if (!Object.values(parts).some((b) => b.length)) continue;
+    const entry = { start, end, ...parts };
+    if (key.Immune) entry.immune = key.Immune;
+    hurt.push(entry);
+  }
+
+  const branches = ordered(action.BranchKey)
+    .filter((k) => typeof k.Action === "number" && k.Action > 0)
+    .map((k) => ({ frame: (k._StartFrame ?? 0) + 1, action: k.Action, type: k.Type ?? null }));
+
+  const out = {
+    id: action.id,
+    name: action.name,
+    frames: fab.Frame ?? null,
+    // MainFrame is the action's own first active frame (0-indexed): startup - 1.
+    mainFrame: af.MainFrame ?? null,
+    marginFrame: af.MarginFrame ?? null,
+    flags: {
+      high: !!cat._IsHigh,
+      low: !!cat._IsLow,
+      overhead: !!cat._IsOverhead,
+      invincible: cat._Invincible ?? 0,
+      strikeInvuln: !!cat._IsMutekiStrike,
+      throwInvuln: !!cat._IsMutekiThrow,
+      fullInvuln: !!cat._IsMutekiAll,
+    },
+    hit,
+    prox,
+    hurt,
+  };
+  if (branches.length) out.branches = dedupeBranches(branches);
+  if (action.mot_name) out.mot = action.mot_name;
+  return out;
+}
+
+/** 5HK branches to the same action on four consecutive frames; keep the first. */
+function dedupeBranches(branches) {
+  const seen = new Set();
+  return branches.filter((b) => {
+    if (seen.has(b.action)) return false;
+    seen.add(b.action);
+    return true;
+  });
+}
+
+/**
+ * Some moves are two actions: a wind-up that branches into the hit at its own
+ * first active frame. Ryu's 2HP is `ATK_2HP_H` branching into `ATK_2HP` on
+ * frame 9 — read alone the wind-up shows 4 active frames, spliced it shows the
+ * published 6. Only this exact shape is spliced (`_H` handing off to its base,
+ * whose hitboxes start on its frame 1); the conditional branches that follow a
+ * confirmed hit look the same at the key level but must NOT be followed.
+ *
+ * Hurtboxes are left alone: the wind-up's own keys already span its full length.
+ */
+function spliceContinuations(actions) {
+  const byName = new Map(actions.map((a) => [a.name, a]));
+  for (const action of actions) {
+    if (!action.name.endsWith("_H") || !action.branches) continue;
+    const base = byName.get(action.name.slice(0, -2));
+    const branch = base && action.branches.find((b) => b.action === base.id);
+    if (!branch) continue;
+    const starts = base.hit.filter((h) => h.kind !== "proximity").map((h) => h.start);
+    if (!starts.length || Math.min(...starts) !== 1) continue;
+
+    const shift = branch.frame - 1;
+    const shifted = (keys) =>
+      keys.map((k) => ({ ...k, start: k.start + shift, end: k.end + shift, from: base.id }));
+    action.hit = [...action.hit.filter((h) => h.start < branch.frame), ...shifted(base.hit)];
+    action.prox = [...action.prox.filter((p) => p.start < branch.frame), ...shifted(base.prox)];
+    action.continues = base.id;
+  }
+}
+
+/** Startup / active as the frame data would read them, from the hit keys. */
+function signature(action) {
+  const strikes = action.hit.filter((h) => h.kind !== "proximity");
+  if (!strikes.length) return null;
+  const start = Math.min(...strikes.map((h) => h.start));
+  // Contiguous keys are one active window; a gap means a multi-hit move.
+  const windows = [];
+  for (const h of [...strikes].sort((a, b) => a.start - b.start)) {
+    const last = windows[windows.length - 1];
+    if (last && h.start <= last.end + 1) last.end = Math.max(last.end, h.end);
+    else windows.push({ start: h.start, end: h.end });
+  }
+  return {
+    startup: start,
+    active: windows[0].end - windows[0].start + 1,
+    windows,
+    hits: strikes.length,
+  };
+}
+
+/**
+ * MMDK action names for normals are the notation with an `ATK_` prefix and an
+ * optional variant suffix: `ATK_5LP`, `ATK_2MK_Y2` (a Year-2 rebalance),
+ * `ATK_5HK(1)` (a same-named sibling action), `ATK_5LP_B` (chain variant).
+ */
+const VARIANT = /^(?:\(\d+\)|_[A-Z0-9]+)*$/;
+
+/**
+ * The stems an action could be named after. Simple normals are the notation
+ * itself; the rest is target-combo naming, which MMDK dumps three ways:
+ *   "5MP > MP"        -> ATK_5MP_MP        (tokens joined)
+ *   "9 > 2MK"         -> ATK_92MK          (tokens concatenated)
+ *   "6HP > 6HP > HK"  -> ATK_6HP_TC_TC     (base plus one _TC per follow-up)
+ *   "5HP > HK"        -> ATK_5HK(1)        (the follow-up as a standalone normal)
+ */
+function stemsFor(input) {
+  const tokens = input
+    .replace(/\s*\(air\)/i, "")
+    .split(">")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (!tokens.length) return [];
+  const [first, ...rest] = tokens;
+  const stems = [tokens.join("_"), tokens.join("")];
+  if (rest.length) {
+    stems.push(`${first}${"_TC".repeat(rest.length)}`);
+    const last = tokens[tokens.length - 1];
+    // A bare follow-up strength ("HK") is really the standing normal.
+    stems.push(last, /^[LMH][PK]$/.test(last) ? `5${last}` : last);
+  }
+  return [...new Set(stems)];
+}
+
+function candidatesFor(input, actions) {
+  const out = new Map();
+  for (const stem of stemsFor(input)) {
+    const wanted = norm(`ATK_${stem}`);
+    for (const a of actions) {
+      if (!norm(a.name).startsWith(wanted)) continue;
+      if (!VARIANT.test(a.name.slice(`ATK_${stem}`.length))) continue;
+      out.set(a.id, a);
+    }
+  }
+  return [...out.values()];
+}
+
+/**
+ * Map a FAT move onto an action. Names get us a candidate set; FAT's startup
+ * picks the right sibling (Ryu's `ATK_5HK` is 5HK at startup 12, `ATK_5HK(1)`
+ * is the 5HP > HK follow-up at 9, `ATK_5HK_2` the 5MP > LK > HK one at 17).
+ */
+function mapMove(fatMove, actions, sigs) {
+  const fatStartup = int(fatMove.startup);
+  let pool = candidatesFor(fatMove.numCmd, actions);
+
+  // Prefer the newest rebalance of a move when both are present.
+  const years = pool.filter((a) => /_Y\d$/.test(a.name));
+  if (years.length) pool = years;
+
+  const scored = pool
+    .map((a) => ({ action: a, sig: sigs.get(a.id) }))
+    .filter((c) => c.sig)
+    .map((c) => ({ ...c, delta: fatStartup === undefined ? null : Math.abs(c.sig.startup - fatStartup) }))
+    .sort((a, b) => (a.delta ?? 99) - (b.delta ?? 99));
+
+  const best = scored[0];
+  if (best && best.delta !== null && best.delta <= 1) {
+    return mapping(fatMove, best, best.delta === 0 ? "exact" : "close", scored);
+  }
+
+  // No plausibly-named action: fall back to a unique frame-data fingerprint.
+  // This is how notation disagreements get caught (Ryu's 6HK is ATK_3HK) and how
+  // specials land, since their action names are Japanese move names, not inputs.
+  const unique = frameUnique(fatMove, sigs, actions);
+  if (unique) return mapping(fatMove, unique, "frame-unique", []);
+
+  return best ? mapping(fatMove, best, "weak", scored) : null;
+}
+
+function mapping(fatMove, cand, match, scored) {
+  return {
+    input: fatMove.numCmd,
+    name: fatMove.moveName,
+    action: cand.action.id,
+    actionName: cand.action.name,
+    match,
+    startup: cand.sig.startup,
+    active: cand.sig.active,
+    hits: cand.sig.hits,
+    fat: { startup: fatMove.startup ?? null, active: fatMove.active ?? null },
+    startupDelta: int(fatMove.startup) === undefined ? null : cand.sig.startup - int(fatMove.startup),
+    alternates: scored.slice(1, 4).map((c) => c.action.id),
+  };
+}
+
+/**
+ * The one action whose startup AND first active window match the frame data.
+ * Scoped by category, or a throw would happily match a normal that happens to
+ * share a 5f startup (Akuma's LPLK vs his 5LK).
+ */
+function frameUnique(fatMove, sigs, actions) {
+  const startup = int(fatMove.startup);
+  const active = int(fatMove.active);
+  if (startup === undefined || active === undefined) return null;
+  const named = (a) => a.name.startsWith("ATK_");
+  const inScope =
+    fatMove.moveType === "normal"
+      ? named
+      : fatMove.moveType === "throw"
+        ? (a) => a.hit.some((h) => h.kind === "throw")
+        : (a) => !named(a);
+  const hits = [];
+  for (const a of actions) {
+    if (!inScope(a)) continue;
+    const sig = sigs.get(a.id);
+    if (sig && sig.startup === startup && sig.active === active) hits.push({ action: a, sig });
+  }
+  return hits.length === 1 ? hits[0] : null;
+}
+
+const isPlainInt = (v) => typeof v === "number" || (typeof v === "string" && /^\d+$/.test(v.trim()));
+
+/** Standing height / width, for the viewer to scale by something real. */
+function calibrate(actions) {
+  const stand = actions.find((a) => a.name === "BAS_STD_Loop") ?? actions.find((a) => a.hurt.length);
+  const boxes = stand?.hurt.flatMap((h) => [...h.head, ...h.body, ...h.leg]) ?? [];
+  if (!boxes.length) return null;
+  return {
+    standingHeight: Math.max(...boxes.map((b) => b.y + b.height)),
+    standingHalfWidth: Math.max(...boxes.map((b) => Math.max(Math.abs(b.x), Math.abs(b.x + b.width)))),
+    standAction: stand.id,
+  };
+}
+
+async function buildCharacter(fatName, dumpDir, fat, source) {
+  const dir = path.join(RAW, dumpDir);
+  const [rectsFile, movesFile] = await Promise.all([
+    readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
+    readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
+  ]);
+  const rect = makeRects(rectsFile);
+
+  const actions = [];
+  for (const action of Object.values(movesFile)) {
+    if (typeof action?.id !== "number" || !action.name) continue;
+    const extracted = extractAction(action, rect);
+    if (!extracted.hit.length && !extracted.hurt.length && !extracted.prox.length) continue;
+    actions.push(extracted);
+  }
+  actions.sort((a, b) => a.id - b.id);
+  spliceContinuations(actions);
+  const sigs = new Map(actions.map((a) => [a.id, signature(a)]));
+
+  const fatMoves = Object.values(fat.moves.normal);
+  const moves = [];
+  const unmapped = [];
+  for (const m of fatMoves) {
+    if (!m.numCmd) continue;
+    const mapped = mapMove(m, actions, sigs);
+    if (mapped) moves.push({ ...mapped, category: m.moveType });
+    else unmapped.push({ input: m.numCmd, name: m.moveName, category: m.moveType });
+  }
+
+  const id = slug(fatName);
+  const out = {
+    character: fatName,
+    id,
+    source: {
+      geometry: `MMDK (alphazolam/MMDK) @ ${source.commit.slice(0, 8)} — dump of the game's CharacterAsset data`,
+      frames: "FAT (D4RKONION/FrameDataAssistantTool) SF6FrameData.json",
+      note: "Boxes are game units: x=0 is the character origin, y=0 the ground, +x forward.",
+    },
+    calibration: calibrate(actions),
+    counts: {
+      actions: actions.length,
+      withHitboxes: actions.filter((a) => a.hit.some((h) => h.kind !== "proximity")).length,
+      mapped: moves.length,
+      exact: moves.filter((m) => m.match === "exact").length,
+      weak: moves.filter((m) => m.match === "weak").length,
+    },
+    moves,
+    unmapped,
+    actions,
+  };
+
+  await mkdir(OUT, { recursive: true });
+  const json = JSON.stringify(out);
+  await writeFile(path.join(OUT, `${id}.json`), json);
+  // The box viewer is served straight out of web/, so it gets its own copy.
+  await writeFile(path.join(root, "web", `${id}.boxes.json`), json);
+  const { actions: n, withHitboxes, mapped, exact } = out.counts;
+  console.log(
+    `${fatName}: ${n} actions (${withHitboxes} with hitboxes), ` +
+      `${mapped} moves mapped (${exact} name+frame exact) -> data/geometry/${id}.json`,
+  );
+  return {
+    id,
+    name: fatName,
+    // Only the mappings worth a human's attention: a name we had to guess at, or
+    // geometry that disagrees with the published frames.
+    mismatches: moves.filter(
+      (m) => m.match === "weak" || m.startupDelta || (isPlainInt(m.fat.active) && m.active !== int(m.fat.active)),
+    ),
+  };
+}
+
+const fat = JSON.parse(await readFile(path.join(root, "data/raw/SF6FrameData.json"), "utf8"));
+const stampPath = path.join(RAW, "source.json");
+if (!existsSync(stampPath)) {
+  console.error("no dumps found — run: node scripts/fetch-mmdk.mjs Ryu Akuma");
+  process.exit(1);
+}
+const source = JSON.parse(await readFile(stampPath, "utf8"));
+
+const requested = process.argv.slice(2);
+const wanted = (requested.length ? requested : ["Ryu", "Akuma"]).map((name) => {
+  const dumpDir = source.characters.find((c) => norm(c) === norm(name));
+  const fatName = Object.keys(fat).find((k) => norm(k) === norm(name));
+  if (!dumpDir) throw new Error(`no dump for "${name}" — run: node scripts/fetch-mmdk.mjs ${name}`);
+  if (!fatName) throw new Error(`no FAT frame data for "${name}"`);
+  return { fatName, dumpDir };
+});
+
+for (const { fatName, dumpDir } of wanted) {
+  const { mismatches } = await buildCharacter(fatName, dumpDir, fat[fatName], source);
+  for (const m of mismatches) {
+    console.log(
+      `  ~ ${m.input.padEnd(16)} ${m.actionName.padEnd(16)} ` +
+        `geometry ${m.startup}/${m.active} vs FAT ${m.fat.startup}/${m.fat.active} (${m.match})`,
+    );
+  }
+}

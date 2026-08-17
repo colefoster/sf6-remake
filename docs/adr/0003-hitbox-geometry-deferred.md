@@ -1,6 +1,6 @@
 # ADR 0003 — Hitbox/hurtbox geometry is modeled but not populated
 
-- Status: accepted
+- Status: superseded by [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md)
 - Date: 2026-08-03
 
 ## Context
@@ -25,7 +25,13 @@ available anywhere in machine-readable form.
 - So geometry exists only as live-rendered visuals. Obtaining coordinates would
   mean extending that mod to dump them per move per frame — a separate project.
 
-## Consequences
+## Why it was wrong
+
+The survey stopped at the hitbox *viewer*. The modding kit built on the same
+research (MMDK) dumps the game's collision data to JSON and commits the dumps.
+See ADR-0004.
+
+## Consequences (as decided at the time)
 
 - Frame/advantage/punish/gap/cancel queries are fully supported (they don't need
   geometry).

@@ -4,3 +4,5 @@ dist/
 .DS_Store
 coverage/
 web/assets/
+data/raw/mmdk/
+.playwright-mcp/

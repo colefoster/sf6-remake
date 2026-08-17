@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "web:build": "node scripts/build-site.mjs",
+    "geometry": "node scripts/fetch-mmdk.mjs && node scripts/extract-geometry.mjs",
     "web": "node scripts/build-site.mjs && python3 -m http.server 8777 --directory web"
   },
   "keywords": ["street-fighter", "sf6", "frame-data", "fgc", "engine"],
