@@ -16,6 +16,16 @@ import {
   type PunishResult,
 } from "../engine/index.js";
 import { findCharacter, listCharacters, requireCharacter } from "../data/index.js";
+import {
+  actionFor,
+  activeWindows,
+  connectFrames,
+  idleHurtboxes,
+  loadGeometry,
+  reach,
+  type GeometryAction,
+} from "../data/geometry.js";
+import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
 /** Format a frame number the way frame data reads: +6, -3, 0. */
@@ -32,6 +42,10 @@ interface Args {
   guard: Guard;
   meaty: number;
   by?: string;
+  /** `boxes` only: spacing in game units, opponent character, opponent stance. */
+  at?: number;
+  vs?: string;
+  crouch: boolean;
 }
 
 function parse(argv: string[]): Args {
@@ -39,6 +53,9 @@ function parse(argv: string[]): Args {
   let guard: Guard = "block";
   let meaty = 0;
   let by: string | undefined;
+  let at: number | undefined;
+  let vs: string | undefined;
+  let crouch = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--on" || a === "-o") {
@@ -54,12 +71,24 @@ function parse(argv: string[]): Args {
       meaty = Number.parseInt(a.slice(8), 10) || 0;
     } else if (a.startsWith("--by=")) {
       by = a.slice(5);
+    } else if (a === "--at") {
+      at = Number.parseInt(argv[++i] ?? "", 10);
+    } else if (a.startsWith("--at=")) {
+      at = Number.parseInt(a.slice(5), 10);
+    } else if (a === "--vs") {
+      vs = argv[++i];
+    } else if (a.startsWith("--vs=")) {
+      vs = a.slice(5);
+    } else if (a === "--crouch") {
+      crouch = true;
     } else {
       positional.push(a);
     }
   }
-  const args: Args = { positional, guard, meaty };
+  const args: Args = { positional, guard, meaty, crouch };
   if (by !== undefined) args.by = by;
+  if (at !== undefined && Number.isFinite(at)) args.at = at;
+  if (vs !== undefined) args.vs = vs;
   return args;
 }
 
@@ -77,6 +106,8 @@ COMMANDS
   cancel <char> <x> <y>            Cancel X into Y: legal? ending advantage?
   gap <char> <a> <b>               Gap between two blocked moves.
   punish <char> <blockedMove>      Fastest punish. --by <defenderChar> [move]
+  boxes <char> <move>              Hitbox/hurtbox geometry: reach, and which
+                                   frames connect.  --at <units> --vs <char> --crouch
 
 SCENARIO FLAGS
   --on block | hit   (default block)   --meaty N   (frames deep, default 0)
@@ -88,6 +119,8 @@ EXAMPLES
   sf6 cancel ryu 2mk 236hp --on hit
   sf6 punish ryu 623hp --by ken             # can Ken punish a blocked HP DP?
   sf6 gap ryu 5mp 2mk
+  sf6 boxes ryu 2mk --at 140                # does crouching MK still reach?
+  sf6 boxes akuma 5hp --vs ryu --crouch     # vs a crouching Ryu's hurtboxes
 
 Moves accept notation (2mk, 236lp), ids, or name fragments (hadoken, sweep).`;
 
@@ -235,6 +268,13 @@ function main(): void {
         return;
       }
 
+      case "boxes": {
+        const c = requireCharacter(p[0] ?? fail("boxes <char> <move> [--at N] [--vs <char>] [--crouch]"));
+        const m = requireCharacterMove(c, p[1]);
+        printBoxes(c, m, args);
+        return;
+      }
+
       default:
         fail(`unknown command "${command}". Run "sf6 help".`);
     }
@@ -247,6 +287,77 @@ function requireCharacterMove(c: ReturnType<typeof requireCharacter>, q: string 
   const m = q ? c.moves.find((x) => x.input.toLowerCase() === q.toLowerCase() || x.name.toLowerCase().includes(q.toLowerCase())) : undefined;
   if (!m) fail(`unknown move "${q}" for ${c.name}`);
   return m;
+}
+
+/** [8,9,10,14] -> "8-10, 14" */
+function frameRanges(frames: number[]): string {
+  const spans: [number, number][] = [];
+  for (const frame of frames) {
+    const last = spans[spans.length - 1];
+    if (last && frame === last[1] + 1) last[1] = frame;
+    else spans.push([frame, frame]);
+  }
+  return spans.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", ");
+}
+
+function printBoxes(character: Character, move: Move, args: Args): void {
+  const geo = loadGeometry(character.id);
+  if (!geo) {
+    fail(
+      `no geometry for ${character.name} — run: node scripts/fetch-mmdk.mjs ${character.name} && ` +
+        `node scripts/extract-geometry.mjs ${character.name}`,
+    );
+  }
+  const found = actionFor(geo, move);
+  if (!found) fail(`no action mapped to ${move.input} for ${character.name}`);
+  const { action, mapping } = found;
+
+  const defender = args.vs ? requireCharacter(args.vs) : character;
+  const defGeo = loadGeometry(defender.id);
+  if (!defGeo) fail(`no geometry for the defender (${defender.name})`);
+  const stance = args.crouch ? "crouch" : "stand";
+  const opponent = idleHurtboxes(defGeo, stance);
+
+  const windows = activeWindows(action);
+  const maxReach = reach(action, opponent);
+
+  console.log(`${character.name} — ${move.name} (${move.input})`);
+  console.log(`  action       ${action.name} (#${action.id})`);
+  console.log(`  active       ${windows.map((w) => `${w.start}-${w.end}`).join(", ") || "no hitboxes"}`);
+  console.log(`  vs           ${defender.name}, ${stance}ing (${opponent.length} hurtboxes)`);
+  console.log(`  max reach    ${maxReach === undefined ? "never connects" : `${maxReach}u`}`);
+
+  const props = [
+    action.flags.low ? "low" : null,
+    action.flags.overhead ? "overhead" : null,
+    action.flags.fullInvuln ? "full invuln" : action.flags.strikeInvuln ? "strike invuln" : null,
+  ].filter(Boolean);
+  if (props.length) console.log(`  properties   ${props.join(", ")}`);
+  if (mapping.match !== "exact") {
+    console.log(`  mapping      ${mapping.match} (FAT startup ${mapping.fat.startup}, geometry ${mapping.startup})`);
+  }
+
+  if (args.at !== undefined) {
+    const frames = connectFrames(action, opponent, args.at);
+    console.log(
+      frames.length
+        ? `  at ${args.at}u      CONNECTS on frame${frames.length > 1 ? "s" : ""} ${frameRanges(frames)}`
+        : `  at ${args.at}u      WHIFFS (needs ${maxReach === undefined ? "—" : `< ${maxReach}u`})`,
+    );
+  } else if (maxReach !== undefined) {
+    printReachTable(action, opponent, maxReach);
+  }
+}
+
+/** A quick feel for how the move's reach changes across its active frames. */
+function printReachTable(action: GeometryAction, opponent: Parameters<typeof reach>[1], maxReach: number): void {
+  const rows: string[] = [];
+  for (const key of action.hit.filter((h) => h.kind !== "proximity")) {
+    const per = reach({ ...action, hit: [key] }, opponent);
+    rows.push(`    frames ${key.start}-${key.end}  ${key.kind.padEnd(10)} reach ${per ?? "—"}u`);
+  }
+  if (rows.length > 1) console.log(rows.join("\n"));
+  console.log(`  try:         --at ${Math.max(0, maxReach - 1)} (max) / --at ${maxReach + 1} (whiff)`);
 }
 
 function isFastest(r: PunishResult | FastestPunish): r is FastestPunish {

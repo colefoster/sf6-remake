@@ -1,0 +1,242 @@
+/**
+ * Per-frame collision geometry: the boxes behind the frame numbers.
+ *
+ * Loaded from `data/geometry/<char>.json`, produced by
+ * `scripts/extract-geometry.mjs` out of MMDK's dump of the game's own
+ * CharacterAsset data. Coordinates are game units: `x = 0` is the character
+ * origin, `y = 0` the ground, `+x` forward. See docs/adr/0003.
+ *
+ * The engine proper still answers frame questions from frame data alone; this
+ * module is what spacing questions ("does 2MK reach from here?") are built on.
+ */
+
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import type { Box, Character, Geometry, Move } from "../domain/types.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const DIR = join(HERE, "..", "..", "data", "geometry");
+
+/** What an attack box can be. Proximity boxes only trigger guard animations. */
+export type HitKind = "strike" | "projectile" | "throw" | "proximity";
+
+export interface HitKey {
+  /** 1-indexed inclusive frames of the owning action. */
+  start: number;
+  end: number;
+  kind: HitKind;
+  /** Index into the fighter's hit-data table (damage, hitstun, ...). */
+  attackData: number;
+  guardBit: number | null;
+  hitId: number;
+  boxes: Box[];
+  /** Set when the key came from a spliced continuation action. */
+  from?: number;
+}
+
+export interface HurtKey {
+  start: number;
+  end: number;
+  head: Box[];
+  body: Box[];
+  leg: Box[];
+  throw: Box[];
+  /** Non-zero when the hurtbox is invulnerable to something this frame. */
+  immune?: number;
+}
+
+export interface GeometryAction {
+  id: number;
+  name: string;
+  frames: number | null;
+  mainFrame: number | null;
+  marginFrame: number | null;
+  flags: {
+    high: boolean;
+    low: boolean;
+    overhead: boolean;
+    invincible: number;
+    strikeInvuln: boolean;
+    throwInvuln: boolean;
+    fullInvuln: boolean;
+  };
+  hit: HitKey[];
+  prox: { start: number; end: number; boxes: Box[] }[];
+  hurt: HurtKey[];
+  branches?: { frame: number; action: number; type: number | null }[];
+  continues?: number;
+  mot?: string;
+}
+
+/** How a FAT move was matched to a game action. `weak` means don't trust it. */
+export type MatchQuality = "exact" | "close" | "frame-unique" | "weak";
+
+export interface MoveMapping {
+  input: string;
+  name: string;
+  action: number;
+  actionName: string;
+  match: MatchQuality;
+  startup: number;
+  active: number;
+  hits: number;
+  fat: { startup: string | number | null; active: string | number | null };
+  startupDelta: number | null;
+  alternates: number[];
+  category: string;
+}
+
+export interface GeometryFile {
+  character: string;
+  id: string;
+  source: Record<string, string>;
+  calibration: { standingHeight: number; standingHalfWidth: number; standAction: number } | null;
+  counts: Record<string, number>;
+  moves: MoveMapping[];
+  unmapped: { input: string; name: string; category: string }[];
+  actions: GeometryAction[];
+}
+
+const cache = new Map<string, GeometryFile | undefined>();
+
+export function loadGeometry(characterId: string): GeometryFile | undefined {
+  if (!cache.has(characterId)) {
+    const path = join(DIR, `${characterId}.json`);
+    cache.set(characterId, existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as GeometryFile) : undefined);
+  }
+  return cache.get(characterId);
+}
+
+export function hasGeometry(character: Character): boolean {
+  return loadGeometry(character.id) !== undefined;
+}
+
+const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export function actionById(geo: GeometryFile, id: number): GeometryAction | undefined {
+  return geo.actions.find((a) => a.id === id);
+}
+
+/** The action a move maps to, plus how much to trust the mapping. */
+export function actionFor(
+  geo: GeometryFile,
+  move: Move,
+): { action: GeometryAction; mapping: MoveMapping } | undefined {
+  const mapping =
+    geo.moves.find((m) => norm(m.input) === norm(move.input)) ??
+    geo.moves.find((m) => norm(m.name) === norm(move.name));
+  if (!mapping) return undefined;
+  const action = actionById(geo, mapping.action);
+  return action ? { action, mapping } : undefined;
+}
+
+const covers = (key: { start: number; end: number }, frame: number): boolean =>
+  frame >= key.start && frame <= key.end;
+
+/** Attack boxes live this frame, proximity boxes excluded. */
+export function hitboxesAt(action: GeometryAction, frame: number): Box[] {
+  return action.hit.filter((h) => h.kind !== "proximity" && covers(h, frame)).flatMap((h) => h.boxes);
+}
+
+/** Every hurtbox live this frame. Throwable boxes are excluded by default. */
+export function hurtboxesAt(action: GeometryAction, frame: number, includeThrow = false): Box[] {
+  const out: Box[] = [];
+  for (const key of action.hurt) {
+    if (!covers(key, frame)) continue;
+    out.push(...key.head, ...key.body, ...key.leg);
+    if (includeThrow) out.push(...key.throw);
+  }
+  return out;
+}
+
+/** The frame-keyed shape `Move.geometry` is typed for, built on demand. */
+export function geometryFor(character: Character, move: Move): Geometry | undefined {
+  const geo = loadGeometry(character.id);
+  const found = geo && actionFor(geo, move);
+  if (!found) return undefined;
+  const { action } = found;
+  const hitboxes: Record<number, Box[]> = {};
+  const hurtboxes: Record<number, Box[]> = {};
+  for (let frame = 1; frame <= (action.frames ?? 0); frame++) {
+    const hit = hitboxesAt(action, frame);
+    if (hit.length) hitboxes[frame] = hit;
+    const hurt = hurtboxesAt(action, frame);
+    if (hurt.length) hurtboxes[frame] = hurt;
+  }
+  return { hitboxes, hurtboxes };
+}
+
+/** Idle hurtboxes for the defender side of a spacing question. */
+export function idleHurtboxes(geo: GeometryFile, stance: "stand" | "crouch" = "stand"): Box[] {
+  const action =
+    stance === "crouch"
+      ? geo.actions.find((a) => a.name === "BAS_CRH_Loop")
+      : geo.calibration && actionById(geo, geo.calibration.standAction);
+  const src = action ?? geo.actions.find((a) => a.hurt.length);
+  if (!src) return [];
+  return hurtboxesAt(src, src.hurt[0]?.start ?? 1);
+}
+
+/**
+ * An opponent standing at `distance` faces the other way, so its boxes are
+ * mirrored about its own origin before being placed in the attacker's space.
+ */
+export function mirrored(box: Box, distance: number): Box {
+  return { ...box, x: distance - (box.x + box.width) };
+}
+
+export function overlaps(a: Box, b: Box): boolean {
+  return (
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  );
+}
+
+/**
+ * The furthest distance at which the move still touches those hurtboxes.
+ *
+ * For attacker box `A` and opponent box `B` (in the opponent's own space),
+ * overlap holds while `distance < A.x2 + B.x2`, so the reach is the largest
+ * such sum over every pair whose heights overlap. Undefined when nothing can
+ * connect at any distance (a box that only covers the attacker's own space).
+ */
+export function reach(action: GeometryAction, opponent: Box[]): number | undefined {
+  let best: number | undefined;
+  for (const a of action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes)) {
+    for (const b of opponent) {
+      if (!(a.y < b.y + b.height && b.y < a.y + a.height)) continue;
+      const d = a.x + a.width + b.x + b.width;
+      if (best === undefined || d > best) best = d;
+    }
+  }
+  return best;
+}
+
+/** Which of the move's frames actually connect at `distance`. */
+export function connectFrames(action: GeometryAction, opponent: Box[], distance: number): number[] {
+  const frames = new Set<number>();
+  for (const key of action.hit) {
+    if (key.kind === "proximity") continue;
+    for (let frame = key.start; frame <= key.end; frame++) {
+      if (key.boxes.some((a) => opponent.some((b) => overlaps(a, mirrored(b, distance))))) {
+        frames.add(frame);
+      }
+    }
+  }
+  return [...frames].sort((a, b) => a - b);
+}
+
+/** Contiguous active spans, the way frame data reads them. */
+export function activeWindows(action: GeometryAction): { start: number; end: number }[] {
+  const hits = action.hit
+    .filter((h) => h.kind !== "proximity")
+    .sort((a, b) => a.start - b.start);
+  const out: { start: number; end: number }[] = [];
+  for (const h of hits) {
+    const last = out[out.length - 1];
+    if (last && h.start <= last.end + 1) last.end = Math.max(last.end, h.end);
+    else out.push({ start: h.start, end: h.end });
+  }
+  return out;
+}

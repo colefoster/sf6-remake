@@ -33,6 +33,7 @@ npx tsx src/cli/index.ts <command> ...
 | `punish <char> <blockedMove> [--by <char> [move]]` | Is it punishable, and by the fastest what? |
 | `show <char> <move>` | Full frame data for a move. |
 | `moves <char> [filter]` | List a character's moves. |
+| `boxes <char> <move> [--at <units>] [--vs <char>] [--crouch]` | **Does it reach? Which frames connect at this spacing?** |
 | `characters` | List the roster. |
 
 Moves accept **notation** (`2mk`, `236lp`), **ids**, or **name fragments** (`hadoken`, `sweep`). Characters are fuzzy too (`chun`, `honda`).
@@ -61,6 +62,36 @@ $ npm run sf6 -- adv ryu 5hp --meaty 3
 Stand HP on block (meaty 3 deep): +1  ->  PLUS ✅
 ```
 
+### Spacing and boxes
+
+Per-frame hitbox/hurtbox geometry is extracted from the game's own collision data (see [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md)) for the characters built so far — currently **Ryu and Akuma**.
+
+```bash
+$ npm run sf6 -- boxes ryu 2mk --at 140
+Ryu — Crouch MK (2MK)
+  action       ATK_2MK_Y2 (#640)
+  active       8-10
+  vs           Ryu, standing (3 hurtboxes)
+  max reach    142u
+  properties   low
+  at 140u      CONNECTS on frames 8-10
+```
+
+Add a character:
+
+```bash
+node scripts/fetch-mmdk.mjs Ken        # downloads MMDK's dump (gitignored)
+node scripts/extract-geometry.mjs Ken  # -> data/geometry/ken.json + web/ken.boxes.json
+```
+
+### The box viewer
+
+```bash
+npm run web        # then open http://localhost:8777/boxes.html
+```
+
+Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — it reports which frames connect there and the furthest distance that still lands. Arrow keys step frames, space plays.
+
 ## How it works
 
 Everything derives from a few identities documented in [`CONTEXT.md`](./CONTEXT.md):
@@ -79,24 +110,34 @@ src/
   data/
     fat-adapter.ts       FAT JSON  ->  domain model (parses messy real strings)
     index.ts             roster registry + fuzzy character/move lookup
+    geometry.ts          per-frame boxes: reach, overlap, connect frames
   engine/
     frames.ts            pure frame math (advantage, meaty, stun)
     interactions.ts      punish, gap, cancel, sequence
     index.ts             public API (the deep module)
   cli/index.ts           the `sf6` command
+scripts/
+  fetch-mmdk.mjs         downloads MMDK's dumps of the game's collision data
+  extract-geometry.mjs   dumps -> data/geometry/<char>.json (+ web copy)
+  build-site.mjs         builds the normals/follow-ups page
+web/
+  index.html             normals: what you get off every hit state
+  boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
-tests/                   40 tests, incl. assertions against the real data
+data/geometry/<char>.json    extracted per-frame box geometry
+tests/                   51 tests, incl. assertions against the real data
 ```
 
 ## Known limitations
 
-- **Hitbox/hurtbox geometry is not modeled with real data.** Pixel-accurate box coordinates are not published anywhere in machine-readable form (only live hitbox-viewer mods). The schema (`Box`, `geometry`) is ready for them; spacing/whiff falls back to a coarse `reach` scalar. See ADR-0003.
+- **Geometry covers Ryu and Akuma so far**, and the dumps it comes from are a late-2024 snapshot of the game — so pre-Season-3 balance. Characters without geometry fall back to FAT's coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
+- **Pushboxes are not modeled**, so "connects" is hitbox-vs-hurtbox overlap only: it ignores the minimum distance two characters can actually stand at. Nor is per-frame character movement, so a jumping attack's boxes are the right shape at the wrong world position.
 - **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
 - **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
 
 ## Test
 
 ```bash
-npm test          # 40 tests
+npm test          # 51 tests
 npm run typecheck
 ```

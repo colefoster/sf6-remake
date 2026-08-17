@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SF6 box viewer — per-frame hitboxes and hurtboxes</title>
+<style>
+  :root {
+    --bg: #0e0f13;
+    --panel: #16181f;
+    --panel-2: #1c1f28;
+    --line: #272b36;
+    --text: #e8eaf0;
+    --dim: #8c93a5;
+    --accent: #e23b3b;
+    --hit: #ff4d4d;
+    --hurt: #4d8cff;
+    --prox: #d8b74a;
+    --throw: #26c99a;
+    --opp: #6d7488;
+    --plus: #45d17a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 16px 22px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .02em; }
+  header h1 span { color: var(--accent); }
+  header .meta { color: var(--dim); font-size: 12.5px; }
+  header a { color: var(--dim); font-size: 12.5px; }
+  select, button, input[type=number] {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 13px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: #3a4152; }
+  .layout { display: grid; grid-template-columns: 250px 1fr; min-height: calc(100vh - 58px); }
+  nav {
+    border-right: 1px solid var(--line); background: var(--panel);
+    overflow-y: auto; max-height: calc(100vh - 58px); position: sticky; top: 0;
+  }
+  nav .group {
+    padding: 12px 14px 4px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--dim);
+  }
+  nav button {
+    display: flex; width: 100%; gap: 8px; align-items: baseline; justify-content: space-between;
+    padding: 6px 14px; background: none; border: 0; border-left: 3px solid transparent;
+    border-radius: 0; color: var(--text); font: inherit; text-align: left;
+  }
+  nav button:hover { background: var(--panel-2); }
+  nav button[aria-current="true"] { background: var(--panel-2); border-left-color: var(--accent); }
+  nav button .in { font-weight: 600; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  nav button .nm { color: var(--dim); font-size: 11.5px; text-align: right; }
+  main { padding: 18px 24px 50px; min-width: 0; }
+  .title { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 4px; }
+  .title h2 { margin: 0; font-size: 19px; }
+  .title .action { color: var(--dim); font-size: 12.5px; font-family: ui-monospace, monospace; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 14px; }
+  .badge {
+    font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--dim);
+  }
+  .badge.warn { border-color: #6b4a1e; color: #d8b74a; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  canvas { display: block; width: 100%; height: auto; }
+  .controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+  .controls label { font-size: 12.5px; color: var(--dim); display: flex; gap: 6px; align-items: center; }
+  input[type=range] { accent-color: var(--accent); }
+  #scrub { flex: 1; min-width: 220px; }
+  .frameno { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 84px; }
+  /* frame strip */
+  .strip { display: flex; gap: 1px; margin: 10px 0 4px; }
+  .strip div {
+    flex: 1; height: 20px; background: var(--panel-2); border-radius: 2px; cursor: pointer;
+    position: relative;
+  }
+  .strip div.active { background: var(--hit); }
+  .strip div.prox { background: #4a4224; }
+  .strip div.now { outline: 2px solid var(--text); outline-offset: 1px; z-index: 1; }
+  .striplabels { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; }
+  .readout {
+    margin-top: 16px; display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
+  .card .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--dim); font-size: 12.5px; }
+  .yes { color: var(--plus); }
+  .no { color: var(--hit); }
+  .key { display: flex; gap: 14px; flex-wrap: wrap; color: var(--dim); font-size: 12px; margin-top: 10px; }
+  .key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+  footer { color: var(--dim); font-size: 12px; margin-top: 22px; max-width: 900px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SF6 <span>box viewer</span></h1>
+  <select id="charpick"></select>
+  <span class="meta" id="source"></span>
+  <a href="index.html">← normals &amp; follow-ups</a>
+</header>
+
+<div class="layout">
+  <nav id="nav"></nav>
+  <main>
+    <div class="title">
+      <h2 id="movename">—</h2>
+      <span class="action" id="actionname"></span>
+    </div>
+    <div class="badges" id="badges"></div>
+
+    <div class="stage"><canvas id="stage" width="1200" height="620"></canvas></div>
+
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="prev">◀</button>
+      <button id="next">▶</button>
+      <span class="frameno" id="frameno">frame 1</span>
+      <input type="range" id="scrub" min="1" max="1" value="1">
+    </div>
+
+    <div class="strip" id="strip"></div>
+    <div class="striplabels"><span>frame 1</span><span id="striplast"></span></div>
+
+    <div class="controls">
+      <label>distance <input type="range" id="dist" min="0" max="400" value="120"> <b id="distval">120u</b></label>
+      <label>opponent
+        <select id="stance">
+          <option value="stand">standing</option>
+          <option value="crouch">crouching</option>
+          <option value="none">none</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="t-hurt" checked> hurtboxes</label>
+      <label><input type="checkbox" id="t-hit" checked> hitboxes</label>
+      <label><input type="checkbox" id="t-prox"> proximity</label>
+      <button id="fit">snap to max range</button>
+    </div>
+
+    <div class="readout">
+      <div class="card">
+        <h3>This frame</h3>
+        <div class="big" id="r-frame">—</div>
+        <div class="sub" id="r-frame-sub"></div>
+      </div>
+      <div class="card">
+        <h3>Connects at this distance</h3>
+        <div class="big" id="r-connect">—</div>
+        <div class="sub" id="r-connect-sub"></div>
+      </div>
+      <div class="card">
+        <h3>Max range</h3>
+        <div class="big" id="r-range">—</div>
+        <div class="sub" id="r-range-sub"></div>
+      </div>
+      <div class="card">
+        <h3>Frames</h3>
+        <div class="big" id="r-frames">—</div>
+        <div class="sub" id="r-frames-sub"></div>
+      </div>
+    </div>
+
+    <div class="key">
+      <span><i style="background:var(--hit)"></i>hitbox</span>
+      <span><i style="background:var(--hurt)"></i>hurtbox</span>
+      <span><i style="background:var(--throw)"></i>throwable / throw box</span>
+      <span><i style="background:var(--prox)"></i>proximity guard</span>
+      <span><i style="background:var(--opp)"></i>opponent</span>
+    </div>
+
+    <footer id="footer"></footer>
+  </main>
+</div>
+
+<script>
+/*
+ * Renders the geometry extracted by scripts/extract-geometry.mjs.
+ *
+ * Boxes are game units: x = 0 is the character origin, y = 0 the ground, +x
+ * forward. The attacker stands at x = 0 facing right; the opponent stands at
+ * x = distance facing left, so its boxes are mirrored about its own origin.
+ */
+
+const COLORS = {
+  hit: "#ff4d4d", strike: "#ff4d4d", projectile: "#ff8a3d", throw: "#26c99a",
+  hurt: "#4d8cff", head: "#6fa4ff", body: "#4d8cff", leg: "#3f74d8",
+  prox: "#d8b74a", opp: "#6d7488",
+};
+
+const state = {
+  chars: [], data: null, action: null, frame: 1, playing: false, timer: null,
+  distance: 120, stance: "stand",
+  show: { hurt: true, hit: true, prox: false },
+};
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/* ---------- data helpers ---------- */
+
+const covers = (key, frame) => frame >= key.start && frame <= key.end;
+
+function hitsAt(action, frame) {
+  return action.hit.filter((h) => covers(h, frame));
+}
+function proxAt(action, frame) {
+  return action.prox.filter((p) => covers(p, frame));
+}
+/** All hurt parts live in one flat list per frame, tagged for colour. */
+function hurtAt(action, frame) {
+  const out = [];
+  for (const key of action.hurt) {
+    if (!covers(key, frame)) continue;
+    for (const part of ["head", "body", "leg", "throw"]) {
+      for (const box of key[part] ?? []) out.push({ ...box, part, immune: key.immune ?? 0 });
+    }
+  }
+  return out;
+}
+
+/** Every strike/projectile/throw window, merged into contiguous active spans. */
+function activeWindows(action) {
+  const hits = action.hit.filter((h) => h.kind !== "proximity").sort((a, b) => a.start - b.start);
+  const out = [];
+  for (const h of hits) {
+    const last = out[out.length - 1];
+    if (last && h.start <= last.end + 1) last.end = Math.max(last.end, h.end);
+    else out.push({ start: h.start, end: h.end });
+  }
+  return out;
+}
+
+function actionById(id) {
+  return state.data.actions.find((a) => a.id === id);
+}
+
+/** The opponent's idle hurtboxes, taken from its stance action's first frame. */
+function opponentBoxes() {
+  if (state.stance === "none") return [];
+  const name = state.stance === "crouch" ? "BAS_CRH_Loop" : null;
+  const stand = name
+    ? state.data.actions.find((a) => a.name === name)
+    : actionById(state.data.calibration?.standAction);
+  const src = stand ?? state.data.actions.find((a) => a.hurt.length);
+  if (!src) return [];
+  const frame = src.hurt[0]?.start ?? 1;
+  return hurtAt(src, frame).filter((b) => b.part !== "throw");
+}
+
+/** Mirror an opponent box (local, facing +x) into world space at `distance`. */
+function mirrored(box, distance) {
+  return { ...box, x: distance - (box.x + box.width), y: box.y, width: box.width, height: box.height };
+}
+
+const overlaps = (a, b) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/**
+ * Largest distance at which any of `boxes` still touches an opponent box.
+ * For attacker box A and opponent box B (local), overlap holds while
+ * distance < A.x2 + B.x2, so the reach is the max of that over all pairs
+ * whose heights overlap.
+ */
+function maxReach(boxes, opponent) {
+  let best = null;
+  for (const a of boxes) {
+    for (const b of opponent) {
+      const yOverlap = a.y < b.y + b.height && b.y < a.y + a.height;
+      if (!yOverlap) continue;
+      const d = a.x + a.width + b.x + b.width;
+      if (best === null || d > best) best = d;
+    }
+  }
+  return best;
+}
+
+function connectFrames(action, opponent, distance) {
+  const frames = [];
+  for (const h of action.hit) {
+    if (h.kind === "proximity") continue;
+    for (let f = h.start; f <= h.end; f++) {
+      const hit = h.boxes.some((a) => opponent.some((b) => overlaps(a, mirrored(b, distance))));
+      if (hit && !frames.includes(f)) frames.push(f);
+    }
+  }
+  return frames.sort((a, b) => a - b);
+}
+
+/* ---------- rendering ---------- */
+
+const canvas = $("stage");
+const ctx = canvas.getContext("2d");
+
+/** One stable world->screen transform per action, so scrubbing doesn't jitter. */
+function viewFor(action) {
+  let minX = -60, maxX = 160, maxY = state.data.calibration?.standingHeight ?? 170;
+  const eat = (b) => {
+    minX = Math.min(minX, b.x);
+    maxX = Math.max(maxX, b.x + b.width);
+    maxY = Math.max(maxY, b.y + b.height);
+  };
+  for (const key of action.hit) key.boxes.forEach(eat);
+  for (const key of action.prox) key.boxes.forEach(eat);
+  for (const key of action.hurt) {
+    for (const part of ["head", "body", "leg", "throw"]) (key[part] ?? []).forEach(eat);
+  }
+  maxX = Math.max(maxX, state.distance + 60);
+  const pad = 40;
+  const w = canvas.width, h = canvas.height;
+  const scale = Math.min((w - pad * 2) / (maxX - minX), (h - pad * 2) / (maxY + 20));
+  // Centre the world horizontally; the ground stays pinned to the same line.
+  const left = (w - (maxX - minX) * scale) / 2;
+  return {
+    scale,
+    minX,
+    toX: (x) => left + (x - minX) * scale,
+    toY: (y) => h - pad - y * scale,
+  };
+}
+
+function rect(view, box, color, fill, dashed) {
+  const x = view.toX(box.x);
+  const y = view.toY(box.y + box.height);
+  const w = box.width * view.scale;
+  const h = box.height * view.scale;
+  ctx.fillStyle = fill;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash(dashed ? [4, 3] : []);
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+  ctx.setLineDash([]);
+}
+
+const alpha = (hex, a) => {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+};
+
+function draw() {
+  const action = state.action;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!action) return;
+  const view = viewFor(action);
+  const frame = state.frame;
+
+  // ground + origins
+  ctx.strokeStyle = "#2f3442";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, view.toY(0));
+  ctx.lineTo(canvas.width, view.toY(0));
+  ctx.stroke();
+  for (const [x, label] of [[0, "attacker"], [state.distance, "opponent"]]) {
+    if (label === "opponent" && state.stance === "none") continue;
+    ctx.strokeStyle = "#3a4152";
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(view.toX(x), 0);
+    ctx.lineTo(view.toX(x), view.toY(0));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#6d7488";
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.fillText(`${label} x=${x}`, view.toX(x) + 4, view.toY(0) + 14);
+  }
+
+  const opponent = opponentBoxes();
+  for (const b of opponent) rect(view, mirrored(b, state.distance), COLORS.opp, alpha(COLORS.opp, 0.16), true);
+
+  if (state.show.prox) {
+    for (const key of proxAt(action, frame)) {
+      for (const b of key.boxes) rect(view, b, COLORS.prox, alpha(COLORS.prox, 0.1), true);
+    }
+  }
+  if (state.show.hurt) {
+    for (const b of hurtAt(action, frame)) {
+      const color = b.part === "throw" ? COLORS.throw : COLORS[b.part] ?? COLORS.hurt;
+      rect(view, b, color, alpha(color, b.part === "throw" ? 0.07 : 0.18), b.part === "throw");
+    }
+  }
+  if (state.show.hit) {
+    for (const key of hitsAt(action, frame)) {
+      const color = COLORS[key.kind] ?? COLORS.hit;
+      for (const b of key.boxes) rect(view, b, color, alpha(color, 0.3));
+    }
+  }
+
+  // scale bar: one metre, taking the standing hurtbox height as the fighter's height
+  const height = state.data.calibration?.standingHeight;
+  if (height) {
+    const x = view.toX(view.minX) + 10;
+    ctx.strokeStyle = "#3a4152";
+    ctx.beginPath();
+    ctx.moveTo(x, view.toY(0));
+    ctx.lineTo(x, view.toY(height));
+    ctx.stroke();
+    ctx.fillStyle = "#6d7488";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.fillText(`${height}u tall`, x + 5, view.toY(height) + 10);
+  }
+}
+
+/* ---------- readouts ---------- */
+
+function updateReadouts() {
+  const action = state.action;
+  const opponent = opponentBoxes();
+  const frame = state.frame;
+  const hits = hitsAt(action, frame).filter((h) => h.kind !== "proximity");
+  const windows = activeWindows(action);
+
+  const onThisFrame = hits.length
+    ? hits.some((h) => h.boxes.some((a) => opponent.some((b) => overlaps(a, mirrored(b, state.distance)))))
+    : null;
+
+  $("r-frame").textContent = hits.length ? "active" : proxAt(action, frame).length ? "proximity" : "no hitbox";
+  $("r-frame").className = "big " + (hits.length ? (onThisFrame ? "yes" : "no") : "");
+  $("r-frame-sub").textContent = hits.length
+    ? `${hits.length} box group${hits.length > 1 ? "s" : ""} — ` +
+      (onThisFrame ? "overlapping the opponent" : "whiffing at this distance")
+    : `frame ${frame} of ${action.frames ?? "?"}`;
+
+  const connects = connectFrames(action, opponent, state.distance);
+  $("r-connect").textContent = connects.length ? `frames ${ranges(connects)}` : "whiff";
+  $("r-connect").className = "big " + (connects.length ? "yes" : "no");
+  $("r-connect-sub").textContent = connects.length
+    ? `first contact on frame ${connects[0]} at ${state.distance}u`
+    : `nothing reaches ${state.distance}u`;
+
+  const allBoxes = action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes);
+  const reach = maxReach(allBoxes, opponent);
+  $("r-range").textContent = reach === null ? "—" : `${reach}u`;
+  $("r-range-sub").textContent =
+    reach === null
+      ? "no hitbox overlaps the opponent at any distance"
+      : `furthest the opponent's ${state.stance === "crouch" ? "crouching" : "standing"} hurtbox is still caught`;
+
+  $("r-frames").textContent = windows.length
+    ? windows.map((w) => `${w.start}-${w.end}`).join(", ")
+    : "—";
+  const startup = windows[0]?.start;
+  $("r-frames-sub").textContent = windows.length
+    ? `startup ${startup}, ${windows.reduce((n, w) => n + (w.end - w.start + 1), 0)} active frames` +
+      (windows.length > 1 ? ` across ${windows.length} hits` : "")
+    : "this action has no hitboxes";
+}
+
+/** [8,9,10,14] -> "8-10, 14" */
+function ranges(frames) {
+  const out = [];
+  for (const f of frames) {
+    const last = out[out.length - 1];
+    if (last && f === last[1] + 1) last[1] = f;
+    else out.push([f, f]);
+  }
+  return out.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", ");
+}
+
+function drawStrip() {
+  const action = state.action;
+  const total = Math.min(action.frames ?? 60, 90);
+  const windows = activeWindows(action);
+  const strip = $("strip");
+  strip.innerHTML = "";
+  for (let f = 1; f <= total; f++) {
+    const cell = document.createElement("div");
+    if (windows.some((w) => f >= w.start && f <= w.end)) cell.className = "active";
+    else if (proxAt(action, f).length) cell.className = "prox";
+    if (f === state.frame) cell.classList.add("now");
+    cell.title = `frame ${f}`;
+    cell.onclick = () => setFrame(f);
+    strip.append(cell);
+  }
+  $("striplast").textContent = `frame ${total}${(action.frames ?? 0) > total ? ` (of ${action.frames})` : ""}`;
+}
+
+/* ---------- ui wiring ---------- */
+
+function setFrame(f) {
+  const total = state.action?.frames ?? 1;
+  state.frame = clamp(f, 1, total);
+  $("scrub").value = String(state.frame);
+  $("frameno").textContent = `frame ${state.frame}`;
+  draw();
+  updateReadouts();
+  drawStrip();
+}
+
+function badge(text, warn) {
+  const el = document.createElement("span");
+  el.className = "badge" + (warn ? " warn" : "");
+  el.textContent = text;
+  return el;
+}
+
+function selectAction(action, move) {
+  state.action = action;
+  state.frame = 1;
+  $("movename").textContent = move ? `${move.input} — ${move.name}` : action.name;
+  $("actionname").textContent = `${action.name}  ·  action ${action.id}${action.mot ? `  ·  ${action.mot}` : ""}`;
+
+  const badges = $("badges");
+  badges.innerHTML = "";
+  const f = action.flags;
+  if (f.low) badges.append(badge("low"));
+  if (f.overhead) badges.append(badge("overhead"));
+  if (f.high && !f.low) badges.append(badge("high"));
+  if (f.fullInvuln) badges.append(badge("full invuln"));
+  else if (f.strikeInvuln) badges.append(badge("strike invuln"));
+  else if (f.throwInvuln) badges.append(badge("throw invuln"));
+  if (action.continues) {
+    const next = actionById(action.continues);
+    badges.append(badge(`spliced with ${next ? next.name : action.continues}`));
+  }
+  for (const b of action.branches ?? []) {
+    const target = actionById(b.action);
+    if (target) badges.append(badge(`branches f${b.frame} → ${target.name}`));
+  }
+  if (move) {
+    badges.append(badge(`FAT: startup ${move.fat.startup}, active ${move.fat.active}`));
+    if (move.match !== "exact") {
+      badges.append(badge(`mapping: ${move.match}${move.startupDelta ? ` (${move.startupDelta > 0 ? "+" : ""}${move.startupDelta}f vs FAT)` : ""}`, true));
+    }
+  }
+
+  $("scrub").max = String(action.frames ?? 1);
+  for (const b of document.querySelectorAll("nav button")) {
+    b.setAttribute("aria-current", String(Number(b.dataset.action) === action.id));
+  }
+  setFrame(1);
+}
+
+function buildNav() {
+  const nav = $("nav");
+  nav.innerHTML = "";
+  const data = state.data;
+  const mapped = new Set(data.moves.map((m) => m.action));
+
+  const groups = [
+    ["Normals", data.moves.filter((m) => m.category === "normal" && !m.input.includes(">"))],
+    ["Target combos", data.moves.filter((m) => m.category === "normal" && m.input.includes(">"))],
+    ["Specials & supers", data.moves.filter((m) => m.category !== "normal")],
+  ];
+  for (const [label, moves] of groups) {
+    if (!moves.length) continue;
+    const head = document.createElement("div");
+    head.className = "group";
+    head.textContent = label;
+    nav.append(head);
+    for (const move of moves) {
+      const action = actionById(move.action);
+      if (!action) continue;
+      nav.append(navButton(action, move, move.input, move.name));
+    }
+  }
+
+  const rest = data.actions
+    .filter((a) => !mapped.has(a.id) && a.hit.some((h) => h.kind !== "proximity"))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (rest.length) {
+    const head = document.createElement("div");
+    head.className = "group";
+    head.textContent = `Unmapped actions with hitboxes (${rest.length})`;
+    nav.append(head);
+    for (const a of rest) nav.append(navButton(a, null, a.name, `#${a.id}`));
+  }
+}
+
+function navButton(action, move, primary, secondary) {
+  const btn = document.createElement("button");
+  btn.dataset.action = String(action.id);
+  const a = document.createElement("span");
+  a.className = "in";
+  a.textContent = primary;
+  const b = document.createElement("span");
+  b.className = "nm";
+  b.textContent = secondary ?? "";
+  btn.append(a, b);
+  btn.onclick = () => selectAction(action, move);
+  return btn;
+}
+
+async function loadCharacter(id) {
+  const res = await fetch(`${id}.boxes.json`);
+  state.data = await res.json();
+  const s = state.data.source;
+  $("source").textContent = `${state.data.counts.actions} actions · ${state.data.counts.mapped} moves mapped · ${s.geometry}`;
+  $("footer").innerHTML =
+    `Geometry extracted from MMDK's dump of the game's own collision data; frames from FAT. ` +
+    `x = 0 is the character origin, y = 0 the ground, +x forward; ` +
+    `${state.data.calibration?.standingHeight ?? "?"} units is this fighter's standing height. ` +
+    `Pushboxes are not included, so "connects" means hitbox-vs-hurtbox overlap only — ` +
+    `it ignores the minimum distance pushboxes would enforce.`;
+  buildNav();
+  const first = state.data.moves.find((m) => actionById(m.action));
+  selectAction(actionById(first.action), first);
+}
+
+function play() {
+  state.playing = !state.playing;
+  $("play").textContent = state.playing ? "❚❚ Pause" : "▶ Play";
+  clearInterval(state.timer);
+  if (state.playing) {
+    state.timer = setInterval(() => {
+      const total = state.action?.frames ?? 1;
+      setFrame(state.frame >= total ? 1 : state.frame + 1);
+    }, 1000 / 20);
+  }
+}
+
+$("scrub").oninput = (e) => setFrame(Number(e.target.value));
+$("play").onclick = play;
+$("prev").onclick = () => setFrame(state.frame - 1);
+$("next").onclick = () => setFrame(state.frame + 1);
+$("dist").oninput = (e) => {
+  state.distance = Number(e.target.value);
+  $("distval").textContent = `${state.distance}u`;
+  draw();
+  updateReadouts();
+};
+$("stance").onchange = (e) => {
+  state.stance = e.target.value;
+  draw();
+  updateReadouts();
+};
+for (const [key, id] of [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"]]) {
+  $(id).onchange = (e) => {
+    state.show[key] = e.target.checked;
+    draw();
+  };
+}
+$("fit").onclick = () => {
+  const boxes = state.action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes);
+  const reach = maxReach(boxes, opponentBoxes());
+  if (reach === null) return;
+  state.distance = clamp(reach - 1, 0, Number($("dist").max));
+  $("dist").value = String(state.distance);
+  $("distval").textContent = `${state.distance}u`;
+  draw();
+  updateReadouts();
+};
+document.onkeydown = (e) => {
+  if (e.key === "ArrowLeft") setFrame(state.frame - 1);
+  else if (e.key === "ArrowRight") setFrame(state.frame + 1);
+  else if (e.key === " ") { e.preventDefault(); play(); }
+};
+
+(async function init() {
+  const chars = await (await fetch("characters.json")).json();
+  const withGeometry = [];
+  for (const c of chars) {
+    if ((await fetch(`${c.id}.boxes.json`, { method: "HEAD" })).ok) withGeometry.push(c);
+  }
+  state.chars = withGeometry;
+  const pick = $("charpick");
+  for (const c of withGeometry) {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.name;
+    pick.append(opt);
+  }
+  pick.onchange = () => loadCharacter(pick.value);
+  if (withGeometry.length) await loadCharacter(withGeometry[0].id);
+})();
+</script>
+</body>
+</html>
