@@ -348,6 +348,13 @@ export interface Trigger {
   /** Buttons that fire it: `["LP","MP","HP"]` is any punch, i.e. OD. ADR-0025. */
   keys?: string[];
   forbid?: string[];
+  /**
+   * The direction the button must be pressed with — `["down"]` for a crouching
+   * normal, `["forward"]` for a command normal. Absent means neutral. It is the
+   * only thing separating Ryu's 5MP, 2MP and 6MP, which are one button and
+   * three triggers. See ADR-0027.
+   */
+  dir?: string[];
   /** Accepted motions, any one of which satisfies it. Absent on a bare button. */
   motions?: Command[];
 }

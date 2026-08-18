@@ -236,12 +236,82 @@ export class Fighter {
   }
 
   /**
-   * The neutral options whose input the player has just made.
+   * Everything the fighter could do on this frame.
    *
-   * A trigger with no motion is a bare button and is not offered here: this
-   * stage only moves, and the only motion-only options from neutral are the two
-   * dashes. Buttons arrive with attacks.
+   * From neutral that is the neutral list. Mid-attack it is whatever the
+   * action's own cancel window has open — the same groups ADR-0008 extracted,
+   * resolved to the same triggers. A move is cancellable into a special exactly
+   * where the game says it is, which is the point of not authoring this.
    */
+  private options(): Trigger[] {
+    const { action, frame } = this.state;
+    const open = (action.cancels ?? []).filter((c) => !c.buffered && frame >= c.start && frame <= c.end);
+    if (!open.length) return this.actionable() ? this.neutral.map((e) => e.trigger) : [];
+    const ids = new Set(open.flatMap((c) => this.geo.cancelGroups[String(c.group)] ?? []));
+    const out: Trigger[] = [];
+    for (const id of ids) {
+      const trigger = this.geo.triggers[String(id)];
+      if (trigger) out.push(trigger);
+    }
+    return out;
+  }
+
+  /**
+   * Which option the player has just asked for, if any.
+   *
+   * Ordered deliberately: a trigger with a motion beats one without, and a more
+   * specific direction beats a looser one. Otherwise holding down and pressing
+   * MK gives 5MP's trigger as readily as 2MK's, and a quarter-circle plus punch
+   * gives a standing jab.
+   */
+  private fired(input: InputFrame, presses: Button[]): GeometryAction | undefined {
+    const ranked = this.options()
+      .filter((t) => this.satisfied(t, input, presses))
+      .sort((a, b) => score(b) - score(a));
+    for (const trigger of ranked) {
+      const action = actionById(this.geo, trigger.action);
+      if (!action) continue;
+      // Spend the press. A button stays "pressed" for its buffer so a cancel
+      // can land a few frames late, and without spending it the same press
+      // would fire the move again the moment the fighter is free.
+      for (const key of trigger.keys ?? []) if (isButton(key)) this.pressedAt.delete(key);
+      return action;
+    }
+    return undefined;
+  }
+
+  private satisfied(trigger: Trigger, input: InputFrame, _presses: Button[]): boolean {
+    if (trigger.keys?.length) {
+      const buttons = trigger.keys.filter(isButton);
+      if (buttons.length) {
+        // A three-button mask is "any two of these" — the game's OD input — and
+        // a two-button mask (LP+LK, HP+HK) is both. One is one.
+        const need = buttons.length === 3 ? 2 : buttons.length;
+        // Pressed within this trigger's own buffer, not necessarily *this*
+        // frame: `preceding_time` is the game's input buffer (ADR-0009), and it
+        // is why a special cancel lands when the button went down a few frames
+        // before the window opened.
+        const fresh = buttons.filter((b) => this.clock - (this.pressedAt.get(b) ?? -99) < Math.max(1, trigger.buffer));
+        if (fresh.length < need) return false;
+      }
+    } else if (!trigger.motions?.length) {
+      return false;
+    }
+    if (trigger.dir?.length && !trigger.dir.every((d) => holding(d, input.dir, this.state.facing))) {
+      return false;
+    }
+    if (!trigger.dir?.length && trigger.keys?.some(isButton) && !trigger.motions?.length) {
+      // A neutral normal: any direction that is *not* one another trigger claims
+      // would still reach it, which is what makes 2MK and 5MK distinguishable.
+      if (holding("down", input.dir, this.state.facing)) return false;
+    }
+    if (trigger.motions?.length) {
+      return trigger.motions.some((m) => this.history.matches(m, this.state.facing));
+    }
+    return true;
+  }
+
+  /** The motion-only options — this is what makes a dash a dash. */
   private firedByMotion(): GeometryAction | undefined {
     for (const { trigger } of this.neutral) {
       if (!trigger.motions?.length || trigger.kind?.length) continue;
@@ -285,6 +355,7 @@ export class Fighter {
     this.state.action = action;
     this.state.frame = 1;
     this.state.stance = stance;
+    this.instance++;
   }
 
   /** World position of the origin right now, motion included. */
@@ -298,7 +369,12 @@ export class Fighter {
     const { action, frame } = this.state;
     // A movement action has no recovery of its own: `MarginFrame` is -1 and the
     // fighter can leave it whenever. A dash states a real margin and holds.
-    return action.marginFrame && action.marginFrame > 0 ? frame >= action.marginFrame : true;
+    //
+    // Strictly greater: `MarginFrame` is the action's last *committed* frame and
+    // you are free on the one after, which is what `actionableFrame` means by
+    // `marginFrame + 1`. Reading it as `>=` makes every move one frame more plus
+    // than the scenario player says. See ADR-0011.
+    return action.marginFrame && action.marginFrame > 0 ? frame > action.marginFrame : true;
   }
 
   /** The name of the action being played — the thing a test or a viewer reads. */
@@ -313,11 +389,54 @@ export class Fighter {
    */
   advance(input: InputFrame = NEUTRAL): void {
     this.history.push(input.dir);
+    this.clock++;
+    const presses = input.buttons.filter((b) => !this.held.includes(b));
+    for (const b of presses) this.pressedAt.set(b, this.clock);
+    this.held = [...input.buttons];
+    if (this.stun > 0) {
+      // In a reaction. The clock still runs, but nothing is asked of the player.
+      this.stun--;
+      this.state.frame++;
+      if (this.stun === 0) this.enter(this.require(stanceIdle(this.state.stance)), this.state.stance);
+      return;
+    }
     this.takeBranch();
-    this.applyInput(input);
+    const attack = this.fired(input, presses);
+    if (attack && attack !== this.state.action) this.enter(attack);
+    else this.applyInput(input);
     this.state.frame++;
     this.runOut();
   }
+
+  /**
+   * Put this fighter into a reaction for `frames` frames — a hit or a block.
+   *
+   * The action names the animation and the hit table names the duration: the
+   * reaction's own `MarginFrame` is a generic 17 or 25 and agrees with the
+   * table's stun on barely a hundred of 3,167 rows. The table wins. See ADR-0027.
+   */
+  react(action: GeometryAction, frames: number): void {
+    this.enter(action, this.state.stance === "air" ? "air" : this.state.stance);
+    this.stun = frames;
+  }
+
+  /** Frames of hitstun or blockstun still owed. */
+  get stunned(): number {
+    return this.stun;
+  }
+
+  /**
+   * Bumped every time an action is entered. It is how a caller tells "still the
+   * same swing" from "swung again" — a hitbox that is out for three frames must
+   * only connect once, and hitstop is longer than the active window.
+   */
+  instance = 0;
+
+  private stun = 0;
+  private held: Button[] = [];
+  private clock = 0;
+  /** When each button last went down, for the trigger's own input buffer. */
+  private readonly pressedAt = new Map<Button, number>();
 
   /** A type-0 branch on this frame is the game handing one action to the next. */
   private takeBranch(): void {
@@ -359,7 +478,12 @@ export class Fighter {
       return this.enter(action, "stand");
     }
     if (isWalk(action.name)) return this.enter(this.require(MOVEMENT.stand), "stand");
-    this.enter(this.require(stance === "crouch" ? MOVEMENT.crouch : MOVEMENT.stand), stance);
+    // Anything that runs out while airborne has come down: an air action the
+    // jump chain does not cover (Cammy's dive kick) would otherwise leave the
+    // fighter standing in the idle loop and still flagged airborne, forever.
+    const grounded = stance === "air" ? "stand" : stance;
+    this.enter(this.require(grounded === "crouch" ? MOVEMENT.crouch : MOVEMENT.stand), grounded);
+    if (stance === "air") this.state.y = 0;
   }
 
   private applyInput(input: InputFrame): void {
@@ -410,5 +534,34 @@ export class Fighter {
 }
 
 const isWalk = (name: string): boolean => WALK_FORWARD.has(name) || WALK_BACK.has(name);
+
+const BUTTONS: Button[] = ["LP", "MP", "HP", "LK", "MK", "HK"];
+const isButton = (key: string): key is Button => (BUTTONS as string[]).includes(key);
+
+const stanceIdle = (stance: Stance): string =>
+  stance === "crouch" ? MOVEMENT.crouch : MOVEMENT.stand;
+
+/** Is the player holding a direction with this component, facing considered? */
+function holding(key: string, dir: Direction, facing: 1 | -1): boolean {
+  return FORBIDS[key]?.includes(relative(dir, facing)) ?? false;
+}
+
+/**
+ * How specific an option is, for choosing between the ones the input satisfies.
+ * A motion beats a bare button, and a required direction beats none — otherwise
+ * pressing MK while crouching would find 5MK as readily as 2MK.
+ */
+function score(trigger: Trigger): number {
+  const buttons = (trigger.keys ?? []).filter(isButton).length;
+  return (
+    (trigger.motions?.length ? 10 : 0) +
+    (trigger.dir?.length ?? 0) * 3 +
+    // A two-button option (throw, Drive Impact) is more specific than either
+    // button alone, so LP+LK has to beat 5LP rather than tie with it.
+    (buttons === 2 ? 4 : 0) +
+    (trigger.super ? 2 : 0) +
+    (trigger.drive ? 1 : 0)
+  );
+}
 
 const isMovement = (name: string): boolean => /^BAS_(FORWARD|BACKWARD|STD|CRH|JUMP|DASH)/.test(name);

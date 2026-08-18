@@ -35,7 +35,8 @@ import {
   type GeometryAction,
 } from "../data/geometry.js";
 import { runScenario, type ScenarioResult } from "../sim/index.js";
-import { Fighter, type Direction } from "../game/index.js";
+import { Fighter, type Button, type Direction } from "../game/index.js";
+import { Match } from "../game/match.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
@@ -126,6 +127,8 @@ COMMANDS
                                    published frame data. No args = whole roster.
   walk <char> <script>             Play a fighter through held directions:
                                    6x60,5x5,9x5,5x60 walks, releases, jumps.
+  fight <a> <b> <script> [script]  Two fighters, one clock. Scripts are
+                                   <numpad>[+BTN]x<frames>: 2+MKx3,5x60.  --at N
   play <char> <move>               Run the move against a dummy frame by frame:
                                    contact, stun, knockback, who acts first.
                                    --at <units> --vs <char> --on hit --crouch --meaty N
@@ -311,6 +314,13 @@ function main(): void {
         return;
       }
 
+      case "fight": {
+        const a = requireCharacter(p[0] ?? fail("fight <char> <char> <script> [--at N]"));
+        const b = requireCharacter(p[1] ?? fail("fight <char> <char> <script> [--at N]"));
+        printFight(a.name, b.name, p[2] ?? fail("fight <char> <char> <script>"), p[3], args.at);
+        return;
+      }
+
       case "boxes": {
         const c = requireCharacter(p[0] ?? fail("boxes <char> <move> [--at N] [--vs <char>] [--crouch]"));
         const m = requireCharacterMove(c, p[1]);
@@ -387,6 +397,51 @@ function printWalk(character: string, script: string): void {
   }
   const end = fighter.position();
   console.log(`\n  ${frame} frames, ended at x ${end.x.toFixed(1)} in ${fighter.actionName}`);
+}
+
+/**
+ * `<numpad>[buttons]x<frames>` steps, comma separated: `2+MKx3,5x60` is
+ * "crouching MK, then let go". Buttons are `+`-joined after the direction.
+ */
+function parseScript(script: string): { dir: Direction; buttons: Button[]; frames: number }[] {
+  return script.split(",").map((part) => {
+    const match = /^(\d)((?:\+[A-Za-z]{2})*)x(\d+)$/.exec(part.trim());
+    if (!match) throw new Error(`"${part}" — expected <numpad>[+BTN...]x<frames>, e.g. 2+MKx3`);
+    const dir = Number(match[1]);
+    if (dir < 1 || dir > 9) throw new Error(`"${part}" — direction must be 1-9`);
+    const buttons = (match[2] ?? "").split("+").filter(Boolean).map((b) => b.toUpperCase() as Button);
+    return { dir: dir as Direction, buttons, frames: Number(match[3]) };
+  });
+}
+
+/** Two fighters, one clock. The second script defaults to standing still. */
+function printFight(left: string, right: string, script: string, opponent?: string, at?: number): void {
+  const one = parseScript(script);
+  const two = opponent ? parseScript(opponent) : [];
+  const flatten = (steps: { dir: Direction; buttons: Button[]; frames: number }[]) =>
+    steps.flatMap((s) => Array.from({ length: s.frames }, () => ({ dir: s.dir, buttons: s.buttons })));
+  const a = flatten(one);
+  const b = flatten(two);
+  const match = new Match(left, right, at !== undefined ? { distance: at } : {});
+  const total = Math.max(a.length, b.length) + 120;
+  console.log(`${left} vs ${right} at ${(at ?? 200)}u\n`);
+  let seen = 0;
+  for (let i = 0; i < total && !match.over; i++) {
+    match.advance(a[i] ?? { dir: 5, buttons: [] }, b[i] ?? { dir: 5, buttons: [] });
+    for (const hit of match.hits.slice(seen)) {
+      const who = hit.attacker === 0 ? left : right;
+      console.log(
+        `  ${String(hit.frame).padStart(4)}  ${who} ${hit.action} ${hit.type} ` +
+          `— ${hit.damage} damage, ${hit.stun}f stun, into ${hit.reaction}`,
+      );
+    }
+    seen = match.hits.length;
+  }
+  const [x, y] = match.fighters.map((f) => f.position().x.toFixed(0));
+  console.log(
+    `\n  ${match.frame} frames — health ${match.health.join(" / ")}, ` +
+      `positions ${x} / ${y}${match.over ? "  (KO)" : ""}`,
+  );
 }
 
 function printBoxes(character: Character, move: Move, args: Args): void {

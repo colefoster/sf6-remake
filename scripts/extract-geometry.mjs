@@ -617,6 +617,11 @@ function extractTriggers(file, used, commandFile) {
       // Which buttons, and (where there is one) the motion in front of them.
       if (scheme.ok_key_flags) record.keys = keyNames(scheme.ok_key_flags);
       if (scheme.ng_key_flags) record.forbid = keyNames(scheme.ng_key_flags);
+      // `dc_exc_flags` is the direction the button has to be pressed with, in
+      // the same nibble as everything else: Ryu's 5MP, 2MP and 6MP are one
+      // button and three triggers differing only here (0, down, forward). It is
+      // the only thing that tells a crouching normal from a standing one.
+      if (scheme.dc_exc_flags) record.dir = keyNames(scheme.dc_exc_flags & 0xf);
       if (commandFile && (scheme.command_index ?? -1) > -1) {
         const group = commandFile[String(scheme.command_no).padStart(2, "0")];
         const motions = Object.values(group ?? {})
