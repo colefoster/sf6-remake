@@ -4,6 +4,8 @@
 - Date: 2026-08-18
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md),
   [ADR-0010](./0010-the-grader.md), [ADR-0014](./0014-per-frame-invulnerability.md)
+- Extended by: [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md) — the attack
+  side turns out to be empty, and the Drive-move mis-mapping below is structural.
 
 ## Context
 
@@ -101,6 +103,9 @@ Drive Impact is graded through its **action name**, not a move mapping. `ATK_CTA
 is the same action on all 24 fighters and FAT's `HPHK` is unambiguous, so the join
 is on identity — which matters here, because the frames are the thing under test
 and joining on frames would be circular.
+([ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md) later teaches the mapper
+the same identity, so the grader dropped the special case and reads `HPHK` through
+the ordinary mapping. The rate is unchanged.)
 
 ## Consequences
 
@@ -115,10 +120,11 @@ and joining on frames would be circular.
   on a special that happens to share them. It is a `frame-unique` match, which
   ADR-0004's vocabulary already marks as soft, so this is the machinery working as
   designed and being wrong anyway. The grader ignores it in favour of `ATK_CTA`;
-  the mapping itself is left alone.
+  the mapping itself is left alone — until
+  [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md), which finds the same
+  failure on four more fighters' Drive Reversals and fixes the cause.
 - **Drive Impact is unmapped for the other 23 fighters**, so `sf6 boxes <char> HPHK`
-  cannot reach it. Adding it would be a separate change to the mapper, and it is
-  worth making — it is a universal mechanic with full published frame data.
+  cannot reach it. [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md) fixes it.
 - Nothing in the sim consumes armor yet, for the reason ADR-0014 gave about
   invulnerability: the dummy does not attack, so nothing ever tests a hit against
   an armored box. ADR-0009 already lists that as the blocking gap.
@@ -137,7 +143,8 @@ and joining on frames would be circular.
   on 9-32" — two windows in one sentence, which the parser skips rather than
   half-matching. Its atemi keys split 1-9 / 10-10 / 11-13 / 14-56, which is
   suggestive of the same two-stage structure and is not the same numbers.
-- **The attack side is untouched.** `ArmorPoint` on the hit-data entry has been
-  extracted since ADR-0006 and is also read by nothing, and FAT's "Armor Break"
-  appears 154 times — an external grader for a second armor field, and the obvious
-  next thing.
+- **The attack side is closed, and it is empty.**
+  [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md) establishes that
+  `ArmorPoint` is zero on all 79,175 occurrences, that no other hit-data field
+  marks Armor Break, and that the tag is predicted at 99.4% by the move's class:
+  every super and every Drive Reversal breaks armor, and nothing else does.

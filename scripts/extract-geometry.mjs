@@ -602,13 +602,29 @@ function candidatesFor(input, actions) {
 }
 
 /**
+ * The Drive system's universal moves. Their notations are nothing like their
+ * action names, so the name path finds no candidates and the frame-fingerprint
+ * fallback lands on whatever else happens to share their profile — Jamie's Drive
+ * Impact resolved to `SPA6_H`, and three fighters' Drive Reversals to unrelated
+ * specials. They are the same action on every fighter, so name them, and keep the
+ * fallback away from them in both directions. See docs/adr/0017.
+ */
+const SYSTEM_ACTIONS = { HPHK: "ATK_CTA", "6HPHK": "ATK_CTA_4" };
+const isSystemAction = (name) => Object.values(SYSTEM_ACTIONS).some((n) => name === n || name.startsWith(`${n}(`));
+
+/**
  * Map a FAT move onto an action. Names get us a candidate set; FAT's startup
  * picks the right sibling (Ryu's `ATK_5HK` is 5HK at startup 12, `ATK_5HK(1)`
  * is the 5HP > HK follow-up at 9, `ATK_5HK_2` the 5MP > LK > HK one at 17).
  */
 function mapMove(fatMove, actions, sigs) {
   const fatStartup = int(fatMove.startup);
-  let pool = candidatesFor(fatMove.numCmd, actions);
+  const system = SYSTEM_ACTIONS[fatMove.numCmd];
+  // Named outright, but still scored the ordinary way: the match quality has to
+  // stay honest about whether the frames agree.
+  let pool = system
+    ? actions.filter((a) => a.name === system)
+    : candidatesFor(fatMove.numCmd, actions).filter((a) => !isSystemAction(a.name));
 
   // Prefer the newest rebalance of a move when both are present.
   const years = pool.filter((a) => /_Y\d$/.test(a.name));
@@ -625,10 +641,19 @@ function mapMove(fatMove, actions, sigs) {
     return mapping(fatMove, best, best.delta === 0 ? "exact" : "close", scored);
   }
 
+  // A system move is identified by name or not at all — a coincidental frame
+  // profile is what put Drive Impact on a special in the first place.
+  // Naming it is certain; agreeing with FAT's startup is a separate question, so
+  // the label still comes from the frames. Drive Reversal lands `weak` on every
+  // fighter because FAT's startup for it is 4 higher than the action's own first
+  // active frame — consistently, which makes it a structural difference rather
+  // than a bad match. See docs/adr/0017.
+  if (system) return best ? mapping(fatMove, best, "weak", scored) : null;
+
   // No plausibly-named action: fall back to a unique frame-data fingerprint.
   // This is how notation disagreements get caught (Ryu's 6HK is ATK_3HK) and how
   // specials land, since their action names are Japanese move names, not inputs.
-  const unique = frameUnique(fatMove, sigs, actions);
+  const unique = frameUnique(fatMove, sigs, actions.filter((a) => !isSystemAction(a.name)));
   if (unique) return mapping(fatMove, unique, "frame-unique", []);
 
   return best ? mapping(fatMove, best, "weak", scored) : null;

@@ -229,7 +229,7 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   123 tests, including assertions against the real data
+tests/                   126 tests, including assertions against the real data
 ```
 
 ## Known limitations
@@ -245,7 +245,7 @@ tests/                   123 tests, including assertions against the real data
 To run the test suite and the type checker, run the following commands:
 
 ```bash
-npm test          # 123 tests
+npm test          # 126 tests
 npm run typecheck
 ```
 
@@ -279,9 +279,10 @@ armor vs the published notes
   window       26/26 100.0%   the atemi keys' frames == FAT's published armor window
   low beats it 2/2 100.0%     FAT says a low goes under it == the window skips the leg box
   low does not 24/24 100.0%   FAT says nothing == the window covers the leg box
+  armor break  808/813 99.4%  FAT's "Armor Break" tag == the move is a super or a Drive Reversal
 ```
 
-Armor is applied per hurtbox, which is why body-only armor loses to a low attack — Drive Impact's covers head, body and leg on frames 1-27 for all 24 fighters ([ADR-0016: armor is per hurtbox](./docs/adr/0016-armor-is-per-hurtbox.md)).
+Armor is applied per hurtbox, which is why body-only armor loses to a low attack — Drive Impact's covers head, body and leg on frames 1-27 for all 24 fighters ([ADR-0016: armor is per hurtbox](./docs/adr/0016-armor-is-per-hurtbox.md)). Armor Break has no field at all: it's what supers and Drive Reversals do ([ADR-0017: Armor Break is a rule, not a flag](./docs/adr/0017-armor-break-is-a-rule-not-a-flag.md)).
 
 FAT records invulnerability only as prose, so that grader compares a **frame range to a sentence** ([ADR-0014: per-frame invulnerability](./docs/adr/0014-per-frame-invulnerability.md)).
 

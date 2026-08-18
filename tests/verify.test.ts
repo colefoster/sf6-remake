@@ -4,7 +4,7 @@ import { globSync } from "node:fs";
 
 import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
 import { verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
-import { verifyArmor } from "../src/verify/armor.js";
+import { verifyArmor, verifyArmorBreak } from "../src/verify/armor.js";
 import {
   actionableFrame,
   airOnly,
@@ -395,6 +395,65 @@ describe("armor against the published notes", () => {
     expect(partial(1)).toBe(0);
     expect(full(7)).toBe(0);
     expect(partial(7)).toBeGreaterThan(10);
+  });
+
+  it("has no attack-side armor field to read, and the dump says so", () => {
+    // `ArmorPoint` on the hit-data entry is zero on all 79,175 occurrences in the
+    // roster, so the extractor never emits `armor` at all. Asserted because the
+    // field's *existence* is the thing that invites a decode that cannot happen.
+    // See ADR-0017.
+    let outcomes = 0;
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      for (const data of Object.values(geo.hitData ?? {})) {
+        for (const outcome of Object.values(data)) {
+          outcomes++;
+          expect(outcome?.armor).toBeUndefined();
+        }
+      }
+    }
+    expect(outcomes).toBeGreaterThan(10000);
+  });
+
+  it("predicts Armor Break from the move's class, because nothing marks it", () => {
+    // Armor Break is not a property of a move: every Super Art and every Drive
+    // Reversal breaks armor and nothing else does. The dump classifies both — the
+    // trigger `kind` flags from ADR-0009 and the Drive Reversal action — so FAT's
+    // tag can be graded against a rule rather than a flag.
+    const brk = verifyArmorBreak();
+    expect(brk.checked).toBeGreaterThan(700);
+    expect(brk.agreeing / brk.checked).toBeGreaterThan(0.98);
+    // The residue is the move mapper, not the rule: every disagreement is a super
+    // whose notation landed on a special.
+    for (const row of brk.rows.filter((r) => !r.agrees)) {
+      expect(`${row.character} ${row.input}: ${row.published}`).toBe(`${row.character} ${row.input}: true`);
+    }
+  });
+
+  it("maps the Drive system's universal moves by name on every fighter", () => {
+    // `HPHK` and `6HPHK` have no action name to match, so the mapper's frame
+    // fingerprint used to land them on unrelated specials. See ADR-0017.
+    let impact = 0, reversal = 0;
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      const di = geo.moves.find((m) => m.input === "HPHK");
+      const dr = geo.moves.find((m) => m.input === "6HPHK");
+      if (di) {
+        impact++;
+        expect(`${geo.id}: ${di.actionName} ${di.match}`).toBe(`${geo.id}: ATK_CTA exact`);
+      }
+      if (dr) {
+        reversal++;
+        expect(`${geo.id}: ${dr.actionName}`).toBe(`${geo.id}: ATK_CTA_4`);
+        // FAT's startup for a Drive Reversal is 4 higher than the action's own
+        // first active frame, on every fighter — structural, not a bad match.
+        expect(`${geo.id}: ${dr.startupDelta}`).toBe(`${geo.id}: 4`);
+      }
+    }
+    expect(impact).toBe(24);
+    expect(reversal).toBeGreaterThan(20);
   });
 
   it("answers the per-part question a low attack asks", () => {

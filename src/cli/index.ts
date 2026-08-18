@@ -35,7 +35,7 @@ import {
 import { runScenario, type ScenarioResult } from "../sim/index.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
-import { armorDisagreements, verifyArmor } from "../verify/armor.js";
+import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -634,6 +634,11 @@ function printArmor(report: ReturnType<typeof verifyArmor>): void {
   );
   console.log(
     `  low does not ${pct(totals.holdsLow.coversLeg, totals.holdsLow.total).padEnd(18)} FAT says nothing == the window covers the leg box`,
+  );
+  // Armor Break has no field at all: it is what supers and Drive Reversals do.
+  const brk = verifyArmorBreak();
+  console.log(
+    `  armor break  ${pct(brk.agreeing, brk.checked).padEnd(18)} FAT's "Armor Break" tag == the move is a super or a Drive Reversal`,
   );
 
   const bad = armorDisagreements(report);

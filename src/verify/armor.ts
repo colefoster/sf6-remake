@@ -9,25 +9,21 @@
  * What the dump does carry is where the armor is and which hurtboxes it covers,
  * and those are the two things FAT writes down.
  *
- * Drive Impact is graded through its action name rather than a move mapping.
- * `ATK_CTA` is the same action on all 24 fighters and FAT's `HPHK` is unambiguous,
- * so the join is on identity, not on numbers — which matters, because the frames
- * are the thing under test.
+ * Drive Impact reaches this grader through the ordinary move mapping. It did not
+ * when the check was written — `HPHK` has no action name to match and the mapper's
+ * frame-fingerprint fallback put it on an unrelated special — so this graded it
+ * through `ATK_CTA` directly. ADR-0017 fixed the mapper instead.
  */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { armorWindows, loadGeometry, type GeometryAction } from "../data/geometry.js";
+import { armorWindows, loadGeometry } from "../data/geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
-
-/** Drive Impact's action, universal across the roster, and FAT's notation for it. */
-const DRIVE_IMPACT_ACTION = "ATK_CTA";
-const DRIVE_IMPACT_INPUT = "HPHK";
 
 export interface ArmorClaim {
   character: string;
@@ -66,6 +62,13 @@ export interface ArmorReport {
 interface FatMove {
   numCmd?: string;
   extraInfo?: string[];
+}
+
+/** Only the two `GeometryFile` fields this module reads beyond the actions. */
+interface TriggerLike {
+  action: number;
+  kind?: string[];
+  super?: number;
 }
 
 let fatCache: Record<string, Record<string, FatMove>> | undefined;
@@ -114,20 +117,11 @@ export function verifyArmor(characters?: string[]): ArmorReport {
     if (!geo) continue;
     const fat = fatMoves(geo.character);
 
-    // Every action we can put a notation to: the mapped moves, plus Drive Impact,
-    // which FAT lists among the normals and the move mapper never matches.
-    const cta = geo.actions.find((a) => a.name === DRIVE_IMPACT_ACTION);
-    const targets: { input: string; action: GeometryAction | undefined; actionName: string }[] = geo.moves
-      // `ATK_CTA` *is* Drive Impact by name on all 24 fighters. Where the move
-      // mapper also produced an `HPHK` row it is a frame-unique guess and loses to
-      // that — Jamie's lands on `SPA6_H`, which is not Drive Impact at all.
-      .filter((m) => !(cta && m.input === DRIVE_IMPACT_INPUT))
-      .map((m) => ({
-        input: m.input,
-        action: geo.actions.find((a) => a.id === m.action),
-        actionName: m.actionName,
-      }));
-    if (cta) targets.push({ input: DRIVE_IMPACT_INPUT, action: cta, actionName: cta.name });
+    const targets = geo.moves.map((m) => ({
+      input: m.input,
+      action: geo.actions.find((a) => a.id === m.action),
+      actionName: m.actionName,
+    }));
 
     for (const { input, action, actionName } of targets) {
       const info = fat[input]?.extraInfo;
@@ -185,4 +179,65 @@ export function verifyArmor(characters?: string[]): ArmorReport {
 /** Just the claims the dump does not reproduce. */
 export function armorDisagreements(report: ArmorReport): ArmorClaim[] {
   return report.claims.filter((c) => !c.agrees);
+}
+
+export interface BreakRow {
+  character: string;
+  input: string;
+  actionName: string;
+  /** FAT tags the move "Armor Break". */
+  published: boolean;
+  /** The dump says it is a Super Art or a Drive Reversal. */
+  predicted: boolean;
+  agrees: boolean;
+}
+
+/**
+ * Armor Break, which turns out not to be a property of a move at all.
+ *
+ * Nothing in the dump marks it: `ArmorPoint` on the hit-data entry is zero on all
+ * 79,175 occurrences in the roster, and no other hit-data field separates the
+ * moves FAT tags from the ones it doesn't. What does separate them is the move's
+ * *class* — every Super Art and every Drive Reversal breaks armor, and nothing
+ * else does. So this check grades FAT's tag against the dump's own classification:
+ * the trigger `kind` flags ADR-0009 extracted, plus the Drive Reversal action.
+ *
+ * A rule rather than a flag is a real answer to "where is Armor Break stored".
+ * See ADR-0017.
+ */
+export function verifyArmorBreak(characters?: string[]): { rows: BreakRow[]; checked: number; agreeing: number } {
+  const names = characters?.length ? characters : listCharacters();
+  const rows: BreakRow[] = [];
+
+  for (const name of names) {
+    const geo = loadGeometry(requireCharacter(name).id);
+    if (!geo) continue;
+    const fat = fatMoves(geo.character);
+
+    const supers = new Set<number>();
+    for (const trigger of Object.values(geo.triggers ?? {}) as TriggerLike[]) {
+      const isSuper = (trigger.kind ?? []).some((k) => /^Lv[1-4]$/.test(k)) || (trigger.super ?? 0) > 0;
+      if (isSuper) supers.add(trigger.action);
+    }
+    const reversals = new Set(
+      geo.actions.filter((a) => /^ATK_CTA_4/.test(a.name)).map((a) => a.id),
+    );
+
+    for (const move of geo.moves) {
+      const info = fat[move.input]?.extraInfo;
+      if (!info) continue;
+      const published = info.some((s) => /armor break/i.test(s));
+      const predicted = supers.has(move.action) || reversals.has(move.action);
+      rows.push({
+        character: geo.character,
+        input: move.input,
+        actionName: move.actionName,
+        published,
+        predicted,
+        agrees: published === predicted,
+      });
+    }
+  }
+
+  return { rows, checked: rows.length, agreeing: rows.filter((r) => r.agrees).length };
 }
