@@ -217,6 +217,7 @@ src/
     index.ts             public API (the deep module)
   verify/index.ts        the grader: dumped data vs published, imported by neither
   verify/invuln.ts       the invulnerability grader: frame ranges vs FAT's prose
+  verify/armor.ts        the armor grader: atemi keys vs FAT's prose
   sim/index.ts           the scenario player: two fighters, shared clock
   cli/index.ts           the `sf6` command
 scripts/
@@ -228,7 +229,7 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   118 tests, including assertions against the real data
+tests/                   123 tests, including assertions against the real data
 ```
 
 ## Known limitations
@@ -244,7 +245,7 @@ tests/                   118 tests, including assertions against the real data
 To run the test suite and the type checker, run the following commands:
 
 ```bash
-npm test          # 118 tests
+npm test          # 123 tests
 npm run typecheck
 ```
 
@@ -272,7 +273,15 @@ per-frame invulnerability vs the published notes
   airborne-strike  45/56 80.4%   Immune bit 2 == FAT's 'invincible to airborne strikes on frames A-B'
   projectile       48/60 80.0%   TypeFlag without bit 1 == FAT's 'projectile invincible on frames A-B'
   strike           23/23 100.0%  TypeFlag without bit 0 == FAT's 'strike invincible on frame N'
+
+armor vs the published notes
+
+  window       26/26 100.0%   the atemi keys' frames == FAT's published armor window
+  low beats it 2/2 100.0%     FAT says a low goes under it == the window skips the leg box
+  low does not 24/24 100.0%   FAT says nothing == the window covers the leg box
 ```
+
+Armor is applied per hurtbox, which is why body-only armor loses to a low attack — Drive Impact's covers head, body and leg on frames 1-27 for all 24 fighters ([ADR-0016: armor is per hurtbox](./docs/adr/0016-armor-is-per-hurtbox.md)).
 
 FAT records invulnerability only as prose, so that grader compares a **frame range to a sentence** ([ADR-0014: per-frame invulnerability](./docs/adr/0014-per-frame-invulnerability.md)).
 

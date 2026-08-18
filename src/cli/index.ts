@@ -23,6 +23,7 @@ import {
   idleHurtboxes,
   BAR,
   cancelOptions,
+  armorWindows,
   hitDataFor,
   invulnerableWindows,
   loadGeometry,
@@ -34,6 +35,7 @@ import {
 import { runScenario, type ScenarioResult } from "../sim/index.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
+import { armorDisagreements, verifyArmor } from "../verify/armor.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -309,6 +311,7 @@ function main(): void {
         const only = p.length ? p.map((q) => requireCharacter(q).name) : undefined;
         printVerification(verify(only));
         printInvulnerability(verifyInvuln(only));
+        printArmor(verifyArmor(only));
         return;
       }
 
@@ -370,6 +373,13 @@ function printBoxes(character: Character, move: Move, args: Args): void {
     .filter((row) => row.windows.length);
   for (const { kind, windows } of invuln) {
     console.log(`  invuln       ${windows.map((w) => `${w.start}-${w.end}`).join(", ")} to ${kind}`);
+  }
+  for (const w of armorWindows(action)) {
+    // Which parts the armor covers is the load-bearing part: body-only armor is
+    // armor a low attack goes under. See ADR-0016.
+    const parts = (["head", "body", "leg"] as const).filter((p) => w.covers[p]);
+    const gloss = w.covers.leg ? "" : " — a low attack goes under it";
+    console.log(`  armor        ${w.start}-${w.end} on ${parts.join("+")}${gloss}`);
   }
   console.log(`  vs           ${defender.name}, ${stance}ing (${opponent.length} hurtboxes)`);
   if (closest !== undefined) console.log(`  point blank  ${u(closest)} (pushboxes touching)`);
@@ -605,5 +615,35 @@ function printInvulnerability(report: ReturnType<typeof verifyInvuln>): void {
       );
     }
     if (bad.length > 30) console.log(`    ... and ${bad.length - 30} more`);
+  }
+}
+
+/**
+ * The armor grader. `AtemiDataListIndex` points into a table the dump does not
+ * ship, so what is checkable is where the armor is and what it covers — and both
+ * are what FAT writes down.
+ */
+function printArmor(report: ReturnType<typeof verifyArmor>): void {
+  const { totals } = report;
+  const pct = (n: number, of: number) => (of ? `${n}/${of} ${((n / of) * 100).toFixed(1)}%` : "—");
+
+  console.log("\n\narmor vs the published notes\n");
+  console.log(`  window       ${pct(totals.exact, totals.checked).padEnd(18)} the atemi keys' frames == FAT's published armor window`);
+  console.log(
+    `  low beats it ${pct(totals.losesToLow.bodyOnly, totals.losesToLow.total).padEnd(18)} FAT says a low goes under it == the window skips the leg box`,
+  );
+  console.log(
+    `  low does not ${pct(totals.holdsLow.coversLeg, totals.holdsLow.total).padEnd(18)} FAT says nothing == the window covers the leg box`,
+  );
+
+  const bad = armorDisagreements(report);
+  if (bad.length) {
+    console.log(`\n  ${bad.length} claims the dump does not reproduce:`);
+    for (const c of bad) {
+      const got = c.dump ? `${c.dump[0]}-${c.dump[1]}` : "absent";
+      console.log(
+        `    ${c.character.padEnd(9)} ${c.input.padEnd(14)} published ${`${c.fat[0]}-${c.fat[1]}`.padStart(7)} vs dump ${got.padStart(7)}  (${c.actionName})`,
+      );
+    }
   }
 }

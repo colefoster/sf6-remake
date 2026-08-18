@@ -193,6 +193,10 @@ function extractAction(action, rect, unresolvedPush) {
     // `TypeFlag` says which kinds of attack the box answers to at all: 1 strike,
     // 2 projectile. 3 is the ordinary box and is left off. See ADR-0014.
     if ((key.TypeFlag ?? 3) !== 3) entry.typeFlag = key.TypeFlag ?? 0;
+    // `AtemiDataListIndex` is armor: a row in a table the dump does not ship, so
+    // the index is a discriminator rather than a payload. Which frames and which
+    // body parts it covers are here, and that is what FAT publishes. See ADR-0016.
+    if ((key.AtemiDataListIndex ?? -1) >= 0) entry.atemi = key.AtemiDataListIndex;
     hurt.push(entry);
   }
 

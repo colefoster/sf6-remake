@@ -4,9 +4,12 @@ import { globSync } from "node:fs";
 
 import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
 import { verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
+import { verifyArmor } from "../src/verify/armor.js";
 import {
   actionableFrame,
   airOnly,
+  armoredAt,
+  armorWindows,
   hurtboxesAt,
   loadGeometry,
   touchdownFrame,
@@ -339,6 +342,67 @@ describe("per-frame invulnerability against the published notes", () => {
       }
     }
     expect(seen128).toBeGreaterThan(150);
+  });
+});
+
+describe("armor against the published notes", () => {
+  const report = verifyArmor();
+
+  it("reproduces every published armor window exactly", () => {
+    // `AtemiDataListIndex` was extracted by nothing and points into a table the
+    // dump does not ship. Where the armor sits *is* in the dump, and it agrees
+    // with FAT on every claim the grader can reach. See ADR-0016.
+    expect(report.totals.checked).toBeGreaterThan(24);
+    expect(report.totals.exact).toBe(report.totals.checked);
+  });
+
+  it("puts Drive Impact's two hits of armor on frames 1-27 for all 24 fighters", () => {
+    // The roster-wide anchor, and the reason this decode needed no guessing:
+    // `ATK_CTA` is the same action on every fighter and FAT publishes the same
+    // sentence for every one of them.
+    const di = report.claims.filter((c) => c.input === "HPHK");
+    expect(di.length).toBe(24);
+    for (const c of di) {
+      expect(`${c.character}: ${c.dump?.join("-")} ${c.hits}hit idx${c.index.join()}`).toBe(
+        `${c.character}: 1-27 2hit idx1`,
+      );
+    }
+  });
+
+  it("explains 'loses to Low attacks' by which hurtboxes the armor covers", () => {
+    // The finding that armor is applied per box rather than per fighter. Every
+    // claim FAT qualifies with "loses to Low" has a window that skips the leg
+    // box, and every claim it does not qualify covers the leg box.
+    const { losesToLow, holdsLow } = report.totals;
+    expect(losesToLow.total).toBeGreaterThan(1);
+    expect(losesToLow.bodyOnly).toBe(losesToLow.total);
+    expect(holdsLow.total).toBeGreaterThan(20);
+    expect(holdsLow.coversLeg).toBe(holdsLow.total);
+  });
+
+  it("partitions the atemi indices by what they cover, across the roster", () => {
+    // Independent of FAT: the coverage is a property of the table row, not of the
+    // move. Index 1 is Drive Impact and always covers everything; Marisa's
+    // index 7 never covers the legs.
+    const windows = listCharacters().flatMap((name) => {
+      const geo = loadGeometry(requireCharacter(name).id);
+      return geo ? geo.actions.flatMap((a) => armorWindows(a)) : [];
+    });
+    const full = (i: number) => windows.filter((w) => w.index === i && w.covers.leg).length;
+    const partial = (i: number) => windows.filter((w) => w.index === i && !w.covers.leg).length;
+    expect(windows.length).toBeGreaterThan(80);
+    expect(full(1)).toBeGreaterThan(45);
+    expect(partial(1)).toBe(0);
+    expect(full(7)).toBe(0);
+    expect(partial(7)).toBeGreaterThan(10);
+  });
+
+  it("answers the per-part question a low attack asks", () => {
+    const phalanx = loadGeometry("marisa")!.actions.find((a) => a.name === "SPA_Phalanx")!;
+    expect(armoredAt(phalanx, 9, "body")).toBe(true);
+    expect(armoredAt(phalanx, 9, "leg")).toBe(false);
+    // And outside the window nothing is armored, on any part.
+    expect(armoredAt(phalanx, 20, "body")).toBe(false);
   });
 });
 

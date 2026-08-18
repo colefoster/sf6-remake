@@ -53,6 +53,12 @@ export interface HurtKey {
    * projectiles. Absent means 3 — both, the ordinary case.
    */
   typeFlag?: number;
+  /**
+   * Armor: this box absorbs a hit instead of taking it. The number is a row in
+   * an atemi table the dump does not ship, so it identifies *which* armor
+   * without saying what it does. See ADR-0016.
+   */
+  atemi?: number;
 }
 
 /**
@@ -384,6 +390,49 @@ export function invulnerableWindows(
     else out.push({ start: frame, end: frame });
   }
   return out;
+}
+
+/**
+ * A stretch of frames on which the fighter has armor, and what it covers.
+ *
+ * `covers` is the finding, not bookkeeping: armor is applied per hurtbox, so a
+ * window that covers the body and not the leg is armor a low attack goes under.
+ * FAT says exactly that about the moves whose window is body-only — "loses to Low
+ * attacks", "attacks that hit low enough can go past the armor". See ADR-0016.
+ */
+export interface ArmorWindow {
+  start: number;
+  end: number;
+  /** Which atemi table row applies. Drive Impact is 1 on every fighter. */
+  index: number;
+  covers: { head: boolean; body: boolean; leg: boolean };
+}
+
+/** Every armor window the action carries, merged per atemi index. */
+export function armorWindows(action: GeometryAction): ArmorWindow[] {
+  const byIndex = new Map<number, ArmorWindow>();
+  for (const key of action.hurt) {
+    if (key.atemi === undefined) continue;
+    const found = byIndex.get(key.atemi);
+    const covers = {
+      head: key.head.length > 0,
+      body: key.body.length > 0,
+      leg: key.leg.length > 0,
+    };
+    if (!found) {
+      byIndex.set(key.atemi, { start: key.start, end: key.end, index: key.atemi, covers });
+      continue;
+    }
+    found.start = Math.min(found.start, key.start);
+    found.end = Math.max(found.end, key.end);
+    for (const part of ["head", "body", "leg"] as const) found.covers[part] ||= covers[part];
+  }
+  return [...byIndex.values()].sort((a, b) => a.start - b.start);
+}
+
+/** Whether an attack at this height is absorbed rather than landing. */
+export function armoredAt(action: GeometryAction, frame: number, part: keyof ArmorWindow["covers"]): boolean {
+  return armorWindows(action).some((w) => frame >= w.start && frame <= w.end && w.covers[part]);
 }
 
 /** Where the character origin is on this frame, relative to where it started. */
