@@ -455,6 +455,33 @@ const round2 = (n) => Math.round(n * 100) / 100;
 /** The furthest the origin gets from home, keeping the sign (back dashes). */
 const extreme = (list) => list.reduce((best, v) => (Math.abs(v) > Math.abs(best) ? v : best), 0);
 
+/**
+ * Where an airborne action puts itself down.
+ *
+ * An action that ends in the air carries no `MarginFrame` of its own — there is
+ * nothing to recover from until you touch the ground — and hands off to a
+ * landing action that does. Ryu's Shoryuken runs its 35 frames, which is
+ * exactly when its own motion curve returns to y = 0, then branches into
+ * `SPA_SYORYU_END` whose margin is 12. FAT publishes that move's recovery as
+ * "21+12": 35 - (startup + active - 1) = 21, and 12 is the landing action's
+ * margin. Both halves of the published number come out of the dump.
+ *
+ * Chased through intermediate branches, because some moves land via an
+ * in-between action; capped in depth because branches can cycle.
+ */
+function extractLanding(action, byId, depth = 0, seen = new Set()) {
+  if (depth > 4 || seen.has(action.id)) return null;
+  seen.add(action.id);
+  for (const branch of action.branches ?? []) {
+    const target = byId.get(branch.action);
+    if (!target) continue;
+    if (target.marginFrame > 0) return { action: target.id, margin: target.marginFrame };
+    const deeper = extractLanding(target, byId, depth + 1, seen);
+    if (deeper) return deeper;
+  }
+  return null;
+}
+
 /** 5HK branches to the same action on four consecutive frames; keep the first. */
 function dedupeBranches(branches) {
   const seen = new Set();
@@ -732,6 +759,13 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   }
   actions.sort((a, b) => a.id - b.id);
   spliceContinuations(actions);
+  // Airborne actions have no margin of their own; theirs is on the landing.
+  const byId = new Map(actions.map((a) => [a.id, a]));
+  for (const action of actions) {
+    if (action.marginFrame > 0) continue;
+    const lands = extractLanding(action, byId);
+    if (lands) action.lands = lands;
+  }
   const sigs = new Map(actions.map((a) => [a.id, signature(a)]));
 
   const fatMoves = Object.values(fat.moves.normal);

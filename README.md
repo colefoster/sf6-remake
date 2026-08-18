@@ -112,7 +112,7 @@ Pick a move, scrub the timeline, and see every box per frame with the opponent p
 
 ### The scenario player
 
-Two fighters on a shared 60 fps clock. **It reads no published number at all** — it advances the action, finds contact by box overlap at your chosen spacing, takes stun and knockback from the game's hit-data table, and takes the attacker's recovery from the action's own `MarginFrame` ([ADR-0011](./docs/adr/0011-margin-frame-is-recovery.md)). Comparing what it says to the published advantage is therefore two independent sources agreeing.
+Two fighters on a shared 60 fps clock. **It reads no published number at all** — it advances the action, finds contact by box overlap at your chosen spacing, takes stun and knockback from the game's hit-data table, and takes the attacker's recovery from the action's own `MarginFrame` — or, for a move that ends in the air, from the landing it hands off to ([ADR-0011](./docs/adr/0011-margin-frame-is-recovery.md), [ADR-0012](./docs/adr/0012-landing-recovery.md)). Comparing what it says to the published advantage is therefore two independent sources agreeing.
 
 ```bash
 $ npm run sf6 -- play ryu 2mk --at 150

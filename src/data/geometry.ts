@@ -103,6 +103,8 @@ export interface GeometryAction {
   push: PushKey[];
   motion?: Motion;
   cancels?: CancelKey[];
+  /** Where an airborne action puts itself down, and that action's own margin. */
+  lands?: { action: number; margin: number };
   branches?: { frame: number; action: number; type: number | null }[];
   continues?: number;
   mot?: string;
@@ -167,11 +169,6 @@ export interface MoveMapping {
 }
 
 /**
- * When a move can be cancelled into a special. `start` is at or after the move's
- * own first active frame — on it for a single-hit normal, later for a multi-hit
- * one — and `buffer` is where an input starts being held.
- */
-/**
  * One way into an action: what it costs, how long the input buffers, and the
  * game's own classification of it.
  *
@@ -193,6 +190,11 @@ export interface Trigger {
 /** One bar of Drive or super gauge, in the units the triggers are denominated in. */
 export const BAR = 10000;
 
+/**
+ * When a move can be cancelled into a special. `start` is at or after the move's
+ * own first active frame — on it for a single-hit normal, later for a multi-hit
+ * one — and `buffer` is where an input starts being held.
+ */
 export interface CancelWindow {
   start: number;
   end: number;
@@ -395,6 +397,29 @@ export function cancellableAt(move: MoveMapping, frame: number): boolean {
 }
 
 /**
+ * The frame an airborne action returns to the ground, from its own motion
+ * curve: the first frame at y = 0 after having left it. Undefined for anything
+ * that never leaves the ground or carries no vertical motion.
+ */
+export function touchdownFrame(action: GeometryAction): number | undefined {
+  const y = action.motion?.y;
+  if (!y) return undefined;
+  for (let i = 1; i < y.length; i++) {
+    if (y[i]! <= 0 && y[i - 1]! > 0) return i + 1;
+  }
+  return undefined;
+}
+
+/** Where an action's recovery number came from. See docs/adr/0011 and 0012. */
+export type RecoverySource = "action" | "landing" | "published";
+
+export interface Actionable {
+  /** 1-indexed frame of the action on which the attacker is free again. */
+  frame: number;
+  source: Exclude<RecoverySource, "published">;
+}
+
+/**
  * The frame the attacker can act again, 1-indexed in the action's own frames.
  *
  * `MarginFrame` is the action's last committed frame; you are free on the one
@@ -402,11 +427,26 @@ export function cancellableAt(move: MoveMapping, frame: number): boolean {
  * roster — the animation keeps playing past the point you can cancel out of it,
  * which is what makes this recovery rather than animation length.
  *
- * Undefined where the action has no margin recorded, which is where the caller
- * has to fall back on the published `active + recovery`. See docs/adr/0011.
+ * An action that ends in the air has no margin at all, because there is nothing
+ * to recover from until you touch down. Its recovery lives on the landing action
+ * it branches into, and the handoff happens where its own motion curve returns
+ * to the ground. See docs/adr/0012.
+ *
+ * Undefined where neither is recorded, which is where the caller falls back on
+ * the published `active + recovery`.
  */
-export function actionableFrame(action: GeometryAction): number | undefined {
-  return action.marginFrame && action.marginFrame > 0 ? action.marginFrame + 1 : undefined;
+export function actionableFrame(action: GeometryAction): Actionable | undefined {
+  if (action.marginFrame && action.marginFrame > 0) {
+    return { frame: action.marginFrame + 1, source: "action" };
+  }
+  const touchdown = touchdownFrame(action);
+  if (action.lands && touchdown !== undefined) {
+    return { frame: touchdown + action.lands.margin + 1, source: "landing" };
+  }
+  // An action that lands but carries no arc of its own is an air normal: it
+  // inherits the jump's, so when it touches down depends on when it was pressed
+  // and there is no single answer. Saying so beats inventing one.
+  return undefined;
 }
 
 export type Stance = "stand" | "crouch";

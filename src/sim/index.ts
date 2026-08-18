@@ -39,6 +39,7 @@ import {
   type GeometryFile,
   type HitData,
   type HitOutcome,
+  type RecoverySource,
   type Stance,
 } from "../data/geometry.js";
 import { requireCharacter, requireMove } from "../data/index.js";
@@ -109,11 +110,11 @@ export interface ScenarioResult {
   attackerActionable: number | null;
   defenderActionable: number | null;
   /**
-   * Where the attacker's recovery came from: the action's own MarginFrame, or
-   * the published active + recovery when the action has no margin recorded.
-   * Only the first makes the advantage a genuinely independent derivation.
+   * Where the attacker's recovery came from: the action's own MarginFrame, the
+   * landing action it hands off to, or the published active + recovery when the
+   * dump has neither. Only the published case leaves the advantage half-derived.
    */
-  recoverySource: "action" | "published" | null;
+  recoverySource: RecoverySource | null;
   /** Positive means the attacker recovers first. Null when the move whiffed. */
   advantage: number | null;
   damage: number;
@@ -243,9 +244,20 @@ export function runScenario(
         // already counting in. `active + recovery` is the published fallback,
         // and using it means the advantage is only half-derived. See ADR-0011.
         const free = actionableFrame(attacker.action);
-        attackerActionable =
-          free !== undefined ? free - frame : attacker.move.active - depth + attacker.move.recovery;
-        recoverySource = free !== undefined ? "action" : "published";
+        if (free) {
+          attackerActionable = free.frame - frame;
+          recoverySource = free.source;
+        } else if (attacker.move.recovery > 0) {
+          attackerActionable = attacker.move.active - depth + attacker.move.recovery;
+          recoverySource = "published";
+        } else {
+          // An air normal: neither source has a recovery for it, because it ends
+          // when you land and that depends on when you jumped. Reporting no
+          // advantage is the honest answer; the old fallback silently used a
+          // recovery of zero and called a jump-in plus.
+          attackerActionable = null;
+          recoverySource = null;
+        }
         defenderActionable = stun;
         events.push({
           frame,
@@ -321,6 +333,11 @@ export function runScenario(
     frames,
   };
   if (!attacker.data) result.note = "no hit-data entry for this action; outcome fields are empty";
+  else if (contact && attackerActionable === null) {
+    result.note =
+      "this action ends in the air and inherits the jump's arc, so when it recovers " +
+      "depends on when it was pressed; neither source publishes a recovery for it";
+  }
   return result;
 }
 

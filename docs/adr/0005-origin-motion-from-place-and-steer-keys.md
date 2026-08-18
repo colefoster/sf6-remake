@@ -3,6 +3,10 @@
 - Status: accepted
 - Date: 2026-08-17
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md)
+- Partly closed by: [ADR-0012](./0012-landing-recovery.md) — the air-normal gap
+  below is half answered. Its *recovery* cannot be given per action, because the
+  landing frame depends on when the button was pressed; its *position* still
+  needs the two composed.
 
 ## Context
 

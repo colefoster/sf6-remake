@@ -493,10 +493,15 @@ function printScenario(r: ScenarioResult): void {
       (contact.depth ? `, ${contact.depth} frame${contact.depth > 1 ? "s" : ""} deep` : "") +
       ` — ${r.damage} damage`,
   );
-  console.log(
-    `attacker free in ${r.attackerActionable}f, defender in ${r.defenderActionable}f  ->  ` +
-      `${advantage === null ? "?" : f(advantage)}  ${advantage === null ? "" : verdict(signOfNumber(advantage))}`,
-  );
+  if (advantage === null) {
+    console.log(`defender free in ${r.defenderActionable}f; the attacker's recovery is unknown`);
+  } else {
+    const from = r.recoverySource === "landing" ? " (recovery from the landing)" : "";
+    console.log(
+      `attacker free in ${r.attackerActionable}f, defender in ${r.defenderActionable}f  ->  ` +
+        `${f(advantage)}  ${verdict(signOfNumber(advantage))}${from}`,
+    );
+  }
   console.log(`pushed to ${r.endDistance}u (from ${r.distance}u)`);
   const gain = contact.outcome.drive;
   console.log(`drive ${gain.own >= 0 ? "+" : ""}${gain.own} you, ${gain.target >= 0 ? "+" : ""}${gain.target} them`);

@@ -608,6 +608,23 @@ function updateHitData(action) {
  */
 const GUARD_RELEASE = 4;
 
+/**
+ * The frame the attacker is free again, from the game's own data: MarginFrame
+ * where the action has one, and where it ends in the air, the frame its motion
+ * curve returns to the ground plus the landing action's margin. Null for an air
+ * normal, which inherits the jump's arc and so has no single answer.
+ * Mirrors `actionableFrame` in src/data/geometry.ts — see ADR-0012.
+ */
+function actionableFrame(action) {
+  if (action.marginFrame > 0) return action.marginFrame + 1;
+  const y = action.motion?.y;
+  if (!action.lands || !y) return null;
+  for (let i = 1; i < y.length; i++) {
+    if (y[i] <= 0 && y[i - 1] > 0) return i + 1 + action.lands.margin + 1;
+  }
+  return null;
+}
+
 function outcomeAt(action, move, opponent, distance) {
   const data = hitDataFor(action);
   const guard = state.guard;
@@ -615,11 +632,12 @@ function outcomeAt(action, move, opponent, distance) {
   const frames = connectFrames(action, opponent, distance);
   const first = activeWindows(action)[0];
   if (!outcome || !frames.length || !first || !move) return null;
-  if (!action.marginFrame || action.marginFrame <= 0) return null;
+  const free = actionableFrame(action);
+  if (free === null) return null;
 
   const depth = frames[0] - first.start;
   const defenderFree = outcome.stun - (guard === "block" ? GUARD_RELEASE : 0);
-  const attackerFree = action.marginFrame + 1 - frames[0];
+  const attackerFree = free - frames[0];
   const published = guard === "block" ? move.fat.onBlock : move.fat.onHit;
   return {
     contactFrame: frames[0],

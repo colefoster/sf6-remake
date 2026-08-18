@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 
 import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
-import { loadGeometry } from "../src/data/geometry.js";
+import { actionableFrame, loadGeometry, touchdownFrame } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 
@@ -150,5 +150,65 @@ describe("MarginFrame is recovery, not animation length", () => {
     const result = runScenario("Ryu", "2MK", { guard: true });
     expect(result.recoverySource).toBe("action");
     expect(result.advantage).toBe(-6);
+  });
+});
+
+describe("airborne actions recover on landing", () => {
+  const geo = loadGeometry("ryu")!;
+  const byName = (name: string) => geo.actions.find((a) => a.name === name)!;
+
+  it("hands the Shoryuken off to its landing at the frame it touches down", () => {
+    const dp = byName("SPA_SYORYU_START");
+    // No margin of its own: there is nothing to recover from until you land.
+    expect(dp.marginFrame).toBeLessThanOrEqual(0);
+    expect(touchdownFrame(dp)).toBe(dp.frames);
+    expect(dp.lands).toEqual({ action: byName("SPA_SYORYU_END").id, margin: 12 });
+  });
+
+  it("composes to the recovery FAT publishes as two numbers", () => {
+    // FAT writes Ryu's 623LP recovery "21+12". The 12 is the landing action's
+    // own margin, and 35 - (5 + 10 - 1) is the 21. See ADR-0012.
+    const move = geo.moves.find((m) => m.input === "623LP")!;
+    const dp = byName("SPA_SYORYU_START");
+    expect(move.fat.recovery).toBe("21+12");
+    expect(dp.frames! - (move.startup + move.active - 1)).toBe(21);
+    expect(dp.lands!.margin).toBe(12);
+    // And end to end: touchdown + landing margin is FAT's own total.
+    expect(actionableFrame(dp)).toEqual({ frame: 48, source: "landing" });
+  });
+
+  it("reproduces published advantage for a move that lands", () => {
+    const result = runScenario("Ryu", "623LP", { guard: true, distance: 80 });
+    expect(result.recoverySource).toBe("landing");
+    expect(result.advantage).toBe(-23);
+  });
+
+  it("refuses to answer for an air normal rather than inventing a number", () => {
+    // ATK_8HP inherits the jump's arc and carries none of its own, so when it
+    // lands depends on when it was pressed. FAT publishes no recovery either.
+    const jump = byName("ATK_8HP");
+    expect(jump.lands).toBeDefined();
+    expect(touchdownFrame(jump)).toBeUndefined();
+    expect(actionableFrame(jump)).toBeUndefined();
+    const result = runScenario("Ryu", "8HP", { guard: true, distance: 100 });
+    expect(result.contact).not.toBeNull();
+    expect(result.advantage).toBeNull();
+    expect(result.note).toMatch(/ends in the air/);
+  });
+
+  it("only claims a landing recovery where the action really leaves the ground", () => {
+    let landing = 0;
+    for (const name of listCharacters()) {
+      const g = loadGeometry(requireCharacter(name).id);
+      if (!g) continue;
+      for (const action of g.actions) {
+        const free = actionableFrame(action);
+        if (free?.source !== "landing") continue;
+        landing++;
+        // A landing answer requires a curve that actually goes up and comes down.
+        expect(Math.max(...(action.motion?.y ?? [0]))).toBeGreaterThan(0);
+      }
+    }
+    expect(landing).toBeGreaterThan(50);
   });
 });

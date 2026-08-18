@@ -3,6 +3,8 @@
 - Status: accepted
 - Date: 2026-08-17
 - Extends: [ADR-0007](./0007-scenario-player.md), [ADR-0010](./0010-the-grader.md)
+- Extended by: [ADR-0012](./0012-landing-recovery.md) — the actions with no
+  margin at all turn out to keep theirs on the landing they branch into.
 
 ## Context
 
