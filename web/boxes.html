@@ -143,6 +143,7 @@
       <label><input type="checkbox" id="t-hit" checked> hitboxes</label>
       <label><input type="checkbox" id="t-prox"> proximity</label>
       <label><input type="checkbox" id="t-push" checked> pushboxes</label>
+      <label><input type="checkbox" id="t-path" checked> travel path</label>
       <button id="fit">snap to max range</button>
     </div>
 
@@ -200,7 +201,7 @@ const COLORS = {
 const state = {
   chars: [], data: null, action: null, frame: 1, playing: false, timer: null,
   distance: 120, stance: "stand",
-  show: { hurt: true, hit: true, prox: false, push: true },
+  show: { hurt: true, hit: true, prox: false, push: true, path: true },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -227,6 +228,15 @@ function hurtAt(action, frame) {
   }
   return out;
 }
+
+/** Where the origin is this frame, relative to where the action began. */
+function originAt(action, frame) {
+  const m = action.motion;
+  if (!m) return { x: 0, y: 0 };
+  return { x: m.x?.[frame - 1] ?? 0, y: m.y?.[frame - 1] ?? 0 };
+}
+
+const shift = (box, o) => ({ ...box, x: box.x + o.x, y: box.y + o.y });
 
 function pushAt(action, frame) {
   return action.push.filter((p) => covers(p, frame)).map((p) => p.box);
@@ -301,6 +311,19 @@ const overlaps = (a, b) =>
  * distance < A.x2 + B.x2, so the reach is the max of that over all pairs
  * whose heights overlap.
  */
+/** Attack boxes placed by the moving origin, tagged with their frame. */
+function worldHitboxes(action) {
+  const out = [];
+  for (const key of action.hit) {
+    if (key.kind === "proximity") continue;
+    for (let f = key.start; f <= key.end; f++) {
+      const o = originAt(action, f);
+      for (const b of key.boxes) out.push({ frame: f, box: shift(b, o) });
+    }
+  }
+  return out;
+}
+
 function maxReach(boxes, opponent) {
   let best = null;
   for (const a of boxes) {
@@ -316,11 +339,9 @@ function maxReach(boxes, opponent) {
 
 function connectFrames(action, opponent, distance) {
   const frames = [];
-  for (const h of action.hit) {
-    if (h.kind === "proximity") continue;
-    for (let f = h.start; f <= h.end; f++) {
-      const hit = h.boxes.some((a) => opponent.some((b) => overlaps(a, mirrored(b, distance))));
-      if (hit && !frames.includes(f)) frames.push(f);
+  for (const { frame, box } of worldHitboxes(action)) {
+    if (opponent.some((b) => overlaps(box, mirrored(b, distance))) && !frames.includes(frame)) {
+      frames.push(frame);
     }
   }
   return frames.sort((a, b) => a - b);
@@ -339,10 +360,17 @@ function viewFor(action) {
     maxX = Math.max(maxX, b.x + b.width);
     maxY = Math.max(maxY, b.y + b.height);
   };
-  for (const key of action.hit) key.boxes.forEach(eat);
-  for (const key of action.prox) key.boxes.forEach(eat);
+  const travel = action.motion?.travel;
+  const spread = (b) => {
+    eat(b);
+    if (!travel) return;
+    // The origin moves, so the same box sweeps a band; keep both ends in view.
+    eat({ ...b, x: b.x + travel.maxX, y: b.y + travel.maxY });
+  };
+  for (const key of action.hit) key.boxes.forEach(spread);
+  for (const key of action.prox) key.boxes.forEach(spread);
   for (const key of action.hurt) {
-    for (const part of ["head", "body", "leg", "throw"]) (key[part] ?? []).forEach(eat);
+    for (const part of ["head", "body", "leg", "throw"]) (key[part] ?? []).forEach(spread);
   }
   maxX = Math.max(maxX, state.distance + 60);
   const pad = 40;
@@ -407,26 +435,30 @@ function draw() {
 
   const opponent = opponentBoxes();
   for (const b of opponent) rect(view, mirrored(b, state.distance), COLORS.opp, alpha(COLORS.opp, 0.16), true);
+
+  const origin = originAt(action, frame);
+  drawPath(view, action);
+
   if (state.show.push) {
     for (const b of opponentPush()) rect(view, mirrored(b, state.distance), COLORS.push, alpha(COLORS.push, 0.1), true);
-    for (const b of pushAt(action, frame)) rect(view, b, COLORS.push, alpha(COLORS.push, 0.14));
+    for (const b of pushAt(action, frame)) rect(view, shift(b, origin), COLORS.push, alpha(COLORS.push, 0.14));
   }
 
   if (state.show.prox) {
     for (const key of proxAt(action, frame)) {
-      for (const b of key.boxes) rect(view, b, COLORS.prox, alpha(COLORS.prox, 0.1), true);
+      for (const b of key.boxes) rect(view, shift(b, origin), COLORS.prox, alpha(COLORS.prox, 0.1), true);
     }
   }
   if (state.show.hurt) {
     for (const b of hurtAt(action, frame)) {
       const color = b.part === "throw" ? COLORS.throw : COLORS[b.part] ?? COLORS.hurt;
-      rect(view, b, color, alpha(color, b.part === "throw" ? 0.07 : 0.18), b.part === "throw");
+      rect(view, shift(b, origin), color, alpha(color, b.part === "throw" ? 0.07 : 0.18), b.part === "throw");
     }
   }
   if (state.show.hit) {
     for (const key of hitsAt(action, frame)) {
       const color = COLORS[key.kind] ?? COLORS.hit;
-      for (const b of key.boxes) rect(view, b, color, alpha(color, 0.3));
+      for (const b of key.boxes) rect(view, shift(b, origin), color, alpha(color, 0.3));
     }
   }
 
@@ -445,6 +477,30 @@ function draw() {
   }
 }
 
+/** The trajectory the origin travels, so a dash or jump reads as one shape. */
+function drawPath(view, action) {
+  const motion = action.motion;
+  if (!motion || !state.show.path) return;
+  const total = action.frames ?? 0;
+  ctx.strokeStyle = "#3f4759";
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  for (let f = 1; f <= total; f++) {
+    const o = originAt(action, f);
+    const px = view.toX(o.x);
+    const py = view.toY(o.y);
+    if (f === 1) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const now = originAt(action, state.frame);
+  ctx.fillStyle = "#8c93a5";
+  ctx.beginPath();
+  ctx.arc(view.toX(now.x), view.toY(now.y), 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 /* ---------- readouts ---------- */
 
 function updateReadouts() {
@@ -452,6 +508,7 @@ function updateReadouts() {
   const opponent = opponentBoxes();
   const frame = state.frame;
   const hits = hitsAt(action, frame).filter((h) => h.kind !== "proximity");
+  const here = originAt(action, frame);
   const windows = activeWindows(action);
 
   const onThisFrame = hits.length
@@ -460,10 +517,12 @@ function updateReadouts() {
 
   $("r-frame").textContent = hits.length ? "active" : proxAt(action, frame).length ? "proximity" : "no hitbox";
   $("r-frame").className = "big " + (hits.length ? (onThisFrame ? "yes" : "no") : "");
-  $("r-frame-sub").textContent = hits.length
-    ? `${hits.length} box group${hits.length > 1 ? "s" : ""} — ` +
-      (onThisFrame ? "overlapping the opponent" : "whiffing at this distance")
-    : `frame ${frame} of ${action.frames ?? "?"}`;
+  const at = here.x || here.y ? ` · origin ${round1(here.x)}u forward, ${round1(here.y)}u up` : "";
+  $("r-frame-sub").textContent =
+    (hits.length
+      ? `${hits.length} box group${hits.length > 1 ? "s" : ""} — ` +
+        (onThisFrame ? "overlapping the opponent" : "whiffing at this distance")
+      : `frame ${frame} of ${action.frames ?? "?"}`) + at;
 
   const connects = connectFrames(action, opponent, state.distance);
   $("r-connect").textContent = connects.length ? `frames ${ranges(connects)}` : "whiff";
@@ -472,14 +531,13 @@ function updateReadouts() {
     ? `first contact on frame ${connects[0]} at ${state.distance}u`
     : `nothing reaches ${state.distance}u`;
 
-  const allBoxes = action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes);
-  const reach = maxReach(allBoxes, opponent);
+  const reach = maxReach(worldHitboxes(action).map((h) => h.box), opponent);
   const closest = minDistance();
-  $("r-range").textContent = reach === null ? "—" : `${closest}-${reach}u`;
+  $("r-range").textContent = reach === null ? "—" : `${Math.round(closest)}-${round1(reach)}u`;
   $("r-range-sub").textContent =
     reach === null
       ? "no hitbox overlaps the opponent at any distance"
-      : `point blank is ${closest}u (pushboxes touching), so ${Math.max(0, reach - closest)}u of usable spacing ` +
+      : `point blank is ${closest}u (pushboxes touching), so ${round1(Math.max(0, reach - closest))}u of usable spacing ` +
         `against a ${state.stance === "crouch" ? "crouching" : "standing"} opponent`;
 
   $("r-frames").textContent = windows.length
@@ -491,6 +549,8 @@ function updateReadouts() {
       (windows.length > 1 ? ` across ${windows.length} hits` : "")
     : "this action has no hitboxes";
 }
+
+const round1 = (n) => Math.round(n * 10) / 10;
 
 /** [8,9,10,14] -> "8-10, 14" */
 function ranges(frames) {
@@ -555,6 +615,14 @@ function selectAction(action, move) {
   if (f.fullInvuln) badges.append(badge("full invuln"));
   else if (f.strikeInvuln) badges.append(badge("strike invuln"));
   else if (f.throwInvuln) badges.append(badge("throw invuln"));
+  const travel = action.motion?.travel;
+  if (travel && (travel.maxX || travel.maxY)) {
+    badges.append(
+      badge(
+        `travels ${round1(travel.maxX)}u forward` + (travel.maxY ? `, ${round1(travel.maxY)}u up` : ""),
+      ),
+    );
+  }
   if (action.continues) {
     const next = actionById(action.continues);
     badges.append(badge(`spliced with ${next ? next.name : action.continues}`));
@@ -638,7 +706,9 @@ async function loadCharacter(id) {
     `x = 0 is the character origin, y = 0 the ground, +x forward; ` +
     `${state.data.calibration?.standingHeight ?? "?"} units is this fighter's standing height. ` +
     `Pushboxes set point blank: the distance slider will not go below the point where the two ` +
-    `pushboxes touch, because the game cannot put the characters closer than that.`;
+    `pushboxes touch, because the game cannot put the characters closer than that. ` +
+    `Distance is measured from where the attacker stood when the move began, so a move that ` +
+    `steps in covers more ground than its boxes alone suggest.`;
   buildNav();
   const first = state.data.moves.find((m) => actionById(m.action));
   selectAction(actionById(first.action), first);
@@ -683,7 +753,8 @@ $("stance").onchange = (e) => {
   draw();
   updateReadouts();
 };
-for (const [key, id] of [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"], ["push", "t-push"]]) {
+const TOGGLES = [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"], ["push", "t-push"], ["path", "t-path"]];
+for (const [key, id] of TOGGLES) {
   $(id).onchange = (e) => {
     state.show[key] = e.target.checked;
     draw();

@@ -73,11 +73,14 @@ Ryu — Crouch MK (2MK)
   active       8-10
   vs           Ryu, standing (3 hurtboxes)
   point blank  66u (pushboxes touching)
-  max reach    142u
-  connects in  66-142u (76u of usable spacing)
+  max reach    188.2u
+  connects in  66-188.2u (122.2u of usable spacing)
+  travels      46.2u forward at first contact, 46.2u at furthest
   properties   low
   at 140u      CONNECTS on frames 8-10
 ```
+
+Distances are measured from where the attacker stood when the move began, so a move's reach includes its step-in — 2MK's box only covers 142 units, but Ryu walks 46 of them into it.
 
 Add a character:
 
@@ -92,7 +95,7 @@ node scripts/extract-geometry.mjs Ken  # -> data/geometry/ken.json + web/ken.box
 npm run web        # then open http://localhost:8777/boxes.html
 ```
 
-Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — it reports which frames connect there and the furthest distance that still lands. Arrow keys step frames, space plays.
+Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — it reports which frames connect there and the furthest distance that still lands. Moving actions are drawn along their real trajectory, with the travel path traced. Arrow keys step frames, space plays.
 
 ## How it works
 
@@ -127,19 +130,19 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    extracted per-frame box geometry
-tests/                   51 tests, incl. assertions against the real data
+tests/                   62 tests, incl. assertions against the real data
 ```
 
 ## Known limitations
 
 - **Geometry covers Ryu and Akuma so far**, and the dumps it comes from are a late-2024 snapshot of the game — so pre-Season-3 balance. Characters without geometry fall back to FAT's coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
-- **Per-frame character movement is not modeled**, so a dash-in or jump-in's boxes are the right shape at the wrong world position over time. Standing spacing is unaffected.
+- **Motion is per action, not composed across actions.** A jump attack is its own action and doesn't inherit the arc of the jump it came from, so air normals show at ground level. See [ADR-0005](./docs/adr/0005-origin-motion-from-place-and-steer-keys.md).
 - **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
 - **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
 
 ## Test
 
 ```bash
-npm test          # 51 tests
+npm test          # 62 tests
 npm run typecheck
 ```

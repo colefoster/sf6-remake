@@ -12,6 +12,8 @@ import {
   idleHurtboxes,
   loadGeometry,
   mirrored,
+  originAt,
+  worldHitboxes,
   overlaps,
   reach,
 } from "../src/data/geometry.js";
@@ -121,6 +123,57 @@ describe("pushboxes", () => {
       const { action } = actionFor(geo, requireMove(ryu, input))!;
       expect(connectFrames(action, opponent, closest).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("motion", () => {
+  const byName = (name: string) => geo.actions.find((a) => a.name === name)!;
+
+  it("reads the dash as one continuous forward curve", () => {
+    const dash = byName("BAS_DASH_F");
+    const x = dash.motion!.x!;
+    // Regression: PosList is keyed "00".."39" and JS iterates the canonical
+    // integer keys first, which scrambled this curve into a sawtooth.
+    for (let i = 1; i < x.length; i++) expect(x[i]!).toBeGreaterThanOrEqual(x[i - 1]!);
+    expect(dash.motion!.travel.maxX).toBeCloseTo(125.21, 1);
+  });
+
+  it("has the back dash cover less ground than the forward one", () => {
+    expect(byName("BAS_DASH_B").motion!.travel.maxX).toBeCloseTo(-92.3, 1);
+  });
+
+  it("integrates the jump arc from its velocity and gravity", () => {
+    const jump = byName("BAS_JUMP_F_AIR");
+    const y = jump.motion!.y!;
+    const apex = y.indexOf(Math.max(...y)) + 1;
+    // y velocity 24 against gravity 1.17 puts the apex just past frame 20.
+    expect(apex).toBeGreaterThan(18);
+    expect(apex).toBeLessThan(23);
+    expect(jump.motion!.travel.maxY).toBeGreaterThan(geo.calibration!.standingHeight);
+    // x velocity 5 per frame, held for the whole jump.
+    expect(jump.motion!.x![9]! - jump.motion!.x![8]!).toBeCloseTo(5, 1);
+  });
+
+  it("walks forward at a steady speed", () => {
+    const x = byName("BAS_FORWARD_Loop").motion!.x!;
+    expect(x[10]! - x[9]!).toBeCloseTo(4.7, 1);
+  });
+
+  it("steps 2MK forward before its hitbox appears", () => {
+    const { action } = actionFor(geo, requireMove(ryu, "2MK"))!;
+    expect(originAt(action, 1).x).toBe(0);
+    expect(originAt(action, 8).x).toBeCloseTo(46.2, 1);
+  });
+
+  it("measures reach from where the attacker started, not where it ends up", () => {
+    const { action } = actionFor(geo, requireMove(ryu, "2MK"))!;
+    const opponent = idleHurtboxes(geo);
+    const withTravel = reach(action, opponent)!;
+    const { motion, ...stationaryAction } = action;
+    const stationary = reach(stationaryAction, opponent)!;
+    expect(motion).toBeDefined();
+    expect(withTravel - stationary).toBeCloseTo(originAt(action, 8).x, 1);
+    expect(worldHitboxes(action)[0]!.frame).toBe(8);
   });
 });
 

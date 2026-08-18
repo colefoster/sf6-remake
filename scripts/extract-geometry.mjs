@@ -26,6 +26,14 @@
  *
  *   PushCollisionKey    BoxNo                     -> rects[5] then rects[7] (pushbox)
  *
+ * Boxes are placed relative to the character origin, and the origin itself moves
+ * during dashes, jumps and stepping attacks. Two key types drive it, and they
+ * are the whole movement model (see `extractMotion`):
+ *
+ *   PlaceKey   an explicit per-frame position curve on one axis
+ *   SteerKey   velocity and acceleration setters (ValueType 0/1 = velocity x/y,
+ *              3/4 = acceleration x/y)
+ *
  * DELIBERATE OMISSIONS
  * - General branch chasing. Actions branch mid-move for hit-confirms, follow-ups
  *   and rebalanced variants, and following them blindly double-counts active
@@ -87,13 +95,20 @@ function toBox(rect, rootOffset) {
   };
 }
 
-/** Values of a MMDK-dumped dict-as-object, in numeric key order. */
-function ordered(obj) {
+/** Entries of a dict-as-object as [number, value] pairs, in numeric key order. */
+function numeric(obj) {
   if (!obj || typeof obj !== "object") return [];
   return Object.entries(obj)
-    .filter(([k, v]) => /^\d+$/.test(k) && v && typeof v === "object")
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([, v]) => v);
+    .filter(([k]) => /^\d+$/.test(k))
+    .map(([k, v]) => [Number(k), v])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+/** Values of a MMDK-dumped dict-as-object, in numeric key order. */
+function ordered(obj) {
+  return numeric(obj)
+    .map(([, v]) => v)
+    .filter((v) => v && typeof v === "object");
 }
 
 function makeRects(rectsFile) {
@@ -214,10 +229,95 @@ function extractAction(action, rect, unresolvedPush) {
     hurt,
     push,
   };
+  const motion = extractMotion(action, fab.Frame);
+  if (motion) out.motion = motion;
   if (branches.length) out.branches = dedupeBranches(branches);
   if (action.mot_name) out.mot = action.mot_name;
   return out;
 }
+
+/** SteerKey ValueType: which component of the origin's motion it sets. */
+const STEER = { 0: "vx", 1: "vy", 3: "ax", 4: "ay" };
+/** OperationType 1 sets a value outright; 6 is the stop that zeroes it. */
+const STEER_OPS = new Set([1, 6]);
+
+/**
+ * The per-frame path of the character origin, in game units from where the
+ * action began.
+ *
+ * `PlaceKey` wins wherever it has a value: it is the animation's own root
+ * motion, and it disagrees with the SteerKey velocities on moves that have both
+ * (Ryu's Shoryuken steers x by 3.0/frame but places itself 30.3 units forward).
+ * Everywhere else the SteerKeys integrate: velocity set on a frame, then
+ * acceleration applied each frame after, which is what gives jumps their arc —
+ * Ryu's forward jump sets y velocity 24 against gravity 1.17, predicting ~41
+ * frames of airtime for an action that lasts 40.
+ */
+function extractMotion(action, frames) {
+  const place = { 0: new Map(), 1: new Map() };
+  for (const key of ordered(action.PlaceKey)) {
+    const axis = key.Axis === 1 ? 1 : 0;
+    const ratio = key.Ratio ?? 1;
+    // PosList is keyed "00".."39", and JS iterates the canonical integer keys
+    // ("10"+) before the zero-padded ones, so the curve must be sorted, not
+    // walked in object order.
+    for (const [index, value] of numeric(key.PosList)) {
+      if (typeof value === "number") place[axis].set(key._StartFrame + index, value * ratio);
+    }
+  }
+
+  const steer = new Map();
+  for (const key of ordered(action.SteerKey)) {
+    const field = STEER[key.ValueType];
+    if (!field || !STEER_OPS.has(key.OperationType)) continue;
+    const at = steer.get(key._StartFrame) ?? {};
+    at[field] = key.FixValue ?? 0;
+    steer.set(key._StartFrame, at);
+  }
+
+  if (!place[0].size && !place[1].size && !steer.size) return null;
+
+  const x = [];
+  const y = [];
+  let pos = { x: 0, y: 0 };
+  const vel = { x: 0, y: 0 };
+  const acc = { x: 0, y: 0 };
+  for (let frame = 0; frame < (frames ?? 0); frame++) {
+    const set = steer.get(frame);
+    if (set) {
+      if (set.vx !== undefined) vel.x = set.vx;
+      if (set.vy !== undefined) vel.y = set.vy;
+      if (set.ax !== undefined) acc.x = set.ax;
+      if (set.ay !== undefined) acc.y = set.ay;
+    }
+    if (frame > 0) {
+      vel.x += acc.x;
+      vel.y += acc.y;
+      pos = { x: pos.x + vel.x, y: pos.y + vel.y };
+      if (pos.y < 0) {
+        pos.y = 0;
+        vel.y = 0;
+        acc.y = 0;
+      }
+    }
+    // Root motion overrides the integration, and the integration resumes from it.
+    if (place[0].has(frame)) pos.x = place[0].get(frame);
+    if (place[1].has(frame)) pos.y = place[1].get(frame);
+    x.push(round2(pos.x));
+    y.push(round2(pos.y));
+  }
+
+  const moves = (list) => list.some((v) => v !== 0);
+  if (!moves(x) && !moves(y)) return null;
+  const motion = { travel: { x: x[x.length - 1] ?? 0, maxX: extreme(x), maxY: Math.max(...y) } };
+  if (moves(x)) motion.x = x;
+  if (moves(y)) motion.y = y;
+  return motion;
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+/** The furthest the origin gets from home, keeping the sign (back dashes). */
+const extreme = (list) => list.reduce((best, v) => (Math.abs(v) > Math.abs(best) ? v : best), 0);
 
 /** 5HK branches to the same action on four consecutive frames; keep the first. */
 function dedupeBranches(branches) {
@@ -468,6 +568,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     counts: {
       actions: actions.length,
       withPushboxes: actions.filter((a) => a.push.length).length,
+      withMotion: actions.filter((a) => a.motion).length,
       withHitboxes: actions.filter((a) => a.hit.some((h) => h.kind !== "proximity")).length,
       mapped: moves.length,
       exact: moves.filter((m) => m.match === "exact").length,

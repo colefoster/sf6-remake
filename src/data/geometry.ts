@@ -56,6 +56,16 @@ export interface PushKey {
   box: Box;
 }
 
+/**
+ * The path of the character origin during an action, in game units from where
+ * it began: `x[frame - 1]`, `y[frame - 1]`. Absent when the action doesn't move.
+ */
+export interface Motion {
+  x?: number[];
+  y?: number[];
+  travel: { x: number; maxX: number; maxY: number };
+}
+
 export interface GeometryAction {
   id: number;
   name: string;
@@ -75,6 +85,7 @@ export interface GeometryAction {
   prox: { start: number; end: number; boxes: Box[] }[];
   hurt: HurtKey[];
   push: PushKey[];
+  motion?: Motion;
   branches?: { frame: number; action: number; type: number | null }[];
   continues?: number;
   mot?: string;
@@ -164,6 +175,36 @@ export function hurtboxesAt(action: GeometryAction, frame: number, includeThrow 
     if (!covers(key, frame)) continue;
     out.push(...key.head, ...key.body, ...key.leg);
     if (includeThrow) out.push(...key.throw);
+  }
+  return out;
+}
+
+/** Where the character origin is on this frame, relative to where it started. */
+export function originAt(action: GeometryAction, frame: number): { x: number; y: number } {
+  const motion = action.motion;
+  if (!motion) return { x: 0, y: 0 };
+  return { x: motion.x?.[frame - 1] ?? 0, y: motion.y?.[frame - 1] ?? 0 };
+}
+
+/** A box moved into world space by the origin it hangs off. */
+export function shift(box: Box, origin: { x: number; y: number }): Box {
+  return { ...box, x: box.x + origin.x, y: box.y + origin.y };
+}
+
+/**
+ * Every attack box the action produces, placed where the moving origin puts it,
+ * tagged with the frame it lands on. This is what spacing has to be measured
+ * against: Ryu's 2MK steps 46 units forward before its hitbox appears, so from
+ * where he started the move it reaches that much further than the box implies.
+ */
+export function worldHitboxes(action: GeometryAction): { frame: number; box: Box }[] {
+  const out: { frame: number; box: Box }[] = [];
+  for (const key of action.hit) {
+    if (key.kind === "proximity") continue;
+    for (let frame = key.start; frame <= key.end; frame++) {
+      const origin = originAt(action, frame);
+      for (const box of key.boxes) out.push({ frame, box: shift(box, origin) });
+    }
   }
   return out;
 }
@@ -271,7 +312,7 @@ export function overlaps(a: Box, b: Box): boolean {
  */
 export function reach(action: GeometryAction, opponent: Box[]): number | undefined {
   let best: number | undefined;
-  for (const a of action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes)) {
+  for (const { box: a } of worldHitboxes(action)) {
     for (const b of opponent) {
       if (!(a.y < b.y + b.height && b.y < a.y + a.height)) continue;
       const d = a.x + a.width + b.x + b.width;
@@ -281,16 +322,15 @@ export function reach(action: GeometryAction, opponent: Box[]): number | undefin
   return best;
 }
 
-/** Which of the move's frames actually connect at `distance`. */
+/**
+ * Which of the move's frames connect at `distance`, where distance is measured
+ * from where the attacker stood when the move began — the question a player is
+ * actually asking, and the reason the moving origin matters.
+ */
 export function connectFrames(action: GeometryAction, opponent: Box[], distance: number): number[] {
   const frames = new Set<number>();
-  for (const key of action.hit) {
-    if (key.kind === "proximity") continue;
-    for (let frame = key.start; frame <= key.end; frame++) {
-      if (key.boxes.some((a) => opponent.some((b) => overlaps(a, mirrored(b, distance))))) {
-        frames.add(frame);
-      }
-    }
+  for (const { frame, box } of worldHitboxes(action)) {
+    if (opponent.some((b) => overlaps(box, mirrored(b, distance)))) frames.add(frame);
   }
   return [...frames].sort((a, b) => a - b);
 }

@@ -23,6 +23,7 @@ import {
   idleHurtboxes,
   loadGeometry,
   minDistance,
+  originAt,
   reach,
   type GeometryAction,
 } from "../data/geometry.js";
@@ -290,6 +291,9 @@ function requireCharacterMove(c: ReturnType<typeof requireCharacter>, q: string 
   return m;
 }
 
+/** Positions carry sub-unit precision; nobody needs to read it. */
+const u = (n: number): string => `${Math.round(n * 10) / 10}u`;
+
 /** [8,9,10,14] -> "8-10, 14" */
 function frameRanges(frames: number[]): string {
   const spans: [number, number][] = [];
@@ -327,10 +331,25 @@ function printBoxes(character: Character, move: Move, args: Args): void {
   console.log(`  action       ${action.name} (#${action.id})`);
   console.log(`  active       ${windows.map((w) => `${w.start}-${w.end}`).join(", ") || "no hitboxes"}`);
   console.log(`  vs           ${defender.name}, ${stance}ing (${opponent.length} hurtboxes)`);
-  if (closest !== undefined) console.log(`  point blank  ${closest}u (pushboxes touching)`);
-  console.log(`  max reach    ${maxReach === undefined ? "never connects" : `${maxReach}u`}`);
+  if (closest !== undefined) console.log(`  point blank  ${u(closest)} (pushboxes touching)`);
+  console.log(`  max reach    ${maxReach === undefined ? "never connects" : u(maxReach)}`);
   if (maxReach !== undefined && closest !== undefined) {
-    console.log(`  connects in  ${closest}-${maxReach}u (${maxReach - closest}u of usable spacing)`);
+    console.log(
+      `  connects in  ${Math.round(closest)}-${u(maxReach)} (${u(maxReach - closest)} of usable spacing)`,
+    );
+  }
+
+  // Reach above is measured from where the attacker stood when the move began,
+  // so a move that steps in covers more ground than its boxes alone suggest.
+  const travel = action.motion?.travel;
+  if (travel && (travel.maxX || travel.maxY)) {
+    const atContact = windows.length ? originAt(action, windows[0]!.start) : { x: 0, y: 0 };
+    const parts = [
+      `${u(atContact.x)} forward at first contact`,
+      travel.maxX ? `${u(travel.maxX)} at furthest` : null,
+      travel.maxY ? `${u(travel.maxY)} up` : null,
+    ].filter(Boolean);
+    console.log(`  travels      ${parts.join(", ")}`);
   }
 
   const props = [
@@ -352,7 +371,7 @@ function printBoxes(character: Character, move: Move, args: Args): void {
     console.log(
       frames.length
         ? `  at ${args.at}u      CONNECTS on frame${frames.length > 1 ? "s" : ""} ${frameRanges(frames)}`
-        : `  at ${args.at}u      WHIFFS (needs ${maxReach === undefined ? "—" : `< ${maxReach}u`})`,
+        : `  at ${args.at}u      WHIFFS (needs ${maxReach === undefined ? "—" : `< ${u(maxReach)}`})`,
     );
   } else if (maxReach !== undefined) {
     printReachTable(action, opponent, maxReach, closest);
@@ -369,13 +388,14 @@ function printReachTable(
   const rows: string[] = [];
   for (const key of action.hit.filter((h) => h.kind !== "proximity")) {
     const per = reach({ ...action, hit: [key] }, opponent);
-    rows.push(`    frames ${key.start}-${key.end}  ${key.kind.padEnd(10)} reach ${per ?? "—"}u`);
+    rows.push(`    frames ${key.start}-${key.end}  ${key.kind.padEnd(10)} reach ${per === undefined ? "—" : u(per)}`);
   }
   if (rows.length > 1) console.log(rows.join("\n"));
   const pointBlank = closest ?? 0;
+  const max = Math.floor(maxReach);
   console.log(
-    `  try:         --at ${pointBlank} (point blank) / --at ${Math.max(pointBlank, maxReach - 1)} (max) ` +
-      `/ --at ${maxReach + 1} (whiff)`,
+    `  try:         --at ${Math.ceil(pointBlank)} (point blank) / --at ${Math.max(Math.ceil(pointBlank), max)} (max) ` +
+      `/ --at ${max + 1} (whiff)`,
   );
 }
 

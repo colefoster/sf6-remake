@@ -46,6 +46,7 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 - **Point blank** — the closest two characters' origins can be: the distance at which their pushboxes touch (66 units for two standing fighters). Spacing below this is unreachable in game, not merely unlikely.
 - **Connect** — a hitbox overlapping a hurtbox at a given distance, on a given frame.
 - **Usable spacing** — the band from point blank out to a move's reach. This is the honest answer to "how much room does this button cover".
+- **Origin motion** — the per-frame path the character origin travels during an action (a dash's 125 units, a jump's arc, 2MK's 46-unit step-in). Boxes hang off the origin, so spacing is measured from where the attacker stood **when the move began**. See `docs/adr/0005-origin-motion-from-place-and-steer-keys.md`.
 
 ## Move taxonomy
 
@@ -58,4 +59,4 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 
 - **Frame data (startup/active/recovery/onBlock/onHit/damage/cancels) is real** and sourced from public frame-data references; see `docs/adr/0002-data-sourcing.md`.
 - **Hitbox/hurtbox geometry is real** for the characters extracted so far, taken from MMDK's dumps of the game's own collision data; see `docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md`. It is keyed by **action**, and moves reach it through the mapping described above.
-- **Per-frame positional movement is NOT modeled.** Boxes are placed relative to the character origin, and the origin does not travel — so a dash-in or jump-in's boxes are the right shape at the wrong world position over time. Standing spacing questions are unaffected.
+- **Origin motion IS modeled** per action, so reach includes a move's step-in. What is not composed is motion across actions: a jump attack is its own action and does not inherit the arc of the jump it was performed from.
