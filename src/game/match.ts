@@ -12,10 +12,12 @@
  *   low, hit / counter / punish-counter selection from the defender's actual
  *   state, hitstop, knockback, hitstun and blockstun, damage and KO.
  *
+ *   Projectiles too, as of ADR-0029: a fireball is a third body with its own
+ *   action and clock, and two of them destroy each other.
+ *
  * WHAT IT DOES NOT
- *   the corner, juggles and combo scaling, throws as a state, Drive and super
- *   gauges, and projectiles — which `src/sim` models and this does not yet.
- *   See docs/adr/0027.
+ *   the corner, juggles and combo scaling, throws as a state, and the Drive and
+ *   super gauges. See docs/adr/0027 and 0029.
  */
 
 import {
@@ -28,8 +30,10 @@ import {
   originAt,
   pushboxesAt,
   shift,
+  spawnsFrom,
   type GeometryAction,
   type GeometryFile,
+  type HitData,
   type HitOutcome,
 } from "../data/geometry.js";
 import type { Box } from "../domain/types.js";
@@ -59,6 +63,29 @@ export interface MatchOptions {
   distance?: number;
 }
 
+/**
+ * A fireball in flight: a third body with its own action, clock and hit data.
+ *
+ * `src/sim` has modelled one since ADR-0023 and the match did not, so `sf6 fight
+ * ryu ken 236+HPx3` threw nothing. Everything here is the same reading — the
+ * shot keeps its own frame count from the moment it appears, travels on its own
+ * origin motion, and carries the hit-data row of the action that owns the box.
+ * See docs/adr/0029.
+ */
+export interface Projectile {
+  owner: 0 | 1;
+  action: GeometryAction;
+  /** The projectile's own frame; it is on 1 the frame it appears. */
+  frame: number;
+  /** Where the thrower's origin was when it spawned, plus the shot offset. */
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  data: HitData | undefined;
+  /** Set once it has connected or been destroyed; it stops existing next frame. */
+  spent: boolean;
+}
+
 export class Match {
   readonly fighters: [Fighter, Fighter];
   readonly health: [number, number];
@@ -69,6 +96,10 @@ export class Match {
   private knockback: ({ perFrame: number; left: number } | null)[] = [null, null];
   /** The action instance each fighter last connected with, so a swing hits once. */
   private connected: [number, number] = [-1, -1];
+  /** Fireballs currently in the air, either side's. */
+  readonly projectiles: Projectile[] = [];
+  /** `<fighter>:<action instance>:<shot index>` for shots already spawned. */
+  private thrown = new Set<string>();
 
   constructor(left: GeometryFile, right: GeometryFile, options: MatchOptions = {}) {
     const gap = options.distance ?? 200;
@@ -94,8 +125,80 @@ export class Match {
     this.fighters[1].advance(b);
     this.separate();
     this.carry();
+    this.throwShots(0);
+    this.throwShots(1);
     this.resolve(0, b);
     this.resolve(1, a);
+    this.flyProjectiles(a, b);
+  }
+
+  /**
+   * Spawn any shot whose frame has come round on the action being played.
+   *
+   * Keyed on the fighter's action *instance* as well as the shot index, so
+   * throwing the same fireball twice spawns two — and replaying the same action
+   * frame during hitstop spawns none.
+   */
+  private throwShots(side: 0 | 1): void {
+    const fighter = this.fighters[side]!;
+    const { action, frame, facing } = fighter.state;
+    if (!action.shots?.length) return;
+    const shots = spawnsFrom(fighter.geo, action);
+    for (const [index, shot] of shots.entries()) {
+      if (shot.frame !== frame) continue;
+      const key = `${side}:${fighter.instance}:${index}`;
+      if (this.thrown.has(key)) continue;
+      this.thrown.add(key);
+      const at = fighter.position();
+      this.projectiles.push({
+        owner: side,
+        action: shot.action,
+        frame: 1,
+        x: at.x + shot.offset.x * facing,
+        y: shot.offset.y,
+        facing,
+        data: hitDataFor(fighter.geo, shot.action),
+        spent: false,
+      });
+    }
+  }
+
+  /**
+   * Advance every fireball, resolve what it touches, and retire the spent ones.
+   *
+   * Two projectiles that meet destroy each other — the thing ADR-0023 listed as
+   * unmodelled. Nothing else can hit one: the defender's own hitboxes are tested
+   * against it, but a fireball has no hurtbox the runtime consults.
+   */
+  private flyProjectiles(a: InputFrame, b: InputFrame): void {
+    for (const shot of this.projectiles) {
+      shot.frame++;
+      if (shot.frame > (shot.action.frames ?? 0)) shot.spent = true;
+    }
+    // Fireball against fireball, before either reaches anybody.
+    for (const one of this.projectiles) {
+      if (one.spent) continue;
+      for (const other of this.projectiles) {
+        if (other === one || other.spent || other.owner === one.owner) continue;
+        if (projectileBoxes(one).some((x) => projectileBoxes(other).some((y) => overlaps(x, y)))) {
+          one.spent = true;
+          other.spent = true;
+        }
+      }
+    }
+    for (const shot of this.projectiles) {
+      if (shot.spent || !shot.data) continue;
+      const side = shot.owner === 0 ? 1 : 0;
+      const them = this.fighters[side]!;
+      const boxes = projectileBoxes(shot);
+      if (!boxes.length) continue;
+      if (!worldHurtboxes(them).some((h) => boxes.some((box) => overlaps(box, h)))) continue;
+      shot.spent = true;
+      this.land(shot.owner, them, shot.data, shot.action, side === 0 ? a : b, shot.facing);
+    }
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      if (this.projectiles[i]!.spent) this.projectiles.splice(i, 1);
+    }
   }
 
   /** Each fighter turns to face the other whenever it is free to. */
@@ -151,8 +254,26 @@ export class Match {
     // honest boundary. Multi-hit moves need juggles, which is a later stage.
     if (this.connected[attacker] === me.instance) return;
     this.connected[attacker] = me.instance;
+    this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing);
+  }
 
-    const type = this.contactType(them, defenderInput, me.state.action);
+  /**
+   * Apply an outcome, whoever's box delivered it.
+   *
+   * Shared between a fighter's own hitbox and a fireball's, because the only
+   * difference is which action owns the hit-data row. `facing` is the *box's*
+   * facing, which for a projectile is the direction it was thrown in and not
+   * where the thrower is looking now.
+   */
+  private land(
+    attacker: 0 | 1,
+    them: Fighter,
+    data: HitData,
+    attack: GeometryAction,
+    defenderInput: InputFrame,
+    facing: 1 | -1,
+  ): void {
+    const type = this.contactType(them, defenderInput, attack);
     const outcome = data[type] ?? data.hit;
     if (!outcome) return;
 
@@ -165,8 +286,8 @@ export class Match {
     if (outcome.knockback.frames) {
       this.knockback[attacker === 0 ? 1 : 0] = {
         // The table states knockback in the attacker's own space — positive is
-        // away from them — so it is applied along the attacker's facing.
-        perFrame: (outcome.knockback.x / outcome.knockback.frames) * me.state.facing,
+        // away from them — so it is applied along the attacking box's facing.
+        perFrame: (outcome.knockback.x / outcome.knockback.frames) * facing,
         left: outcome.knockback.frames,
       };
     }
@@ -176,7 +297,7 @@ export class Match {
       type,
       damage,
       stun,
-      action: me.state.action.name,
+      action: attack.name,
       reaction: reaction?.name ?? "?",
     });
   }
@@ -226,6 +347,20 @@ function place(box: Box, x: number, y: number, facing: 1 | -1): Box {
   return facing === 1
     ? { ...lifted, x: x + box.x }
     : { ...lifted, x: x - (box.x + box.width) };
+}
+
+/**
+ * A fireball's boxes in world space.
+ *
+ * Its origin is where it spawned plus its own action's motion — it carries on
+ * across the screen while the thrower stands still recovering, which is why a
+ * projectile's advantage is a curve rather than a number (ADR-0023).
+ */
+export function projectileBoxes(shot: Projectile): Box[] {
+  const origin = originAt(shot.action, shot.frame);
+  return hitboxesAt(shot.action, shot.frame).map((b) =>
+    place(shift(b, { x: 0, y: origin.y + shot.y }), shot.x + origin.x * shot.facing, 0, shot.facing),
+  );
 }
 
 function worldHitboxes(f: Fighter): Box[] {

@@ -189,7 +189,7 @@ For the version you can actually play, run the following command and open `http:
 npm run play
 ```
 
-Two fighters on one keyboard, drawn as their real collision boxes — hurtboxes blue, hitboxes red, pushboxes grey, flashing on their true active frames. The page runs the **same** `Match` the CLI does, bundled to 23 KB; it is not a second implementation ([ADR-0026: the fighter moves](./docs/adr/0026-the-fighter-moves-under-its-own-power.md), [ADR-0027: two fighters](./docs/adr/0027-two-fighters-and-the-reaction-the-table-asks-for.md), [ADR-0028: the viewer runs the runtime](./docs/adr/0028-the-viewer-runs-the-runtime.md)).
+Two fighters on one keyboard, drawn as their real collision boxes — hurtboxes blue, hitboxes red, pushboxes grey, fireballs amber, flashing on their true active frames. Ryu throws a Hadoken and it crosses the screen on its own clock while he stands there recovering; two fireballs that meet destroy each other. The page runs the **same** `Match` the CLI does, bundled to 23 KB; it is not a second implementation ([ADR-0026: the fighter moves](./docs/adr/0026-the-fighter-moves-under-its-own-power.md), [ADR-0027: two fighters](./docs/adr/0027-two-fighters-and-the-reaction-the-table-asks-for.md), [ADR-0028: the viewer runs the runtime](./docs/adr/0028-the-viewer-runs-the-runtime.md)).
 
 The advantage the match leaves on a blocked move is asserted equal to the scenario player's, from two completely different code paths, neither of which reads a published number.
 

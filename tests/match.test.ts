@@ -119,6 +119,68 @@ describe("two fighters", () => {
   });
 });
 
+describe("fireballs", () => {
+  /** A quarter-circle-forward and a punch, in world directions for the left side. */
+  const hadoken = (button: Button): [Direction, Button[], number][] => [
+    [2, [], 2],
+    [3, [], 2],
+    [6, [button], 3],
+  ];
+
+  it("throws one, and it crosses the screen on its own clock", () => {
+    // Nothing the fighter does reaches 350 units. The shot leaves on the frame
+    // `ShotKey` names and arrives twenty-odd frames later, while Ryu stands
+    // still recovering — which is exactly the curve ADR-0023 measured.
+    const thrown = fight({ p1: hadoken("HP"), p2: 5, distance: 350, frames: 200 });
+    const hit = thrown.match.hits[0];
+    expect(hit?.action).toMatch(/PROJ$/);
+    expect(hit?.type).toBe("hit");
+    expect(hit!.frame).toBeGreaterThan(25);
+    expect(thrown.match.health[1]).toBeLessThan(10000);
+  });
+
+  it("is a body in the air, not a hitbox on the thrower", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 400 });
+    const script = hadoken("HP").flatMap(([dir, buttons, n]) =>
+      Array.from({ length: n }, () => hold(dir, buttons)),
+    );
+    let seen = 0;
+    let travelled = 0;
+    for (let i = 0; i < 60; i++) {
+      match.advance(script[i] ?? hold(5), hold(5));
+      for (const shot of match.projectiles) {
+        seen++;
+        travelled = Math.max(travelled, Math.abs(shot.x + (shot.action.motion?.x?.[shot.frame - 1] ?? 0)));
+      }
+    }
+    expect(seen).toBeGreaterThan(20);
+    // It gets a long way from where it was thrown, which a hitbox bolted to the
+    // attacker could not do.
+    expect(travelled).toBeGreaterThan(200);
+  });
+
+  it("two of them meet and both stop", () => {
+    // ADR-0023 listed this as unmodelled: "two projectiles never meet". They do
+    // now, and neither reaches anybody — a mirror match at full screen where the
+    // one-sided version of the same script connects.
+    const clash = matchFor("Ryu", "Ryu", { distance: 500 });
+    const mine = hadoken("HP").flatMap(([dir, buttons, n]) =>
+      Array.from({ length: n }, () => hold(dir, buttons)),
+    );
+    // Mirrored left-to-right for the right-hand fighter: their forward is world
+    // back, but down is still down.
+    const flip: Record<number, Direction> = { 1: 3, 2: 2, 3: 1, 4: 6, 5: 5, 6: 4, 7: 9, 8: 8, 9: 7 };
+    const theirs = mine.map((f) => hold(flip[f.dir]!, f.buttons));
+    for (let i = 0; i < 200; i++) clash.advance(mine[i] ?? hold(5), theirs[i] ?? hold(5));
+    expect(clash.hits).toHaveLength(0);
+    expect(clash.health).toEqual([10000, 10000]);
+
+    const alone = matchFor("Ryu", "Ryu", { distance: 500 });
+    for (let i = 0; i < 200; i++) alone.advance(mine[i] ?? hold(5), hold(5));
+    expect(alone.hits).toHaveLength(1);
+  });
+});
+
 describe("the reaction decode", () => {
   it("names an action that exists, on every hit row on the roster", () => {
     // The check that makes this a decode rather than a guess: `part` picks the

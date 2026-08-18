@@ -85,7 +85,7 @@
 
 <script type="module">
 import {
-  Match, hold, hitboxesAt, hurtboxesAt, pushboxesAt, originAt,
+  Match, hold, hitboxesAt, hurtboxesAt, pushboxesAt, originAt, projectileBoxes,
 } from "./play.js";
 
 const canvas = document.getElementById("stage");
@@ -257,6 +257,18 @@ function draw() {
     ctx.fillStyle = tint;
     ctx.fillRect(ox - 1, ground - 3, 2, 6);
     ctx.fillRect(ox + (fighter.state.facing === 1 ? 4 : -10), ground - 1, 6, 2);
+  }
+
+  // fireballs, drawn as what they are: a hitbox with nothing attached
+  for (const shot of match.projectiles) {
+    for (const box of projectileBoxes(shot)) {
+      const x = sx(box.x);
+      const y = sy(box.y + box.height);
+      ctx.fillStyle = "rgba(251,191,36,.3)";
+      ctx.strokeStyle = "rgba(251,191,36,.95)";
+      ctx.fillRect(x, y, box.width * scale, box.height * scale);
+      ctx.strokeRect(x + 0.5, y + 0.5, box.width * scale - 1, box.height * scale - 1);
+    }
   }
 
   // health bars
