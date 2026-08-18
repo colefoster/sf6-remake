@@ -40,23 +40,45 @@ Swept the way ADR-0010 swept the guard release, over every mapped projectile
 special in the clean population:
 
 ```
- 0:  4/39     4:  1/39     8: 22/39    12:  1/39
- 1:  0/39     5:  1/39     9:  0/39    13:  0/39
- 2:  0/39     6:  0/39    10:  1/39    14:  0/39
- 3:  0/39     7:  0/39    11:  1/39    15:  2/39
+ 0:  4/39     4:  4/39     8: 24/39    12:  5/39
+ 1:  4/39     5:  4/39     9:  4/39    13:  4/39
+ 2:  4/39     6:  4/39    10:  5/39    14:  4/39
+ 3:  4/39     7:  4/39    11:  4/39    15:  5/39
 ```
 
-**22 of 39 at offset 8; every neighbour scores nothing.** Not a trend with a
+**24 of 39 at offset 8, against a flat floor of four.** Not a trend with a
 maximum — a spike, which is what a real constant looks like and what a fitted one
 does not.
 
-The four at offset 0 are the honest exception rather than noise: Ryu's Hashogeki
-and A.K.I.'s Jatoben spawn a "projectile" that does not travel at all, so there
-is nowhere for FAT to measure it but on contact.
+The floor is the projectiles the constant does not apply to, and it is flat
+because they score the same whatever the offset is: **a shot that does not
+travel gives FAT no flight to measure at.** Ryu's Hashogeki and A.K.I.'s Jatoben
+spawn a hitbox that stays where it is put, so FAT measures those on contact like
+anything else, and the check gates on the projectile's own motion.
 
 The remainder that match at neither are the OD versions — `236PP`, `46PP`,
 `214PP` — sitting between 10 and 25. Those hit more than once, and FAT's number
 describes a hit the sim stops before.
+
+### The rule is about projectiles, not about travel — a travelling *attacker* has no constant
+
+The obvious next hypothesis is that any move that covers ground is measured the
+same way. It is not. Swept over the 31 travelling non-projectile specials in the
+clean population — tatsus, dive kicks, rushing punches:
+
+```
+-6: 1   -3: 1   -2: 1    0: 16    2: 2    3: 1    4: 1    7: 1    9: 1   10: 1   11: 1
+```
+
+**The peak is offset 0**, and the residue is scattered from −17 to +11 with no
+second peak anywhere. FAT measures a travelling attacker on its first active
+frame, like everything else.
+
+That is the whole shape of the finding, and it is a mechanical distinction rather
+than an editorial one: an attacker that travels carries its own recovery with it,
+so the first frame it can connect on *is* its first active frame. A fireball
+separates from its owner — it can only connect on its own frame 1 at point blank,
+and everywhere else it arrives later while the thrower is already recovering.
 
 ### This is a convention, not a mechanic
 
@@ -75,7 +97,8 @@ own boxes and every fireball in the air, outcome from whichever action owns the
 box that landed.
 
 Grade a projectile move's advantage against the sim's plus `PROJECTILE_CONTACT`,
-exported and swept in the tests the way `GUARD_RELEASE` is.
+exported and swept in the tests the way `GUARD_RELEASE` is — and only where the
+shot **travels**, since a stationary one gives FAT nothing to measure at.
 
 Count a fireball's hits by distinct hit-data row rather than by key: the dump
 splits a fireball's flight into a spawn flash and the travel proper, and counting
@@ -85,8 +108,8 @@ keys called every fireball multi-hit and kept it out of the clean population.
 
 - **`total` on specials 43/51 → 71/80** and the clean special population roughly
   doubles, both from the hit-count fix letting fireballs in.
-- **`advantage` on specials 16/37 → 38/74.** Projectiles are 22/39 of that.
-- Pooled `advantage` reads 81.1%, down from 84.1%, on a population grown from 321
+- **`advantage` on specials 16/37 → 40/74.** Projectiles are 24/39 of that.
+- Pooled `advantage` reads 81.7%, down from 84.1%, on a population grown from 321
   rows to 360. The per-category numbers are the ones that mean anything.
 - `sf6 play ryu 236LP --at 100` narrates the fireball: spawn, travel, contact,
   and who recovers first.
@@ -110,7 +133,8 @@ keys called every fireball multi-hit and kept it out of the clean population.
   the same 8 holds across characters whose fireballs travel at different speeds
   says it is counted in *frames*, not in distance — which is a real constraint on
   the explanation, and not the explanation.
-- **Non-projectile specials are still 16/35 on `advantage`**, and they are the
-  travelling ones: a tatsu, a dive kick, anything whose action carries the
-  attacker through the defender. That is the same class of problem, met from the
-  other side.
+- **The non-projectile residue is two move families, not a systematic offset.**
+  Rashid's four Eagle Spikes are all published −36 regardless of strength while
+  the dump gives −19 to −28, and Jamie's four rekka starters run +7 to +11 the
+  other way. A per-family cause rather than a per-category one; nothing else in
+  the travelling population is off by more than four.

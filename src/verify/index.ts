@@ -30,6 +30,7 @@ import { dirname, join } from "node:path";
 
 import {
   inFatFrames,
+  spawnsFrom,
   loadGeometry,
   type GeometryAction,
   type GeometryFile,
@@ -174,13 +175,22 @@ function dumpNumbers(
       move.cancel && data?.hit
         ? move.cancel.end - move.startup + data.hit.hitStop.owner + 2
         : undefined,
-    advantage: add(simAdvantage(character, move.input), projectile(action) ? projectileContact : 0),
+    advantage: add(simAdvantage(character, move.input), movingProjectile(geo, action) ? projectileContact : 0),
   };
 }
 
-/** A move that throws rather than hits: no hitbox of its own, only a `ShotKey`. */
-function projectile(action: GeometryAction | undefined): boolean {
-  return !!action?.shots?.length && !action.hit.some((h) => h.kind !== "proximity");
+/**
+ * A move whose hitbox is a fireball that **travels**.
+ *
+ * Both halves matter. No hitbox of its own and only a `ShotKey` makes it a
+ * projectile move; the shot going somewhere is what gives FAT eight frames of
+ * flight to measure at. Ryu's Hashogeki and A.K.I.'s Jatoben spawn a shot that
+ * stays where it is put, and FAT measures those on contact like anything else.
+ * See ADR-0023.
+ */
+function movingProjectile(geo: GeometryFile, action: GeometryAction | undefined): boolean {
+  if (!action?.shots?.length || action.hit.some((h) => h.kind !== "proximity")) return false;
+  return spawnsFrom(geo, action).some((s) => Math.max(0, ...(s.action.motion?.x ?? [0])) > 0);
 }
 
 /**

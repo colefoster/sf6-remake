@@ -179,11 +179,12 @@ describe("the game's data against the published frame data", () => {
     const best = [...scores].sort((a, b) => b[1] - a[1])[0]!;
     expect(best[0]).toBe(PROJECTILE_CONTACT);
     expect(best[1]).toBeGreaterThan(20);
-    // A spike, not a trend. Offset 0 picks up a handful and they are the honest
-    // exception: Ryu's Hashogeki and A.K.I.'s Jatoben spawn a "projectile" that
-    // does not travel, so there is nowhere for FAT to measure but on contact.
+    // A spike, not a trend. The offsets either side sit on a flat floor of four
+    // to six: the projectiles the constant does not apply to, because their shot
+    // does not travel — Ryu's Hashogeki, A.K.I.'s Jatoben — and which therefore
+    // score the same whatever the offset is.
     for (const [offset, score] of scores) {
-      if (offset !== PROJECTILE_CONTACT) expect(`${offset}: ${score <= 4}`).toBe(`${offset}: true`);
+      if (offset !== PROJECTILE_CONTACT) expect(`${offset}: ${score <= 6}`).toBe(`${offset}: true`);
     }
   });
 
