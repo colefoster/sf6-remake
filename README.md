@@ -93,7 +93,7 @@ The stun, damage and knockback numbers are the game's own, from its hit-data tab
 
 Cancel windows come from the same dumps: which frames of a move a special can be cancelled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008](./docs/adr/0008-cancel-windows.md)).
 
-Each option carries its price, and the prices are the game's own — EX two bars of Drive, Drive Impact one, a Drive Rush cancel three, SA1/SA2/SA3 one/two/three bars of super, and a 4-frame input buffer on nearly everything ([ADR-0009](./docs/adr/0009-what-a-cancel-costs.md)).
+Air-only options are marked: `_State` carries an airborne gate that reads cleanly, though the rest of `ConditionFlag` does not ([ADR-0013](./docs/adr/0013-conditionflag.md)). Each option carries its price, and the prices are the game's own — EX two bars of Drive, Drive Impact one, a Drive Rush cancel three, SA1/SA2/SA3 one/two/three bars of super, and a 4-frame input buffer on nearly everything ([ADR-0009](./docs/adr/0009-what-a-cancel-costs.md)).
 
 Add a character:
 

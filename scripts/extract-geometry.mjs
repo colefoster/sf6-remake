@@ -212,7 +212,7 @@ function extractAction(action, rect, unresolvedPush) {
     const start = key._StartFrame + 1;
     const end = key._EndFrame;
     if (end < start) continue;
-    cancels.push({
+    const entry = {
       start,
       end,
       group: key.TriggerGroup,
@@ -220,7 +220,14 @@ function extractAction(action, rect, unresolvedPush) {
       // opens for real: this is the buffer, and it always abuts the live window.
       buffered: key._NotDefer === false,
       cond: key._Condition ?? 0,
-    });
+    };
+    // `ConditionFlag` is four packed fields and only `_Condition` resists
+    // reading; keep the rest rather than the one number, so a later attempt at
+    // the nibble starts from the whole flag. See docs/adr/0013.
+    if (key._State) entry.state = key._State;
+    if (key._Input) entry.input = key._Input;
+    if (key._Other) entry.other = key._Other;
+    cancels.push(entry);
   }
 
   const branches = ordered(action.BranchKey)

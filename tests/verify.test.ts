@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 
 import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
-import { actionableFrame, loadGeometry, touchdownFrame } from "../src/data/geometry.js";
+import { actionableFrame, airOnly, loadGeometry, touchdownFrame } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 
@@ -210,5 +210,52 @@ describe("airborne actions recover on landing", () => {
       }
     }
     expect(landing).toBeGreaterThan(50);
+  });
+});
+
+describe("ConditionFlag: what reads and what does not", () => {
+  const keys = listCharacters().flatMap((name) => {
+    const g = loadGeometry(requireCharacter(name).id);
+    if (!g) return [];
+    return g.actions.flatMap((action) =>
+      (action.cancels ?? []).map((key) => ({
+        key,
+        airborne: (action.motion?.travel.maxY ?? 0) > 20 || /_AIR|^ATK_[789]/.test(action.name),
+      })),
+    );
+  });
+
+  it("reads the airborne gate out of _State", () => {
+    // Measured against the actions the keys sit on rather than assumed: the
+    // marked keys land on an airborne action almost always, where the base rate
+    // across all cancel keys is under a tenth. A 10x lift is the decode.
+    const base = keys.filter((k) => k.airborne).length / keys.length;
+    const marked = keys.filter((k) => airOnly(k.key));
+    expect(base).toBeLessThan(0.15);
+    expect(marked.length).toBeGreaterThan(200);
+    expect(marked.filter((k) => k.airborne).length / marked.length).toBeGreaterThan(0.95);
+  });
+
+  it("keeps the whole flag, not just the part that reads", () => {
+    // ADR-0013 is a negative result on the low nibble. Storing the other three
+    // fields is what makes a later attempt a re-read rather than a re-extract.
+    expect(keys.some((k) => k.key.state !== undefined)).toBe(true);
+    expect(keys.some((k) => k.key.input !== undefined)).toBe(true);
+    expect(keys.some((k) => k.key.other !== undefined)).toBe(true);
+  });
+
+  it("still partitions the low nibble by phase, which is all we can say", () => {
+    // Nibble 7 occurs almost only before the move is active and nibble 4 almost
+    // only after. Real structure, but not a decode: see ADR-0013 for why no
+    // available source can distinguish the readings that fit it.
+    const withPhase = keys
+      .map(({ key }) => key)
+      .filter((k) => k.cond !== undefined);
+    const nib = (k: (typeof withPhase)[number]) => k.cond & 15;
+    const counts = new Map<number, number>();
+    for (const k of withPhase) counts.set(nib(k), (counts.get(nib(k)) ?? 0) + 1);
+    // The five values that carry the roster; anything else is a handful.
+    for (const value of [4, 7, 11, 15]) expect(counts.get(value)!).toBeGreaterThan(100);
+    expect([...counts.keys()].every((v) => v < 16)).toBe(true);
   });
 });

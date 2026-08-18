@@ -78,8 +78,27 @@ export interface CancelKey {
   /** Index into `GeometryFile.cancelGroups`. */
   group: number;
   buffered: boolean;
-  /** Raw condition bits. The phase structure is understood; the bits are not. */
+  /**
+   * `ConditionFlag` unpacked. `cond` is the part that resists reading — see
+   * ADR-0013 — and the other three are kept so a later attempt at it starts
+   * from the whole flag rather than a third of it.
+   */
   cond: number;
+  state?: number;
+  input?: number;
+  other?: number;
+}
+
+/**
+ * `_State` bits that gate a cancel window on being airborne. Measured, not
+ * assumed: keys carrying them sit on an airborne action 98-100% of the time
+ * against a 9.6% base rate. See docs/adr/0013.
+ */
+const STATE_AIRBORNE = (1 << 18) | (1 << 19) | (1 << 20);
+
+/** Whether this window only opens while the attacker is off the ground. */
+export function airOnly(key: CancelKey): boolean {
+  return ((key.state ?? 0) & STATE_AIRBORNE) !== 0;
 }
 
 export interface GeometryAction {

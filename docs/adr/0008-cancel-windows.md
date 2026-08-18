@@ -4,6 +4,9 @@
 - Date: 2026-08-17
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md)
 - Follows: [ADR-0007](./0007-scenario-player.md)
+- Followed by: [ADR-0013](./0013-conditionflag.md) — the attempt at `ConditionFlag`.
+  Its `_State` airborne bits read; the low nibble does not, and no available
+  source can settle it.
 - Amended by: [ADR-0010](./0010-the-grader.md) — the windows are now checked on
   their *boundary* as well as their presence. FAT publishes `hcWinSpCa`, a
   hit-confirm window in frames, and `hcWinSpCa = cancelEnd - startup + hitstop
