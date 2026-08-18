@@ -377,6 +377,32 @@ export function hurtboxesAt(
   return out;
 }
 
+/** The last frame of an action's timeline, however the dump chose to state it. */
+function lastFrame(action: GeometryAction): number {
+  return Math.max(action.frames ?? 0, ...action.hurt.map((k) => k.end), 0);
+}
+
+/**
+ * The frames on which the action carries **no hurtbox at all** — full
+ * invulnerability, and the mechanism behind every "Fully invincible on frames
+ * 1-N" FAT publishes.
+ *
+ * There is no flag for this. A Super Art's cinematic simply has nothing to hit
+ * for the length of the freeze plus the published window, and the same trick
+ * runs an EX reversal's start-up and one of Terry's target combos. Frames are
+ * the action's own; `inFatFrames` converts. See ADR-0020.
+ */
+export function fullyInvulnerableWindows(action: GeometryAction): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (let frame = 1; frame <= lastFrame(action); frame++) {
+    if (action.hurt.some((k) => covers(k, frame))) continue;
+    const last = out[out.length - 1];
+    if (last && last.end === frame - 1) last.end = frame;
+    else out.push({ start: frame, end: frame });
+  }
+  return out;
+}
+
 /**
  * The frames on which nothing that kind of attack can hit is live — the
  * character's own invulnerability, as opposed to one box's.
@@ -386,15 +412,18 @@ export function hurtboxesAt(
  * only frames where every live box declines. That is the same distinction FAT
  * draws between "the extended leg hurtbox is strike invincible" and "invincible
  * to airborne strikes on frames 1-14". See ADR-0014.
+ *
+ * A frame with no live box at all counts for every kind: nothing to hit is the
+ * strongest form of the same answer. See ADR-0020.
  */
 export function invulnerableWindows(
   action: GeometryAction,
   kind: AttackKind,
 ): { start: number; end: number }[] {
   const out: { start: number; end: number }[] = [];
-  for (let frame = 1; frame <= (action.frames ?? 0); frame++) {
+  for (let frame = 1; frame <= lastFrame(action); frame++) {
     const live = action.hurt.filter((k) => covers(k, frame));
-    if (!live.length || live.some((k) => vulnerableTo(k, kind))) continue;
+    if (live.some((k) => vulnerableTo(k, kind))) continue;
     const last = out[out.length - 1];
     if (last && last.end === frame - 1) last.end = frame;
     else out.push({ start: frame, end: frame });

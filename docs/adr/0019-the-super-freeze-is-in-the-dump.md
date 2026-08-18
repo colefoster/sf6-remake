@@ -4,6 +4,10 @@
 - Date: 2026-08-18
 - Extends: [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md),
   [ADR-0018](./0018-cmnname-says-what-a-move-is.md)
+- Extended by:
+  [ADR-0020](./0020-full-invulnerability-is-the-absence-of-a-hurtbox.md) — a super
+  has no hurtboxes during its freeze, which is what "fully invincible" means and
+  what lets supers into the invulnerability checks.
 
 ## Context
 
@@ -100,13 +104,12 @@ per category rather than only on the pool.
 
 - **The three supers the identity misses** are Ken's SA1 (−8 twice) and Luke's
   `214214P` (+2). Ken's is off by the same amount twice, so it is one cause.
-- **Supers stay out of `src/verify/invuln.ts` and `src/verify/armor.ts`**, but no
-  longer because the frames are incomparable — `inFatFrames` would fix that. It is
-  because their published claims are almost all *"Fully invincible on frames 1-N"*,
-  and ADR-0014 established that full invulnerability is not in `Immune` at all. The
-  interesting part is *why*: ADR-0014 noted that 4 of 13 full-invulnerability claims
-  had no hurtbox in range at all. If a super simply has no hurtboxes during its
-  freeze, that is the mechanism, and it is the next thing to measure.
+- ~~**Supers stay out of `src/verify/invuln.ts` and `src/verify/armor.ts`**~~ —
+  the invulnerability half is closed by
+  [ADR-0020](./0020-full-invulnerability-is-the-absence-of-a-hurtbox.md): a super
+  has no hurtboxes during its freeze, that *is* full invulnerability, and it
+  grades at 52/66 through `inFatFrames`. Supers are now in all four
+  invulnerability checks. `src/verify/armor.ts` still excludes them.
 - **Specials are still 0 solidly mapped of 196**, unchanged from ADR-0018 and still
   the largest coverage gap.
 - Whether the large `WorldKey` timers — 406 to 579 on Critical Art actions — are the

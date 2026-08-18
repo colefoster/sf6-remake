@@ -25,6 +25,7 @@ import {
   cancelOptions,
   armorWindows,
   hitDataFor,
+  fullyInvulnerableWindows,
   invulnerableWindows,
   loadGeometry,
   minDistance,
@@ -368,11 +369,16 @@ function printBoxes(character: Character, move: Move, args: Args): void {
   console.log(`${character.name} — ${move.name} (${move.input})`);
   console.log(`  action       ${action.name} (#${action.id})`);
   console.log(`  active       ${windows.map((w) => `${w.start}-${w.end}`).join(", ") || "no hitboxes"}`);
-  const invuln = (["airborne-strike", "projectile", "strike"] as const)
-    .map((kind) => ({ kind, windows: invulnerableWindows(action, kind) }))
-    .filter((row) => row.windows.length);
-  for (const { kind, windows } of invuln) {
-    console.log(`  invuln       ${windows.map((w) => `${w.start}-${w.end}`).join(", ")} to ${kind}`);
+  const ranges = (ws: { start: number; end: number }[]) =>
+    ws.map((w) => `${w.start}-${w.end}`).join(", ");
+  // Frames with no hurtbox at all are invulnerable to every kind, so printing
+  // them once as `everything` says more than three identical lines. See ADR-0020.
+  const full = fullyInvulnerableWindows(action);
+  if (full.length) console.log(`  invuln       ${ranges(full)} to everything`);
+  for (const kind of ["airborne-strike", "projectile", "strike"] as const) {
+    const windows = invulnerableWindows(action, kind);
+    if (!windows.length || ranges(windows) === ranges(full)) continue;
+    console.log(`  invuln       ${ranges(windows)} to ${kind}`);
   }
   for (const w of armorWindows(action)) {
     // Which parts the armor covers is the load-bearing part: body-only armor is
@@ -616,8 +622,9 @@ function printInvulnerability(report: ReturnType<typeof verifyInvuln>): void {
   for (const [kind, describes] of Object.entries(INVULN_CHECKS)) {
     const t = report.totals[kind as keyof typeof report.totals];
     console.log(`  ${kind.padEnd(16)} ${pct(t.exact, t.checked).padEnd(18)} ${describes}`);
+    const absence = t.byAbsence ? `; ${t.byAbsence} answered by having no hurtbox` : "";
     console.log(
-      `  ${"".padEnd(16)} ${pct(t.within1, t.checked).padEnd(18)} (within a frame; ${t.absent} not in the dump at all)`,
+      `  ${"".padEnd(16)} ${pct(t.within1, t.checked).padEnd(18)} (within a frame; ${t.absent} not in the dump at all${absence})`,
     );
   }
 

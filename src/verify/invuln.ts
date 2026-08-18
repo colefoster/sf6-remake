@@ -18,7 +18,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { loadGeometry, type HurtKey } from "../data/geometry.js";
+import {
+  fullyInvulnerableWindows,
+  inFatFrames,
+  loadGeometry,
+  type GeometryAction,
+  type HurtKey,
+} from "../data/geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -28,23 +34,26 @@ const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
  * What a published claim says the fighter is invulnerable to, and which field of
  * the dump answers it.
  */
-export type InvulnKind = "airborne-strike" | "projectile" | "strike";
+export type InvulnKind = "airborne-strike" | "projectile" | "strike" | "full";
 
 export const INVULN_CHECKS: Record<InvulnKind, string> = {
   "airborne-strike": "Immune bit 2 == FAT's 'invincible to airborne strikes on frames A-B'",
   projectile: "TypeFlag without bit 1 == FAT's 'projectile invincible on frames A-B'",
   strike: "TypeFlag without bit 0 == FAT's 'strike invincible on frame N'",
+  full: "no hurtbox at all == FAT's 'fully invincible on frames A-B'",
 };
 
 /**
  * Ordered, and the order matters: "air strike invincible" is an airborne-strike
- * claim, not a strike one, and Dhalsim phrases it that way six times.
+ * claim, not a strike one, and Dhalsim phrases it that way six times. `full`
+ * comes last for the same reason — it is the claim with no kind named in it.
  */
 const PHRASINGS: { kind: InvulnKind; re: RegExp }[] = [
   { kind: "airborne-strike", re: /(?:airborne|air)\s+(?:strike\s+)?(?:attacks?\s+)?invinc/i },
   { kind: "airborne-strike", re: /invincible\s+(?:to|against)\s+air/i },
   { kind: "projectile", re: /project\w*\s+invincib/i },
   { kind: "strike", re: /strike\s+invincible/i },
+  { kind: "full", re: /(?:fully|full|completely)\s+invinc|^invincible\s+(?:on|from|during)/i },
 ];
 
 /** `frames 4-10`, `frame 9`, `frames 8~15` — and only when the line has exactly one. */
@@ -76,14 +85,56 @@ function keyAnswers(key: HurtKey, kind: InvulnKind, airborneBit: number): boolea
   return (responds & 1) === 0;
 }
 
-/** The outermost frames on which some key answers the claim. */
-function windowFor(keys: HurtKey[], kind: InvulnKind, airborneBit: number): [number, number] | undefined {
-  const answering = keys.filter((k) => keyAnswers(k, kind, airborneBit));
-  if (!answering.length) return undefined;
-  return [
-    Math.min(...answering.map((k) => k.start)),
-    Math.max(...answering.map((k) => k.end)),
+/**
+ * The frames the dump says the claim is about, in FAT's frame space.
+ *
+ * `full` is a different question from the other three and answered by a
+ * different part of the data: not a flag on a box but the absence of every box.
+ * A Super Art's cinematic has nothing to hit, so the window runs from frame 1
+ * of the action through the freeze and out the far side, and `inFatFrames` is
+ * what makes it comparable to a published number. See ADR-0020.
+ *
+ * An action can have more than one no-box window — a target combo's is in the
+ * middle of the move — so the one overlapping the claim is the one graded.
+ */
+function windowFor(
+  action: GeometryAction,
+  kind: InvulnKind,
+  airborneBit: number,
+  fat: [number, number],
+): [number, number] | undefined {
+  const fatFrames = (w: { start: number; end: number }): [number, number] => [
+    Math.max(1, inFatFrames(action, w.start)),
+    inFatFrames(action, w.end),
   ];
+
+  if (kind === "full") {
+    const windows = fullyInvulnerableWindows(action).map(fatFrames).filter((w) => w[1] >= 1);
+    if (!windows.length) return undefined;
+    return windows.find((w) => w[0] <= fat[1] && w[1] >= fat[0]) ?? windows[0];
+  }
+
+  const answering = action.hurt.filter((k) => keyAnswers(k, kind, airborneBit));
+  if (!answering.length) return undefined;
+  return fatFrames({
+    start: Math.min(...answering.map((k) => k.start)),
+    end: Math.max(...answering.map((k) => k.end)),
+  });
+}
+
+/**
+ * Whether the action simply has no hurtbox across the whole claimed range.
+ *
+ * A claim that names a kind — "projectile invincible on frames 13-41" — is
+ * still a true statement when there is nothing there to hit, and Lily's
+ * Thunderbird is exactly that: FAT writes "fully invincible 1-12" and
+ * "projectile invincible 13-41" about an action with no hurtbox until frame 41.
+ * The `TypeFlag` check has no business scoring that as a miss.
+ */
+function coversByAbsence(action: GeometryAction, fat: [number, number]): boolean {
+  return fullyInvulnerableWindows(action).some(
+    (w) => inFatFrames(action, w.start) <= fat[0] && inFatFrames(action, w.end) >= fat[1],
+  );
 }
 
 export interface InvulnComparison {
@@ -98,6 +149,13 @@ export interface InvulnComparison {
   drift: number | undefined;
   agrees: boolean;
   claim: string;
+  /**
+   * The action has no hurtbox at all across the claimed frames, so a kinded
+   * claim is answered by absence rather than by the flag this check reads.
+   * Those rows are counted separately: scoring them as `TypeFlag` failures
+   * would mark the dump wrong for being right. See ADR-0020.
+   */
+  byAbsence: boolean;
 }
 
 export interface InvulnTally {
@@ -108,6 +166,8 @@ export interface InvulnTally {
   within1: number;
   /** No key of that kind on the action at all. */
   absent: number;
+  /** Kinded claims the action answers by having no hurtbox; out of `checked`. */
+  byAbsence: number;
 }
 
 export interface InvulnReport {
@@ -165,17 +225,18 @@ export function verifyInvuln(characters?: string[], options: InvulnOptions = {})
     for (const move of geo.moves) {
       const info = fat[move.input]?.extraInfo;
       const action = geo.actions.find((a) => a.id === move.action);
-      // A Super Art's action includes the cinematic freeze and FAT's frames do
-      // not, so its published windows and the dump's are in different frame
-      // spaces. See ADR-0018.
-      if (!info || !action || move.category === "super") continue;
+      // Supers are in: ADR-0018 kept them out because their action includes the
+      // cinematic freeze and FAT's frames do not, and ADR-0019 found the freeze.
+      // Every window here is stated in FAT's frame space.
+      if (!info || !action) continue;
 
       for (const claim of info) {
         const kind = classify(claim);
         const range = soleRange(claim);
         if (!kind || !range) continue;
-        const dump = windowFor(action.hurt, kind, airborneBit);
+        const dump = windowFor(action, kind, airborneBit, range);
         const drift = dump ? Math.abs(dump[0] - range[0]) + Math.abs(dump[1] - range[1]) : undefined;
+        const byAbsence = kind !== "full" && coversByAbsence(action, range);
         comparisons.push({
           character: geo.character,
           input: move.input,
@@ -186,6 +247,7 @@ export function verifyInvuln(characters?: string[], options: InvulnOptions = {})
           drift,
           agrees: drift === 0,
           claim,
+          byAbsence,
         });
       }
     }
@@ -193,10 +255,14 @@ export function verifyInvuln(characters?: string[], options: InvulnOptions = {})
 
   const totals = {} as Record<InvulnKind, InvulnTally>;
   for (const kind of Object.keys(INVULN_CHECKS) as InvulnKind[]) {
-    totals[kind] = { checked: 0, exact: 0, within1: 0, absent: 0 };
+    totals[kind] = { checked: 0, exact: 0, within1: 0, absent: 0, byAbsence: 0 };
   }
   for (const c of comparisons) {
     const t = totals[c.kind];
+    if (c.byAbsence) {
+      t.byAbsence++;
+      continue;
+    }
     t.checked++;
     if (c.drift === undefined) t.absent++;
     else {
@@ -210,5 +276,5 @@ export function verifyInvuln(characters?: string[], options: InvulnOptions = {})
 
 /** Just the claims the dump does not reproduce — what a human wants to look at. */
 export function invulnDisagreements(report: InvulnReport): InvulnComparison[] {
-  return report.comparisons.filter((c) => !c.agrees);
+  return report.comparisons.filter((c) => !c.agrees && !c.byAbsence);
 }

@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 
 import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
-import { verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
+import { invulnDisagreements, verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
 import { verifyArmor, verifyArmorBreak } from "../src/verify/armor.js";
 import {
   actionableFrame,
   airOnly,
   armoredAt,
   armorWindows,
+  fullyInvulnerableWindows,
+  inFatFrames,
   hurtboxesAt,
   loadGeometry,
   touchdownFrame,
@@ -394,6 +396,54 @@ describe("per-frame invulnerability against the published notes", () => {
       }
     }
     expect(seen128).toBeGreaterThan(150);
+  });
+
+  it("reads full invulnerability as the absence of every hurtbox", () => {
+    // The fourth check, and the one that finally answers "Fully invincible on
+    // frames 1-N". There is no flag for it: the action carries no hurtbox at
+    // all. See ADR-0020.
+    const t = invuln.totals.full;
+    expect(t.checked).toBeGreaterThan(60);
+    expect(t.exact).toBeGreaterThan(50);
+    // And no ±1 skew at all, which the other prose checks all carry. A window
+    // bounded by the absence of keys has no edge to be off by one on.
+    expect(t.within1).toBe(t.exact);
+  });
+
+  it("anchors full invulnerability on a super, through the freeze", () => {
+    // Ryu's Shinshoryuken has no hurtbox on frames 1-71 of its own timeline.
+    // Net of the 56-frame cinematic freeze that is FAT's 1-16, published as
+    // "Fully invincible on frames 1-16" — the two decodes composing.
+    const geo = loadGeometry("ryu")!;
+    const action = geo.actions.find((a) => a.name === "SAA_SHINSYORYU_START")!;
+    const [window] = fullyInvulnerableWindows(action);
+    expect(window).toEqual({ start: 1, end: 71 });
+    expect(action.freeze).toBe(56);
+    expect(inFatFrames(action, window!.start)).toBe(-54);
+    expect(inFatFrames(action, window!.end)).toBe(16);
+  });
+
+  it("finds the same mechanism outside supers", () => {
+    // It is not a cinematic trick. Chun-Li's EX Tenshokyaku opens with seven
+    // frames of nothing, and Terry's 5MP > MK has a window in the middle of
+    // the move — both published as full invincibility on exactly those frames.
+    const chun = loadGeometry("chun-li")!.actions.find((a) => a.name === "SPA_TENNSHOU_EX")!;
+    expect(fullyInvulnerableWindows(chun)[0]).toEqual({ start: 1, end: 7 });
+    const terry = loadGeometry("terry")!.actions.find((a) => a.name === "ATK_5MP_TC_MK")!;
+    expect(fullyInvulnerableWindows(terry)).toContainEqual({ start: 20, end: 40 });
+  });
+
+  it("does not score a kinded claim the dump answers by absence", () => {
+    // FAT writes "fully invincible 1-12" and "projectile invincible 13-41"
+    // about Lily's Thunderbird, and the dump has no hurtbox until frame 41.
+    // The second sentence is true; it is just not TypeFlag's doing, so the
+    // projectile check counts it apart rather than as a failure.
+    const rows = invuln.comparisons.filter(
+      (c) => c.actionName === "SAA_THUNDERBIRD" && c.kind === "projectile",
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.byAbsence).toBe(true);
+    expect(invulnDisagreements(invuln)).not.toContain(rows[0]);
   });
 });
 
