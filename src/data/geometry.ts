@@ -66,6 +66,22 @@ export interface Motion {
   travel: { x: number; maxX: number; maxY: number };
 }
 
+/**
+ * A cancel window: one trigger group held open over a frame range. `buffered`
+ * marks the key in front of the live window, where an input is held and fires
+ * when the window opens for real — the game's input buffer, made explicit.
+ * See docs/adr/0008.
+ */
+export interface CancelKey {
+  start: number;
+  end: number;
+  /** Index into `GeometryFile.cancelGroups`. */
+  group: number;
+  buffered: boolean;
+  /** Raw condition bits. The phase structure is understood; the bits are not. */
+  cond: number;
+}
+
 export interface GeometryAction {
   id: number;
   name: string;
@@ -86,6 +102,7 @@ export interface GeometryAction {
   hurt: HurtKey[];
   push: PushKey[];
   motion?: Motion;
+  cancels?: CancelKey[];
   branches?: { frame: number; action: number; type: number | null }[];
   continues?: number;
   mot?: string;
@@ -145,6 +162,20 @@ export interface MoveMapping {
   startupDelta: number | null;
   alternates: number[];
   category: string;
+  /** Absent when the move cannot be cancelled into a special at all. */
+  cancel?: CancelWindow;
+}
+
+/**
+ * When a move can be cancelled into a special. `start` is at or after the move's
+ * own first active frame — on it for a single-hit normal, later for a multi-hit
+ * one — and `buffer` is where an input starts being held.
+ */
+export interface CancelWindow {
+  start: number;
+  end: number;
+  buffer: number | null;
+  groups: number[];
 }
 
 export interface GeometryFile {
@@ -165,6 +196,10 @@ export interface GeometryFile {
   actions: GeometryAction[];
   /** Outcome table, keyed by the `attackData` index a hit key carries. */
   hitData: Record<string, HitData>;
+  /** Cancel lists: group id -> the action ids that group makes available. */
+  cancelGroups: Record<string, number[]>;
+  /** The groups the idle actions open — everything available from neutral. */
+  neutralGroups: number[];
 }
 
 const cache = new Map<string, GeometryFile | undefined>();
@@ -283,6 +318,23 @@ export function hitDataSequence(geo: GeometryFile, action: GeometryAction): HitD
     if (data) out.push(data);
   }
   return out;
+}
+
+/**
+ * The actions a move can be cancelled into, resolved through its cancel groups.
+ * Only actions the extractor kept are returned: a group can name an action with
+ * no collision data of its own (a stance handoff, a system action), and those
+ * are dropped rather than surfaced as a nameless id.
+ */
+export function cancelTargets(geo: GeometryFile, move: MoveMapping): GeometryAction[] {
+  const ids = new Set((move.cancel?.groups ?? []).flatMap((g) => geo.cancelGroups?.[String(g)] ?? []));
+  return [...ids].map((id) => actionById(geo, id)).filter((a): a is GeometryAction => a !== undefined);
+}
+
+/** Whether a special can be cancelled in on this frame of the move (not buffered). */
+export function cancellableAt(move: MoveMapping, frame: number): boolean {
+  const window = move.cancel;
+  return !!window && frame >= window.start && frame <= window.end;
 }
 
 export type Stance = "stand" | "crouch";

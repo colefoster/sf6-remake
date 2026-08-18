@@ -207,6 +207,22 @@ function extractAction(action, rect, unresolvedPush) {
     push.push({ start, end, boxNo: key.BoxNo, box });
   }
 
+  const cancels = [];
+  for (const key of ordered(action.TriggerKey)) {
+    const start = key._StartFrame + 1;
+    const end = key._EndFrame;
+    if (end < start) continue;
+    cancels.push({
+      start,
+      end,
+      group: key.TriggerGroup,
+      // `_NotDefer` false means an input here is held and fires when the window
+      // opens for real: this is the buffer, and it always abuts the live window.
+      buffered: key._NotDefer === false,
+      cond: key._Condition ?? 0,
+    });
+  }
+
   const branches = ordered(action.BranchKey)
     .filter((k) => typeof k.Action === "number" && k.Action > 0)
     .map((k) => ({ frame: (k._StartFrame ?? 0) + 1, action: k.Action, type: k.Type ?? null }));
@@ -232,6 +248,7 @@ function extractAction(action, rect, unresolvedPush) {
     hurt,
     push,
   };
+  if (cancels.length) out.cancels = cancels;
   const motion = extractMotion(action, fab.Frame);
   if (motion) out.motion = motion;
   if (branches.length) out.branches = dedupeBranches(branches);
@@ -287,6 +304,32 @@ function extractHitData(file) {
     const air = hitOutcome(entry.param?.["02"]);
     if (air) row.airHit = air;
     if (Object.keys(row).length) out[Number(index)] = row;
+  }
+  return out;
+}
+
+/**
+ * The cancel lists. `tgroups.json` is one entry per trigger group, and each is a
+ * bit array whose set bits are trigger indices — MMDK dumps them already
+ * resolved to `"<actionId> <ACTION_NAME>"`, which is all we need, so the 845 KB
+ * `triggers.json` stays unfetched. MMDK's own UI calls these CancelLists.
+ *
+ * Only groups an action actually references are kept; a fighter's file
+ * typically declares a few more than it uses.
+ */
+function extractCancelGroups(file, referenced) {
+  const out = {};
+  for (const [gid, group] of Object.entries(file ?? {})) {
+    const id = Number(gid);
+    if (!referenced.has(id) || !group || typeof group !== "object") continue;
+    const ids = [];
+    for (const entry of Object.values(group)) {
+      const actionId = Number.parseInt(String(entry), 10);
+      if (Number.isFinite(actionId) && !ids.includes(actionId)) ids.push(actionId);
+    }
+    // A group listing the same action under several triggers (one per strength)
+    // is the normal case, hence the dedupe.
+    if (ids.length) out[id] = ids.sort((a, b) => a - b);
   }
   return out;
 }
@@ -562,6 +605,50 @@ function frameUnique(fatMove, sigs, actions) {
 const isPlainInt = (v) => typeof v === "number" || (typeof v === "string" && /^\d+$/.test(v.trim()));
 
 /**
+ * A move's special-cancel window: the frames on which pressing a special comes
+ * out, plus the buffer window in front of it.
+ *
+ * A group is a *special* cancel list rather than a target combo when it holds
+ * something that is not a normal — specials are named for the move in Japanese,
+ * so there is no name pattern to match on, but "not all `ATK_`" holds across all
+ * 24 fighters. The neutral list is excluded because idle actions open it too.
+ *
+ * The live window never opens before the move's own first active frame — on a
+ * single-hit normal it opens on it — and the buffered key in front of it is the
+ * input buffer. Validated against FAT's `xx` column, which says independently
+ * which normals are special-cancellable at all.
+ */
+function cancelWindow(actions, cancelGroups, neutralGroups, move) {
+  const action = actions.find((a) => a.id === move.action);
+  if (!action?.cancels?.length) return null;
+  const neutral = new Set(neutralGroups);
+  // A group entry we can't resolve is not evidence of anything: several fighters
+  // open a one-frame group holding a single boxless action at the end of a heavy
+  // (Chun-Li's stance handoff), which would otherwise read as a special cancel.
+  const isSpecialList = (gid) =>
+    !neutral.has(gid) &&
+    (cancelGroups[gid] ?? []).some((id) => {
+      const name = actions.find((a) => a.id === id)?.name;
+      return name && !name.startsWith("ATK_");
+    });
+
+  const strikes = action.hit.filter((h) => h.kind !== "proximity");
+  if (!strikes.length) return null;
+  const firstActive = Math.min(...strikes.map((h) => h.start));
+
+  const keys = action.cancels.filter((c) => isSpecialList(c.group));
+  const live = keys.filter((c) => !c.buffered && c.end >= firstActive);
+  if (!live.length) return null;
+  const buffer = keys.filter((c) => c.buffered);
+  return {
+    start: Math.min(...live.map((c) => c.start)),
+    end: Math.max(...live.map((c) => c.end)),
+    buffer: buffer.length ? Math.min(...buffer.map((c) => c.start)) : null,
+    groups: [...new Set(live.map((c) => c.group))].sort((a, b) => a - b),
+  };
+}
+
+/**
  * Standing height, and the pushbox half-widths that set how close two
  * characters can stand — the minimum distance between their origins is the sum
  * of their facing half-widths.
@@ -586,10 +673,11 @@ function calibrate(actions) {
 
 async function buildCharacter(fatName, dumpDir, fat, source) {
   const dir = path.join(RAW, dumpDir);
-  const [rectsFile, movesFile, hitFile] = await Promise.all([
+  const [rectsFile, movesFile, hitFile, groupFile] = await Promise.all([
     readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "HIT_DT.json"), "utf8").then(JSON.parse).catch(() => null),
+    readFile(path.join(dir, "tgroups.json"), "utf8").then(JSON.parse).catch(() => null),
   ]);
   const rect = makeRects(rectsFile);
 
@@ -617,6 +705,28 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     else unmapped.push({ input: m.numCmd, name: m.moveName, category: m.moveType });
   }
 
+  const referenced = new Set(actions.flatMap((a) => (a.cancels ?? []).map((c) => c.group)));
+  const cancelGroups = extractCancelGroups(groupFile, referenced);
+  // The idle actions' own groups are the neutral list — everything the fighter
+  // can do from standing. Any other group an attack opens is a cancel list.
+  const idle = actions.filter((a) => /^BAS_(STD|CRH)_Loop$/.test(a.name));
+  const neutralGroups = [...new Set(idle.flatMap((a) => (a.cancels ?? []).map((c) => c.group)))].sort(
+    (a, b) => a - b,
+  );
+  // FAT's `xx` column lists a normal's cancel options, so it is an independent
+  // check on the windows: `sp`/`su` there should mean a window here.
+  const cancelMismatches = [];
+  for (const move of moves) {
+    const window = cancelWindow(actions, cancelGroups, neutralGroups, move);
+    if (window) move.cancel = window;
+    if (move.category !== "normal" || move.input.includes(">")) continue;
+    const fatMove = fatMoves.find((m) => m.numCmd === move.input);
+    const fatSays = Array.isArray(fatMove?.xx) && (fatMove.xx.includes("sp") || fatMove.xx.includes("su"));
+    if (fatSays !== !!window) {
+      cancelMismatches.push({ input: move.input, actionName: move.actionName, match: move.match, fatSays });
+    }
+  }
+
   const id = slug(fatName);
   const out = {
     character: fatName,
@@ -628,6 +738,8 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     },
     calibration: calibrate(actions),
     hitData: extractHitData(hitFile),
+    cancelGroups,
+    neutralGroups,
     counts: {
       actions: actions.length,
       withPushboxes: actions.filter((a) => a.push.length).length,
@@ -637,6 +749,10 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
       mapped: moves.length,
       exact: moves.filter((m) => m.match === "exact").length,
       weak: moves.filter((m) => m.match === "weak").length,
+      cancelGroups: Object.keys(cancelGroups).length,
+      withCancels: actions.filter((a) => a.cancels).length,
+      cancellable: moves.filter((m) => m.cancel).length,
+      cancelMismatches: cancelMismatches.length,
     },
     moves,
     unmapped,
@@ -648,11 +764,16 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   await writeFile(path.join(OUT, `${id}.json`), json);
   // The box viewer is served straight out of web/, so it gets its own copy.
   await writeFile(path.join(root, "web", `${id}.boxes.json`), json);
-  const { actions: n, withHitboxes, mapped, exact } = out.counts;
+  const { actions: n, withHitboxes, mapped, exact, cancellable } = out.counts;
   console.log(
     `${fatName}: ${n} actions (${withHitboxes} with hitboxes), ` +
-      `${mapped} moves mapped (${exact} name+frame exact) -> data/geometry/${id}.json`,
+      `${mapped} moves mapped (${exact} name+frame exact, ${cancellable} special-cancellable) ` +
+      `-> data/geometry/${id}.json`,
   );
+  for (const c of cancelMismatches) {
+    const disagreement = c.fatSays ? "FAT says cancellable, no window found" : "window found, FAT says not cancellable";
+    console.log(`  ? ${c.input.padEnd(16)} ${c.actionName.padEnd(16)} ${disagreement} (${c.match})`);
+  }
   if (unresolvedPush.size) {
     // BoxNo 6 is the downed-state pushbox, which lives in a shared asset MMDK
     // does not dump per fighter. Only knockdown/tech actions reference it.

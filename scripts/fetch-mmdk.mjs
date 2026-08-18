@@ -24,8 +24,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(root, "data/raw/mmdk");
 const REPO = "alphazolam/MMDK";
 const DUMP_DIR = "MMDK/reframework/data/MMDK/PlayerData";
-/** Only the files we actually parse — triggers/commands are 10 MB+ and unused. */
-const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT"];
+/**
+ * Only the files we actually parse. `tgroups` is the cancel lists and is tiny
+ * (16 KB); `triggers` (845 KB) and `commands` (445 KB) hold the input side —
+ * buffer lengths, meter costs, motion inputs — and stay unfetched until
+ * something needs them. See docs/adr/0008.
+ */
+const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT", "tgroups"];
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 

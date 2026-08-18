@@ -21,6 +21,7 @@ import {
   activeWindows,
   connectFrames,
   idleHurtboxes,
+  cancelTargets,
   hitDataFor,
   loadGeometry,
   minDistance,
@@ -371,6 +372,17 @@ function printBoxes(character: Character, move: Move, args: Args): void {
       travel.maxY ? `${u(travel.maxY)} up` : null,
     ].filter(Boolean);
     console.log(`  travels      ${parts.join(", ")}`);
+  }
+
+  if (mapping?.cancel) {
+    const { start, end, buffer } = mapping.cancel;
+    const targets = cancelTargets(geo, mapping);
+    const specials = targets.filter((t) => !t.name.startsWith("ATK_"));
+    console.log(
+      `  cancel       f${start}-${end}` +
+        (buffer !== null && buffer < start ? ` (buffered from f${buffer})` : "") +
+        ` into ${specials.length} specials/supers`,
+    );
   }
 
   const data = hitDataFor(geo, action);

@@ -1,8 +1,8 @@
 # Findings: the cancel and input state machine
 
 Read of `triggers.json` / `tgroups.json` / `commands.json` from the MMDK dumps
-(Ryu, @ `831564f1`). Nothing extracted yet — this is the map of what the three
-files are, so a spec can be written against it. The gap it closes is the one
+(Ryu, @ `831564f1`). This is the map of what the three files are; what came of it
+is in the Answer at the bottom. The gap it closes is the one
 ADR-0007 names: the dummy can't fight back without it.
 
 ## The three files, and how they join up
@@ -43,8 +43,8 @@ Ryu's groups read as the cancel vocabulary you would expect:
 
 | group | size | what's in it |
 |---|---|---|
-| 15 | 41 | every `SPA_`/`SAA_` action plus Drive Impact and Drive Rush — **the special/super cancel list** |
-| 30 | 40 | the chain/normal list |
+| 15 | 41 | every `SPA_`/`SAA_` action plus Drive Impact and Drive Rush — but opened for frame 1 only, so *not* the cancel window (see the Answer) |
+| 30 | 40 | specials and supers — **the special-cancel list**, opened over the active frames |
 | 0 | 65 | the largest — the neutral list (everything available from standing) |
 | 50 | 1 | `ATK_5LK(1)` — a single target-combo follow-up |
 | 46 | 58 | used only with condition 7183 |
@@ -130,3 +130,31 @@ fields out of ~100.
 3. Pull the trigger fields the sim needs: `preceding_time` (buffer),
    `focus_need`/`gauge_need` (can I afford it), the `_Is*` taxonomy.
 4. `commands.json` last, and only if input notation is ever wanted.
+
+## Answer
+
+Extracted and shipped — see [ADR-0008](../../docs/adr/0008-cancel-windows.md).
+
+Steps 1 and 2 of the suggested order are done: cancel windows and cancel lists
+are in `data/geometry/<char>.json`, validated against FAT's `xx` on 505 of 511
+normals. `tgroups.json` is now fetched (16 KB per fighter); `triggers.json` and
+`commands.json` still are not.
+
+The `ConditionFlag` decode did **not** land. What came out of it:
+
+- The field is two nibbles, bits 0-3 and bits 10-13, and bits 4-9 are never set.
+- The low nibble partitions by phase rather than freely: value 7 occurs almost
+  only before the move is active (775 of 813 uses), 11 from the first active
+  frame on, 4 only after the active frames.
+- The guess in the section above — that bit 2 means "the attack connected" —
+  fits the Drive Rush lists, where the bit-2-only window is the late one. It
+  does **not** fit the pre-active buffer windows, which set the same bit at a
+  point where nothing can have connected.
+- Both remaining readings need a case that separates them, and the obvious
+  candidate (Drive Rush cancel requires hit or block; a raw special cancel does
+  not) is not decisive because the same group is opened several times per action
+  under different masks, so the rule is the union and not any one window.
+
+It did not need decoding to be useful: the window plus the buffer is what the
+sim wants, and the phase structure was enough to tell a live cancel window from
+the frame-1 pre-active one, which is the distinction that actually mattered.

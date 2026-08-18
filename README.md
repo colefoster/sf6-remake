@@ -90,6 +90,8 @@ Distances are measured from where the attacker stood when the move began, so a m
 
 The stun, damage and knockback numbers are the game's own, from its hit-data table — which is also how we found that **blockstun runs 4 frames longer than on-block advantage implies** ([ADR-0006](./docs/adr/0006-hit-data.md)). Counter hit really is exactly +2 frames and punish counter +4, on every move checked.
 
+Cancel windows come from the same dumps: which frames of a move a special can be cancelled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008](./docs/adr/0008-cancel-windows.md)).
+
 Add a character:
 
 ```bash
@@ -167,7 +169,7 @@ tests/                   78 tests, incl. assertions against the real data
 - **Geometry covers the 24 characters MMDK dumps**, and those dumps are a late-2024 snapshot of the game — so pre-Season-3 balance. FAT's six newer characters (Alex, C.Viper, Elena, Ingrid, Mai, Sagat) have no geometry and fall back to its coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
 - **Motion is per action, not composed across actions.** A jump attack is its own action and doesn't inherit the arc of the jump it came from, so air normals show at ground level. See [ADR-0005](./docs/adr/0005-origin-motion-from-place-and-steer-keys.md).
 - **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
-- **The dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`) until the trigger data is read.
+- **The dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`). Cancel windows are extracted now ([ADR-0008](./docs/adr/0008-cancel-windows.md)) — what's still missing is the input side: buffer lengths, Drive and super costs.
 - **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
 
 ## Test

@@ -16,9 +16,10 @@ import {
   worldHitboxes,
   overlaps,
   reach,
+  cancelTargets,
 } from "../src/data/geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
-import { requireCharacter, requireMove } from "../src/data/index.js";
+import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { stunFrom } from "../src/engine/frames.js";
 
 const ryu = requireCharacter("Ryu");
@@ -258,5 +259,86 @@ describe("geometryFor", () => {
   it("is undefined for a move with no mapped action", () => {
     const unmapped = ryu.moves.find((m) => m.input === "5MP > LK > HK > HP");
     if (unmapped) expect(geometryFor(ryu, unmapped)).toBeUndefined();
+  });
+});
+
+describe("cancel windows", () => {
+  const mapping = (input: string) => geo.moves.find((m) => m.input === input)!;
+
+  it("never opens the special-cancel window before the move is active", () => {
+    // A cancel is only live once a hitbox is out — the buffered key in front of
+    // the window is what covers the frames before that. Multi-hit moves open on
+    // a later hit, so this is a floor and not an equality. See docs/adr/0008.
+    for (const move of geo.moves) {
+      if (!move.cancel) continue;
+      const { action } = actionFor(geo, requireMove(ryu, move.input)) ?? {};
+      if (!action) continue;
+      const strikes = action.hit.filter((h) => h.kind !== "proximity");
+      if (!strikes.length) continue;
+      const firstActive = Math.min(...strikes.map((h) => h.start));
+      expect(`${move.input}:${move.cancel.start >= firstActive}`).toBe(`${move.input}:true`);
+    }
+  });
+
+  it("buffers ahead of the live window", () => {
+    const window = mapping("5MP").cancel!;
+    expect(window.buffer).toBeLessThan(window.start);
+    expect(window.end).toBeGreaterThanOrEqual(window.start);
+  });
+
+  it("leaves non-cancellable normals with no window", () => {
+    expect(mapping("5HK").cancel).toBeUndefined();
+    expect(mapping("2HK").cancel).toBeUndefined();
+  });
+
+  it("resolves the window to actual special actions", () => {
+    const targets = cancelTargets(geo, mapping("2MK"));
+    expect(targets.length).toBeGreaterThan(10);
+    expect(targets.some((t) => t.name.startsWith("SPA_"))).toBe(true);
+    // Nothing in a special-cancel list should be a normal's own action.
+    expect(targets.filter((t) => t.name.startsWith("ATK_")).length).toBeLessThan(targets.length);
+  });
+
+  it("reports cancellability the frame data agrees with, across the roster", () => {
+    // FAT's `xx` column is an independent statement of which normals cancel into
+    // specials, so it is the check on the trigger windows rather than a source.
+    let checked = 0;
+    let disagree = 0;
+    for (const name of listCharacters()) {
+      const character = requireCharacter(name);
+      const g = loadGeometry(character.id);
+      if (!g) continue;
+      for (const move of g.moves) {
+        if (move.category !== "normal" || move.input.includes(">")) continue;
+        const tags = character.moves.find((m) => m.input === move.input)?.cancelTags;
+        if (!tags) continue;
+        checked++;
+        const fatSays = tags.includes("sp") || tags.includes("su");
+        if (fatSays !== !!move.cancel) disagree++;
+      }
+    }
+    expect(checked).toBeGreaterThan(200);
+    expect(disagree / checked).toBeLessThan(0.05);
+  });
+});
+
+describe("cancel window timing across the roster", () => {
+  it("opens within a few frames of a single-hit normal becoming active", () => {
+    const offsets: number[] = [];
+    for (const name of listCharacters()) {
+      const g = loadGeometry(requireCharacter(name).id);
+      if (!g) continue;
+      for (const move of g.moves) {
+        if (!move.cancel || move.hits !== 1 || move.category !== "normal") continue;
+        const action = g.actions.find((a) => a.id === move.action);
+        const strikes = action?.hit.filter((h) => h.kind !== "proximity") ?? [];
+        if (!strikes.length) continue;
+        offsets.push(move.cancel.start - Math.min(...strikes.map((h) => h.start)));
+      }
+    }
+    expect(offsets.length).toBeGreaterThan(100);
+    expect(Math.min(...offsets)).toBe(0);
+    // Multi-hit moves open later; a single-hit normal's window tracks its hitbox.
+    expect(offsets.filter((o) => o <= 3).length / offsets.length).toBeGreaterThan(0.9);
   });
 });

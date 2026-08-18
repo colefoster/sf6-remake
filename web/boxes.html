@@ -84,6 +84,11 @@
   .strip div.active { background: var(--hit); }
   .strip div.prox { background: #4a4224; }
   .strip div.now { outline: 2px solid var(--text); outline-offset: 1px; z-index: 1; }
+  /* The special-cancel window, marked along the bottom edge of the strip. */
+  .strip div.cancel::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -4px;
+    height: 3px; border-radius: 2px; background: var(--plus);
+  }
   .striplabels { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; }
   .readout {
     margin-top: 16px; display: grid; gap: 10px;
@@ -210,7 +215,7 @@ const COLORS = {
 };
 
 const state = {
-  chars: [], data: null, action: null, frame: 1, playing: false, timer: null,
+  chars: [], data: null, action: null, move: null, frame: 1, playing: false, timer: null,
   distance: 120, stance: "stand", guard: "block",
   show: { hurt: true, hit: true, prox: false, push: true, path: true },
 };
@@ -671,7 +676,10 @@ function drawStrip() {
     if (windows.some((w) => f >= w.start && f <= w.end)) cell.className = "active";
     else if (proxAt(action, f).length) cell.className = "prox";
     if (f === state.frame) cell.classList.add("now");
-    cell.title = `frame ${f}`;
+    const cancel = state.move?.cancel;
+    const cancellable = cancel && f >= cancel.start && f <= cancel.end;
+    if (cancellable) cell.classList.add("cancel");
+    cell.title = `frame ${f}${cancellable ? " — special-cancellable" : ""}`;
     cell.onclick = () => setFrame(f);
     strip.append(cell);
   }
@@ -699,6 +707,7 @@ function badge(text, warn) {
 
 function selectAction(action, move) {
   state.action = action;
+  state.move = move ?? null;
   state.frame = 1;
   $("movename").textContent = move ? `${move.input} — ${move.name}` : action.name;
   $("actionname").textContent = `${action.name}  ·  action ${action.id}${action.mot ? `  ·  ${action.mot}` : ""}`;
@@ -727,6 +736,14 @@ function selectAction(action, move) {
   for (const b of action.branches ?? []) {
     const target = actionById(b.action);
     if (target) badges.append(badge(`branches f${b.frame} → ${target.name}`));
+  }
+  if (move?.cancel) {
+    const { start, end, buffer } = move.cancel;
+    badges.append(
+      badge(
+        `special-cancel f${start}-${end}` + (buffer !== null && buffer < start ? ` (buffered from f${buffer})` : ""),
+      ),
+    );
   }
   if (move) {
     badges.append(badge(`FAT: startup ${move.fat.startup}, active ${move.fat.active}`));
