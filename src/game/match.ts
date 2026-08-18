@@ -22,9 +22,13 @@
  *   banked off the hit table, burnout at zero — and combos as of ADR-0032: one
  *   contact per HitID, a juggle counter, and the starter's scaling.
  *
+ *   Knockdowns as of ADR-0033 and throws as of ADR-0034: a swept opponent lies
+ *   on the floor and gets up, and a throw is an unblockable horizontal range
+ *   check against the throwable box.
+ *
  * WHAT IT DOES NOT
- *   knockdowns and wakeup, throws as a state, and the Drive mechanics
- *   themselves — Impact's armor, Parry, Rush. See docs/adr/0031 and 0032.
+ *   throw damage and the throw follow-through, throw teching, quick rise, and
+ *   the Drive mechanics themselves — Impact's armor, Parry, Rush.
  */
 
 import {
@@ -419,10 +423,22 @@ export class Match {
       const data = me.geo.hitData?.[String(key.attackData)];
       if (!data) continue;
       const boxes = placeAll(key.boxes, me);
-      if (!theirs.some((h) => boxes.some((box) => overlaps(box, h)))) continue;
+      // A throw is not a strike with a different animation. It tests against the
+      // defender's *throwable* box — a separate array the dump keeps apart from
+      // head/body/leg, and which `hurtboxesAt` excludes by default — and it
+      // cannot touch someone off the ground. Before this it went through the
+      // ordinary path and connected like a normal. See ADR-0034.
+      if (key.kind === "throw") {
+        if (them.state.stance === "air") continue;
+        if (!reaches(boxes, worldThrowboxes(them))) continue;
+      } else if (!theirs.some((h) => boxes.some((box) => overlaps(box, h)))) {
+        continue;
+      }
       // Marked only if it actually landed: a hit the juggle rules refuse has
       // not been spent, and the hitbox is still out.
-      if (this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing)) {
+      if (
+        this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing, key.kind === "throw")
+      ) {
         this.connected.add(id);
         return;
       }
@@ -444,8 +460,11 @@ export class Match {
     attack: GeometryAction,
     defenderInput: InputFrame,
     facing: 1 | -1,
+    thrown = false,
   ): boolean {
-    const type = this.contactType(them, defenderInput, attack);
+    // A throw cannot be blocked, so the guard check is skipped outright rather
+    // than being allowed to return "block" for a defender holding back.
+    const type = thrown ? "hit" : this.contactType(them, defenderInput, attack);
     const outcome = data[type] ?? data.hit;
     if (!outcome) return false;
 
@@ -615,6 +634,36 @@ function placeAll(boxes: Box[], f: Fighter): Box[] {
   const at = f.position();
   const origin = originAt(action, frame);
   return boxes.map((b) => place(shift(b, { x: 0, y: origin.y }), at.x, 0, facing));
+}
+
+/**
+ * Does the throw reach — **horizontally**.
+ *
+ * The two boxes are built never to intersect: a throw hitbox spans y 0 to 130
+ * and the throwable box sits at y 132 to 166, two units above it, on every
+ * fighter. So a throw is not an intersection test at all, it is a range check,
+ * and the range is the two x-extents meeting. That is also why FAT publishes
+ * both of them as separate stats — 0.8 and 0.33 for Ryu, against the dump's 80
+ * and 30. See ADR-0034.
+ */
+function reaches(attack: Box[], throwable: Box[]): boolean {
+  return attack.some((a) =>
+    throwable.some((t) => a.x < t.x + t.width && t.x < a.x + a.width),
+  );
+}
+
+/**
+ * The defender's throwable boxes, in world space.
+ *
+ * The dump keeps `throw` as its own array on each hurt key, beside head, body
+ * and leg, and `hurtboxesAt` leaves it out unless asked. An action with no throw
+ * box is throw-invulnerable by absence — the same shape ADR-0020 found for full
+ * invulnerability — which is why this reads the keys directly.
+ */
+function worldThrowboxes(f: Fighter): Box[] {
+  const { action, frame } = f.state;
+  const boxes = action.hurt.filter((k) => frame >= k.start && frame <= k.end).flatMap((k) => k.throw);
+  return placeAll(boxes, f);
 }
 
 function worldHurtboxes(f: Fighter): Box[] {

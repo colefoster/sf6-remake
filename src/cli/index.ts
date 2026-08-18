@@ -40,6 +40,7 @@ import { fighterFor, matchFor } from "../game/load.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
+import { verifyThrows } from "../verify/throws.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -333,6 +334,7 @@ function main(): void {
         printVerification(verify(only));
         printInvulnerability(verifyInvuln(only));
         printArmor(verifyArmor(only));
+        printThrows(verifyThrows(only));
         return;
       }
 
@@ -453,6 +455,23 @@ function printFight(left: string, right: string, script: string, opponent?: stri
       (corner.length ? `, ${corner.join(" and ")} in the corner` : "") +
       (end ? `  (${end.by}: ${end.winner === null ? "draw" : end.winner === 0 ? left : right})` : ""),
   );
+}
+
+/** The throw geometry against FAT's per-character stats. See ADR-0034. */
+function printThrows(report: ReturnType<typeof verifyThrows>): void {
+  const line = (label: string, t: { checked: number; agreeing: number }, why: string) =>
+    console.log(
+      `  ${label.padEnd(12)} ${String(t.agreeing) + "/" + t.checked} ` +
+        `${t.checked ? ((100 * t.agreeing) / t.checked).toFixed(1) : "0.0"}%`.padStart(10) +
+        `      ${why}`,
+    );
+  console.log("\n\nthrows vs the published stats\n");
+  line("range", report.reach, "the NGS throw box's reach == FAT's throwRange x 100");
+  line("throwable", report.hurt, "the throwable hurtbox == FAT's throwHurt x 100, less 3");
+  const bad = report.rows.filter((r) => !r.reachAgrees && r.publishedReach !== undefined && r.reach !== undefined);
+  for (const r of bad.slice(0, 5)) {
+    console.log(`    ${r.character.padEnd(10)} dump ${r.reach} vs published ${r.publishedReach}`);
+  }
 }
 
 function printBoxes(character: Character, move: Move, args: Args): void {

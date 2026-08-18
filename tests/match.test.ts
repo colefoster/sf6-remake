@@ -8,6 +8,7 @@ import { BAR } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
+import { verifyThrows } from "../src/verify/throws.js";
 
 /**
  * Two fighters, checked against the two things that can check them: the dump
@@ -497,5 +498,60 @@ describe("knockdowns", () => {
     const poke = runScenario("Ryu", "5MP", { guard: false });
     expect(poke.knockedDown).toBe(false);
     expect(poke.advantage).not.toBeNull();
+  });
+});
+
+/**
+ * Throws. See ADR-0034.
+ *
+ * Before this a throw-kind hit key went through the ordinary strike path: it
+ * connected against head/body/leg boxes, could be blocked, and worked on a
+ * jumping opponent. All three are wrong, and the geometry says so — a throw
+ * hitbox spans y 0 to 130 and the throwable box sits at y 132 to 166, so the
+ * two are built never to intersect and the test is horizontal.
+ */
+describe("throws", () => {
+  const throwAt = (distance: number, p2: (i: number) => ReturnType<typeof hold>) => {
+    const match = matchFor("Ryu", "Ken", { distance, seconds: null });
+    for (let i = 0; i < 40; i++) match.advance(i < 3 ? hold(5, ["LP", "LK"]) : hold(5), p2(i));
+    return match;
+  };
+
+  it("comes out from the two-button trigger", () => {
+    const match = throwAt(90, () => hold(5));
+    expect(match.fighters[0].actionName).toMatch(/^NGS/);
+  });
+
+  it("connects in range and whiffs past it", () => {
+    // Ryu's throw box reaches 80 and Ken's throwable box extends 30, so the two
+    // meet up to 110 units apart and not beyond. Both numbers are the dump's.
+    expect(throwAt(105, () => hold(5)).hits).toHaveLength(1);
+    expect(throwAt(110, () => hold(5)).hits).toHaveLength(0);
+  });
+
+  it("cannot be blocked", () => {
+    const blocked = throwAt(90, () => hold(6));
+    expect(blocked.hits.map((h) => h.type)).toEqual(["hit"]);
+  });
+
+  it("misses an airborne opponent", () => {
+    const jumped = throwAt(90, (i) => (i < 2 ? hold(8) : hold(5)));
+    expect(jumped.hits).toHaveLength(0);
+  });
+
+  it("does not connect against ordinary hurtboxes", () => {
+    // The throwable box is a separate array the dump keeps apart from
+    // head/body/leg. A throw that tested the ordinary ones would reach much
+    // further than 110 — Ken's hurtboxes are wider than his throwable box.
+    const far = throwAt(140, () => hold(5));
+    expect(far.hits).toHaveLength(0);
+  });
+});
+
+describe("the throw geometry against the published stats", () => {
+  it("puts the throw box's reach at exactly FAT's throwRange, times 100", () => {
+    const report = verifyThrows();
+    expect(report.reach.checked).toBe(24);
+    expect(report.reach.agreeing).toBe(report.reach.checked);
   });
 });
