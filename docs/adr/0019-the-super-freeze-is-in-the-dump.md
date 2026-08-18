@@ -110,8 +110,10 @@ per category rather than only on the pool.
   has no hurtboxes during its freeze, that *is* full invulnerability, and it
   grades at 52/66 through `inFatFrames`. Supers are now in all four
   invulnerability checks. `src/verify/armor.ts` still excludes them.
-- **Specials are still 0 solidly mapped of 196**, unchanged from ADR-0018 and still
-  the largest coverage gap.
+- ~~**Specials are still 0 solidly mapped of 196**~~ — closed by
+  [ADR-0021](./0021-specials-map-through-the-triggers.md): the triggers classify
+  specials by family and strength the same way they classify supers by level, and
+  193 map exact.
 - Whether the large `WorldKey` timers — 406 to 579 on Critical Art actions — are the
   same field meaning the same thing, or the cinematic's own length. The startup
   identity holds taking the largest timer per action, which is weak evidence that

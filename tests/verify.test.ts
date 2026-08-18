@@ -38,9 +38,11 @@ describe("the game's data against the published frame data", () => {
       // the pre-Season-3 patch skew that ADR-0004 and ADR-0008 describe, and it
       // is per-character rather than per-check. `advantage` sits lowest of the
       // five because it compounds three extractions into one number.
-      // Pooled across categories now (ADR-0019), so this is a coarse regression
-      // guard; the per-category assertion below is the sharp one.
-      expect(`${check} ${rate(clean) > 0.85}`).toBe(`${check} true`);
+      // Pooled across categories now (ADR-0019 and ADR-0021), so this is a coarse
+      // regression guard; the per-category assertion below is the sharp one. The
+      // floor sits at 0.80 rather than 0.85 because ADR-0021's 193 specials are
+      // in the pool and the sim reproduces their advantage worst of any category.
+      expect(`${check} ${rate(clean) > 0.8}`).toBe(`${check} true`);
     }
   });
 
@@ -54,6 +56,26 @@ describe("the game's data against the published frame data", () => {
       const ok = rows.filter((c) => c.agrees).length / rows.length;
       expect(`${check} ${ok > 0.85}`).toBe(`${check} true`);
     }
+  });
+
+  it("grades the specials ADR-0021 mapped, and says where they are weak", () => {
+    // 193 specials map exact where none did before, so they are a graded
+    // population now — and not an equal one. `total` says the mapping is right:
+    // the action's own MarginFrame agrees with FAT on most of them. `advantage`
+    // says the sim is wrong about them, which is a different problem and a real
+    // one: a tatsu travels through the defender and a fireball leaves the screen.
+    const of = (check: string) =>
+      report.comparisons.filter((c) => c.check === check && c.clean && c.category === "special");
+    const share = (check: string) => {
+      const rows = of(check);
+      return rows.filter((c) => c.agrees).length / rows.length;
+    };
+    expect(of("total").length).toBeGreaterThan(30);
+    expect(share("total")).toBeGreaterThan(0.75);
+    expect(share("blockstun")).toBeGreaterThan(0.6);
+    // Deliberately a ceiling, not a floor: this is the number to beat, and it is
+    // recorded so that improving the sim's special handling shows up as a break.
+    expect(share("advantage")).toBeLessThan(0.6);
   });
 
   it("finds a second guard-release constant on Drive Reversal, and it is uniform", () => {
@@ -124,7 +146,9 @@ describe("the game's data against the published frame data", () => {
     // should. `hcWinSpCa` is a number, so it checks the boundary.
     const { clean } = report.totals.cancelEnd;
     expect(clean.checked).toBeGreaterThan(100);
-    expect(rate(clean)).toBeGreaterThan(0.9);
+    // Pooled, so ADR-0021's specials are in it; normals alone still clear 0.9,
+    // which the per-category test above asserts.
+    expect(rate(clean)).toBeGreaterThan(0.88);
   });
 
   it("matches the special-cancel confirm window and not the target-combo one", () => {
@@ -189,9 +213,22 @@ describe("the game's data against the published frame data", () => {
 
   it("has no character that fails wholesale", () => {
     // A character far below the rest means the extraction broke for them
-    // specifically, which is a bug rather than skew.
-    const worst = report.byCharacter[0]!;
-    expect(`${worst.character} ${rate(worst.clean) > 0.75}`).toBe(`${worst.character} true`);
+    // specifically, which is a bug rather than skew. Measured on normals: since
+    // ADR-0021 a character with many specials scores lower for having more of
+    // the category the sim models worst, which is not the failure this looks for.
+    // Jamie reads 72.3% pooled and 95.9% on his normals.
+    const rows = new Map<string, { n: number; ok: number }>();
+    for (const c of report.comparisons) {
+      if (!c.clean || c.category !== "normal") continue;
+      const e = rows.get(c.character) ?? { n: 0, ok: 0 };
+      e.n++;
+      if (c.agrees) e.ok++;
+      rows.set(c.character, e);
+    }
+    expect(rows.size).toBeGreaterThan(20);
+    for (const [character, e] of rows) {
+      expect(`${character} ${e.ok / e.n > 0.75}`).toBe(`${character} true`);
+    }
   });
 });
 
@@ -454,8 +491,21 @@ describe("armor against the published notes", () => {
     // `AtemiDataListIndex` was extracted by nothing and points into a table the
     // dump does not ship. Where the armor sits *is* in the dump, and it agrees
     // with FAT on every claim the grader can reach. See ADR-0016.
-    expect(report.totals.checked).toBeGreaterThan(24);
-    expect(report.totals.exact).toBe(report.totals.checked);
+    expect(report.totals.checked).toBeGreaterThan(28);
+    // ADR-0021's special mapping reached Marisa's armored Phalanx, which ADR-0016
+    // named as the caveat it could not grade. Three of the four land exactly and
+    // the two that miss are both OD: the strength whose armor window FAT and the
+    // dump disagree about. Named, rather than absorbed into a floor.
+    const missed = report.claims.filter((c) => !c.agrees).map((c) => `${c.character} ${c.input}`);
+    expect(missed.sort()).toEqual(["E.Honda 46PP", "Marisa 623PP"]);
+  });
+
+  it("grades Marisa's armored special, which ADR-0016 could not reach", () => {
+    const phalanx = report.claims.filter((c) => c.actionName.startsWith("SPA_Phalanx"));
+    expect(phalanx.length).toBe(4);
+    for (const c of phalanx.filter((c) => c.input !== "623PP")) {
+      expect(`${c.input}: ${c.dump?.join("-")}`).toBe(`${c.input}: ${c.fat?.join("-")}`);
+    }
   });
 
   it("puts Drive Impact's two hits of armor on frames 1-27 for all 24 fighters", () => {
@@ -526,13 +576,46 @@ describe("armor against the published notes", () => {
     const brk = verifyArmorBreak();
     expect(brk.checked).toBeGreaterThan(700);
     expect(brk.agreeing / brk.checked).toBeGreaterThan(0.98);
-    // Every exception runs one way: FAT declining to tag a move the dump calls a
-    // super. They are the command-grab supers — Zangief's Atomic Buster, Lily's
-    // Raging Typhoon, Manon's SA3 — plus two mid-super follow-ups. A grab does not
-    // need to break armor to beat it. Nothing runs the other way, which is what
-    // would mean the rule is wrong rather than FAT's tag being editorial.
-    for (const row of brk.rows.filter((r) => !r.agrees)) {
-      expect(`${row.character} ${row.input}: ${row.published}`).toBe(`${row.character} ${row.input}: false`);
+    // Most exceptions run one way — FAT declining to tag a move the dump calls a
+    // super, which are the command-grab supers, where a grab beats armor without
+    // needing to break it. ADR-0018 read that as the rule being intact and the
+    // tag being editorial.
+    //
+    // ADR-0021 breaks that: with specials mapped, two OD specials are published
+    // as Armor Break and the rule does not predict them. Two counterexamples in
+    // the direction that means the rule is wrong, not the tag. Pinned by name
+    // until something in the dump explains them. See ADR-0021.
+    const counter = brk.rows.filter((r) => !r.agrees && r.published);
+    expect(counter.map((r) => `${r.character} ${r.input}`).sort()).toEqual([
+      "Marisa 236KK",
+      "Marisa 623PP",
+    ]);
+  });
+
+  it("maps specials through the triggers' own family and strength", () => {
+    // ADR-0018 had 0 specials solidly mapped: their actions carry Japanese move
+    // names, so nothing matches by string. The triggers classify them —
+    // `Special_<n>` for the family, Light/Middle/Heavy/Extra for the strength —
+    // and a whole family assigned at once is a far stronger fingerprint than one
+    // startup. See ADR-0021.
+    let exact = 0;
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      exact += geo.moves.filter((m) => m.category === "special" && m.match === "exact").length;
+    }
+    expect(exact).toBeGreaterThan(180);
+
+    // The family lands as a family: one dump stem, the strengths in order.
+    const ryu = loadGeometry("ryu")!;
+    for (const [input, action] of [
+      ["623LP", "SPA_SYORYU_START"],
+      ["623MP", "SPA_SYORYU_START(1)"],
+      ["623HP", "SPA_SYORYU_START(2)"],
+      ["623PP", "SPA_SYORYU_START(3)"],
+    ] as const) {
+      const move = ryu.moves.find((m) => m.input === input)!;
+      expect(`${input}: ${move.actionName} ${move.match}`).toBe(`${input}: ${action} exact`);
     }
   });
 

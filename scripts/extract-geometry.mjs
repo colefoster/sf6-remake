@@ -662,22 +662,130 @@ function superActionsByLevel(triggerFile) {
 }
 
 /**
+ * The dump classifies its own specials, the same way it classifies supers.
+ * A trigger carries `_IsSpecial_<n>` for the family, `_IsLight` / `_IsMiddle` /
+ * `_IsHeavy` for the strength and `_IsExtra` for OD, plus `_IsPunch` / `_IsKick`.
+ *
+ * That is the join FAT's notation needs and `cmnName` only hints at: `236LP` is
+ * light punch, `236PP` is the OD one, and a family is the four of them. The
+ * action names are Japanese move names, so nothing matches them by string.
+ *
+ * Returns `Special_<n>` -> { button, slots: strength -> action }.
+ */
+const STRENGTHS = ["Light", "Middle", "Heavy"];
+function specialFamilies(triggerFile, byId, sigs) {
+  const out = new Map();
+  for (const slots of Object.values(triggerFile ?? {})) {
+    if (!slots || typeof slots !== "object") continue;
+    for (const trigger of Object.values(slots)) {
+      if (!trigger || typeof trigger !== "object") continue;
+      const kinds = Object.entries(trigger)
+        .filter(([k, v]) => k.startsWith("_Is") && v === true)
+        .map(([k]) => k.slice(3));
+      const family = kinds.find((k) => /^Special_\d+$/.test(k));
+      const strength = kinds.includes("Extra") ? "Extra" : STRENGTHS.find((s) => kinds.includes(s));
+      if (!family || !strength) continue;
+      const action = byId.get(trigger.action_id);
+      // A fireball's own action has no hitbox — the projectile is a separate
+      // action and the frame it spawns on is not extracted — so those families
+      // have nothing to score and are left out. See docs/adr/0021.
+      if (!action || !sigs.get(action.id)) continue;
+      if (!out.has(family)) out.set(family, { button: null, slots: new Map() });
+      const fam = out.get(family);
+      fam.button ??= kinds.includes("Punch") ? "P" : kinds.includes("Kick") ? "K" : null;
+      if (!fam.slots.has(strength)) fam.slots.set(strength, action);
+    }
+  }
+  return out;
+}
+
+/** `236LP` -> light punch on the `236P` family; `214KK (air)` -> OD on `214K(air)`. */
+const BUTTONS = { LP: "Light", MP: "Middle", HP: "Heavy", LK: "Light", MK: "Middle", HK: "Heavy" };
+function notationFamily(input) {
+  const m = /^([\[\]0-9]+)(PP|KK|LP|MP|HP|LK|MK|HK)\s*(.*)$/.exec(input ?? "");
+  if (!m) return null;
+  const [, motion, btn, tag] = m;
+  const button = btn.includes("P") ? "P" : "K";
+  return {
+    key: `${motion}${button}${tag.trim()}`,
+    button,
+    strength: btn === "PP" || btn === "KK" ? "Extra" : BUTTONS[btn],
+  };
+}
+
+/**
+ * Assign FAT's special families onto the dump's, whole family at a time.
+ *
+ * Matching one move at a time is what put Drive Impact on a special in ADR-0017:
+ * a single startup is a weak fingerprint and several families share one. A
+ * family is a much stronger one — three or four startups that all have to agree
+ * at once — so this scores every (notation family, dump family) pair by mean
+ * disagreement, takes them cheapest first, and lets each side be used once.
+ * Nothing averaging worse than a frame is taken at all.
+ *
+ * Returns FAT move -> action.
+ */
+function assignSpecials(fatMoves, families, sigs) {
+  const byNotation = new Map();
+  for (const move of fatMoves) {
+    if (move.moveType !== "special") continue;
+    const parsed = notationFamily(move.numCmd);
+    const startup = int(move.startup);
+    if (!parsed?.strength || startup === undefined) continue;
+    if (!byNotation.has(parsed.key)) byNotation.set(parsed.key, { button: parsed.button, slots: new Map() });
+    // FAT reuses a notation for charge variants (Ryu's two `236PP`); the first
+    // is the plain one and the rest stay unmapped rather than overwrite it.
+    const slots = byNotation.get(parsed.key).slots;
+    if (!slots.has(parsed.strength)) slots.set(parsed.strength, { move, startup });
+  }
+
+  const pairs = [];
+  for (const [key, notation] of byNotation) {
+    for (const [family, fam] of families) {
+      if (fam.button && fam.button !== notation.button) continue;
+      const paired = [...notation.slots].filter(([strength]) => fam.slots.has(strength));
+      if (paired.length < 2) continue;
+      const cost = paired.reduce(
+        (sum, [strength, m]) => sum + Math.abs(sigs.get(fam.slots.get(strength).id).startup - m.startup),
+        0,
+      );
+      pairs.push({ key, family, fam, paired, per: cost / paired.length });
+    }
+  }
+  pairs.sort((a, b) => a.per - b.per || b.paired.length - a.paired.length);
+
+  const out = new Map();
+  const takenNotation = new Set();
+  const takenFamily = new Set();
+  for (const pair of pairs) {
+    if (pair.per > 1 || takenNotation.has(pair.key) || takenFamily.has(pair.family)) continue;
+    takenNotation.add(pair.key);
+    takenFamily.add(pair.family);
+    for (const [strength, m] of pair.paired) out.set(m.move, pair.fam.slots.get(strength));
+  }
+  return out;
+}
+
+/**
  * Map a FAT move onto an action. Names get us a candidate set; FAT's startup
  * picks the right sibling (Ryu's `ATK_5HK` is 5HK at startup 12, `ATK_5HK(1)`
  * is the 5HP > HK follow-up at 9, `ATK_5HK_2` the 5MP > LK > HK one at 17).
  */
-function mapMove(fatMove, actions, sigs, superActions) {
+function mapMove(fatMove, actions, sigs, superActions, specials) {
   const fatStartup = int(fatMove.startup);
   const system = SYSTEM_ACTIONS[fatMove.cmnName];
   const level = superLevel(fatMove.cmnName);
   const levelPool = level !== null ? (superActions?.get(level) ?? new Set()) : null;
+  const specialAction = specials?.get(fatMove);
   // Classified outright, but still scored the ordinary way: the match quality has
   // to stay honest about whether the frames agree.
   let pool = system
     ? actions.filter((a) => a.name === system)
     : levelPool?.size
       ? actions.filter((a) => levelPool.has(a.id) && isSuperAction(a.name))
-      : candidatesFor(fatMove.numCmd, actions).filter((a) => !isSystemAction(a.name));
+      : specialAction
+        ? [specialAction]
+        : candidatesFor(fatMove.numCmd, actions).filter((a) => !isSystemAction(a.name));
 
   // Prefer the newest rebalance of a move when both are present.
   const years = pool.filter((a) => /_Y\d$/.test(a.name));
@@ -709,7 +817,7 @@ function mapMove(fatMove, actions, sigs, superActions) {
   // `weak` on every fighter because FAT's startup for it is 4 higher than the
   // action's own first active frame — consistently, so a structural difference
   // rather than a bad match. See docs/adr/0017 and docs/adr/0018.
-  if (system || levelPool?.size) return best ? mapping(fatMove, best, "weak", scored) : null;
+  if (system || levelPool?.size || specialAction) return best ? mapping(fatMove, best, "weak", scored) : null;
 
   // No plausibly-named action: fall back to a unique frame-data fingerprint.
   // This is how notation disagreements get caught (Ryu's 6HK is ATK_3HK) and how
@@ -886,11 +994,12 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
 
   const fatMoves = Object.values(fat.moves.normal);
   const superActions = superActionsByLevel(triggerFile);
+  const specials = assignSpecials(fatMoves, specialFamilies(triggerFile, byId, sigs), sigs);
   const moves = [];
   const unmapped = [];
   for (const m of fatMoves) {
     if (!m.numCmd) continue;
-    const mapped = mapMove(m, actions, sigs, superActions);
+    const mapped = mapMove(m, actions, sigs, superActions, specials);
     if (mapped) moves.push({ ...mapped, category: m.moveType });
     else unmapped.push({ input: m.numCmd, name: m.moveName, category: m.moveType });
   }

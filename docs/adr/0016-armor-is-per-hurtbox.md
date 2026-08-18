@@ -134,11 +134,11 @@ the ordinary mapping. The rate is unchanged.)
 - **What each atemi row actually does.** The table is not in the dump, so the rows
   can only ever be characterised from outside. Rows 2, 3, 6 and 8 have no
   reachable published claim at all.
-- **The low-attack half of the decode rests on two claims** — Marisa's `623LP` and
-  `623HP`. The other fourteen armor claims that would test it are on her Gladius
-  (`236P`) and Scutum (`214K`), and **neither is in the move mapping**, so they
-  cannot be joined. The structural partition above is what carries the finding;
-  widening the mapping would turn it into a proper rate.
+- ~~**The low-attack half of the decode rests on two claims**~~ — partly closed by
+  [ADR-0021](./0021-specials-map-through-the-triggers.md), which maps specials
+  through the triggers' own family and strength. Marisa's Phalanx family joins and
+  its windows are FAT's to the frame, taking "loses to Low" from 2/2 to **4/4** and
+  the armor check from 26/26 to 27/29. Gladius and Scutum are still unmapped.
 - **Honda's EX Headbutt** publishes "1 hit of armor on frames 1-8 and then another
   on 9-32" — two windows in one sentence, which the parser skips rather than
   half-matching. Its atemi keys split 1-9 / 10-10 / 11-13 / 14-56, which is

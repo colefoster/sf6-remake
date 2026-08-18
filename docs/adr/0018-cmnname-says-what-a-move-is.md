@@ -126,11 +126,12 @@ never again be read as one.
   [ADR-0019](./0019-the-super-freeze-is-in-the-dump.md): it is `WorldKey.Timer`, and
   `startup − freeze + 1` reproduces FAT's startup on 43 of 46 supers. Supers are back
   in the clean population, and the same field explains ADR-0017's Drive Reversal +4.
-- **Specials are still 0 solidly mapped of 196.** `cmnName` covers them —
-  `"MP Fireball"`, `"LK Tatsu"`, `"OD Rekka 1"` — and that is a strength-plus-family
-  label the dump's action names do not use, so it needs a different join than the
-  level trigger gave supers. This is the single biggest remaining coverage gap and
-  the thing that would let ADR-0016's low-attack decode rest on more than two moves.
+- ~~**Specials are still 0 solidly mapped of 196.**~~ Closed by
+  [ADR-0021](./0021-specials-map-through-the-triggers.md), and not through
+  `cmnName`: its labels are archetypes (`"LP Palm Thrust"` against the dump's
+  `SPA_HADOSHO`) and nothing joins those strings. The triggers already carry the
+  family, strength and button, and assigning a whole notation family at once maps
+  **193 specials exact**. ADR-0016's low-attack decode does now rest on four moves.
 - **184 normals are still unmapped**, which is a larger number than it looks
   because it includes every fighter's stance, taunt and follow-up notation.
 - Cammy's SA1 genuinely runs on her Spiral Arrow action. Excluding it is right for

@@ -121,3 +121,9 @@ the field's *existence* is what invites a decode that cannot happen.
 - **What the atemi table rows mean** is unchanged from ADR-0016: the table is not
   in the dump. This ADR closes the attack side by establishing there is nothing
   there to read, not by reading it.
+- **The rule has two counterexamples now.**
+  [ADR-0021](./0021-specials-map-through-the-triggers.md) maps 193 specials, and
+  two of them — Marisa's `623PP` and `236KK` — are published as Armor Break while
+  being neither a super nor a Drive Reversal. Every exception before ran the
+  harmless way; these run the other way, which means the rule is incomplete rather
+  than FAT's tag being editorial.
