@@ -37,7 +37,11 @@ describe("the extracted geometry", () => {
   it("agrees with the published frame data on the moves it maps", () => {
     const exact = geo.moves.filter((m) => m.startupDelta === 0);
     expect(exact.length).toBeGreaterThan(30);
-    expect(geo.moves.filter((m) => m.match === "weak").length).toBeLessThan(3);
+    // Supers are excluded: their action carries the cinematic freeze so FAT's
+    // startup never agrees, and they are mapped by class rather than by frames.
+    // See ADR-0018. This guards the ordinary mapping from degrading.
+    const soft = geo.moves.filter((m) => m.match === "weak" && m.category !== "super");
+    expect(soft.length).toBeLessThan(3);
   });
 
   it("puts 2MK's hitbox on its published active frames", () => {

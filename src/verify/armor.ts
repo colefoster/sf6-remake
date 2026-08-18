@@ -117,11 +117,16 @@ export function verifyArmor(characters?: string[]): ArmorReport {
     if (!geo) continue;
     const fat = fatMoves(geo.character);
 
-    const targets = geo.moves.map((m) => ({
-      input: m.input,
-      action: geo.actions.find((a) => a.id === m.action),
-      actionName: m.actionName,
-    }));
+    // Super Arts are left out: their action carries the cinematic freeze and
+    // FAT's frames do not, so the two windows are not in the same frame space.
+    // See ADR-0018.
+    const targets = geo.moves
+      .filter((m) => m.category !== "super")
+      .map((m) => ({
+        input: m.input,
+        action: geo.actions.find((a) => a.id === m.action),
+        actionName: m.actionName,
+      }));
 
     for (const { input, action, actionName } of targets) {
       const info = fat[input]?.extraInfo;

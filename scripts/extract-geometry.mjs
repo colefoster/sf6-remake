@@ -602,29 +602,74 @@ function candidatesFor(input, actions) {
 }
 
 /**
- * The Drive system's universal moves. Their notations are nothing like their
- * action names, so the name path finds no candidates and the frame-fingerprint
- * fallback lands on whatever else happens to share their profile — Jamie's Drive
- * Impact resolved to `SPA6_H`, and three fighters' Drive Reversals to unrelated
- * specials. They are the same action on every fighter, so name them, and keep the
- * fallback away from them in both directions. See docs/adr/0017.
+ * FAT's `cmnName` says what a move *is* — "Drive Impact", "Super Art Level 2",
+ * "Critical Art" — independently of its notation. Notation is what the name path
+ * matches on, and for these moves it is useless: the Drive system's actions are
+ * `ATK_CTA` and `ATK_CTA_4`, and a super's action carries the move's Japanese
+ * name. So the fallback used to guess from frames alone and land on whatever
+ * shared the profile. See docs/adr/0018.
  */
-const SYSTEM_ACTIONS = { HPHK: "ATK_CTA", "6HPHK": "ATK_CTA_4" };
+const SYSTEM_ACTIONS = { "Drive Impact": "ATK_CTA", "Drive Reversal": "ATK_CTA_4" };
 const isSystemAction = (name) => Object.values(SYSTEM_ACTIONS).some((n) => name === n || name.startsWith(`${n}(`));
+
+/** "Super Art Level 2 (air)" -> 2, "Critical Art" -> 4. */
+function superLevel(cmnName) {
+  if (typeof cmnName !== "string") return null;
+  if (/^Critical Art/.test(cmnName)) return 4;
+  const m = cmnName.match(/^Supe?rt? (?:Art )?Level (\d)/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * The dump names a Super Art's own action `SAA_*`, `CAA_*` or `SA<n>_*` — 217 of
+ * the 237 actions a level trigger points at. The other 20 are handoffs through
+ * something that is not a super at all: Cammy's SA1 reuses her Spiral Arrow
+ * animation, and Akuma's install trigger points at a standing loop. Taking those
+ * would put a confidently wrong action on a super, which is the failure ADR-0017
+ * just removed from the Drive moves.
+ */
+const isSuperAction = (name) => /^(SAA|CAA|SA\d)/.test(name);
+
+/**
+ * Which actions each super level can lead to, from the triggers' own `_IsLv1`..
+ * `_IsLv4` flags. This is the dump's classification, not ours, and it turns a
+ * 300-action guess into a pool of two or three.
+ */
+function superActionsByLevel(triggerFile) {
+  const out = new Map();
+  for (const slots of Object.values(triggerFile ?? {})) {
+    if (!slots || typeof slots !== "object") continue;
+    for (const trigger of Object.values(slots)) {
+      if (!trigger || typeof trigger !== "object") continue;
+      for (const [k, v] of Object.entries(trigger)) {
+        const level = v === true && k.match(/^_IsLv(\d)$/);
+        if (!level) continue;
+        const key = Number(level[1]);
+        if (!out.has(key)) out.set(key, new Set());
+        out.get(key).add(trigger.action_id);
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * Map a FAT move onto an action. Names get us a candidate set; FAT's startup
  * picks the right sibling (Ryu's `ATK_5HK` is 5HK at startup 12, `ATK_5HK(1)`
  * is the 5HP > HK follow-up at 9, `ATK_5HK_2` the 5MP > LK > HK one at 17).
  */
-function mapMove(fatMove, actions, sigs) {
+function mapMove(fatMove, actions, sigs, superActions) {
   const fatStartup = int(fatMove.startup);
-  const system = SYSTEM_ACTIONS[fatMove.numCmd];
-  // Named outright, but still scored the ordinary way: the match quality has to
-  // stay honest about whether the frames agree.
+  const system = SYSTEM_ACTIONS[fatMove.cmnName];
+  const level = superLevel(fatMove.cmnName);
+  const levelPool = level !== null ? (superActions?.get(level) ?? new Set()) : null;
+  // Classified outright, but still scored the ordinary way: the match quality has
+  // to stay honest about whether the frames agree.
   let pool = system
     ? actions.filter((a) => a.name === system)
-    : candidatesFor(fatMove.numCmd, actions).filter((a) => !isSystemAction(a.name));
+    : levelPool?.size
+      ? actions.filter((a) => levelPool.has(a.id) && isSuperAction(a.name))
+      : candidatesFor(fatMove.numCmd, actions).filter((a) => !isSystemAction(a.name));
 
   // Prefer the newest rebalance of a move when both are present.
   const years = pool.filter((a) => /_Y\d$/.test(a.name));
@@ -641,14 +686,14 @@ function mapMove(fatMove, actions, sigs) {
     return mapping(fatMove, best, best.delta === 0 ? "exact" : "close", scored);
   }
 
-  // A system move is identified by name or not at all — a coincidental frame
-  // profile is what put Drive Impact on a special in the first place.
-  // Naming it is certain; agreeing with FAT's startup is a separate question, so
-  // the label still comes from the frames. Drive Reversal lands `weak` on every
-  // fighter because FAT's startup for it is 4 higher than the action's own first
-  // active frame — consistently, which makes it a structural difference rather
-  // than a bad match. See docs/adr/0017.
-  if (system) return best ? mapping(fatMove, best, "weak", scored) : null;
+  // A move `cmnName` classifies is identified that way or not at all — a
+  // coincidental frame profile is what put Drive Impact on a special to begin
+  // with. The class is certain; agreeing with FAT's startup is a separate
+  // question, so the label still comes from the frames. Drive Reversal lands
+  // `weak` on every fighter because FAT's startup for it is 4 higher than the
+  // action's own first active frame — consistently, so a structural difference
+  // rather than a bad match. See docs/adr/0017 and docs/adr/0018.
+  if (system || levelPool?.size) return best ? mapping(fatMove, best, "weak", scored) : null;
 
   // No plausibly-named action: fall back to a unique frame-data fingerprint.
   // This is how notation disagreements get caught (Ryu's 6HK is ATK_3HK) and how
@@ -815,11 +860,12 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   const sigs = new Map(actions.map((a) => [a.id, signature(a)]));
 
   const fatMoves = Object.values(fat.moves.normal);
+  const superActions = superActionsByLevel(triggerFile);
   const moves = [];
   const unmapped = [];
   for (const m of fatMoves) {
     if (!m.numCmd) continue;
-    const mapped = mapMove(m, actions, sigs);
+    const mapped = mapMove(m, actions, sigs, superActions);
     if (mapped) moves.push({ ...mapped, category: m.moveType });
     else unmapped.push({ input: m.numCmd, name: m.moveName, category: m.moveType });
   }

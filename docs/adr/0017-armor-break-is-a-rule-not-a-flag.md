@@ -4,6 +4,9 @@
 - Date: 2026-08-18
 - Extends: [ADR-0009](./0009-what-a-cancel-costs.md),
   [ADR-0016](./0016-armor-is-per-hurtbox.md)
+- Extended by: [ADR-0018](./0018-cmnname-says-what-a-move-is.md) — the hardcoded
+  notation table below is replaced by FAT's `cmnName`, and the five mis-mapped
+  supers are fixed.
 
 ## Context
 
@@ -112,8 +115,9 @@ the field's *existence* is what invites a decode that cannot happen.
 - **Five supers are still mis-mapped** (Cammy `236236P`, Chun-Li `236236K`,
   Kimberly `236236P`). Supers have character-specific action names — `SAA_HADOUKEN`,
   `SAA_SHINSYORYU` — so the `SAA` prefix identifies them as a class but cannot pick
-  which one a notation means. Fixing that is the same shape as this ADR's fix and a
-  larger job.
+  which one a notation means.
+  [ADR-0018](./0018-cmnname-says-what-a-move-is.md) does it, through the trigger
+  levels, and finds that a super's frames cannot be graded against FAT's at all.
 - **What the atemi table rows mean** is unchanged from ADR-0016: the table is not
   in the dump. This ADR closes the attack side by establishing there is nothing
   there to read, not by reading it.

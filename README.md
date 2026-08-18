@@ -279,7 +279,7 @@ armor vs the published notes
   window       26/26 100.0%   the atemi keys' frames == FAT's published armor window
   low beats it 2/2 100.0%     FAT says a low goes under it == the window skips the leg box
   low does not 24/24 100.0%   FAT says nothing == the window covers the leg box
-  armor break  808/813 99.4%  FAT's "Armor Break" tag == the move is a super or a Drive Reversal
+  armor break  873/886 98.5%  FAT's "Armor Break" tag == the move is a super or a Drive Reversal
 ```
 
 Armor is applied per hurtbox, which is why body-only armor loses to a low attack — Drive Impact's covers head, body and leg on frames 1-27 for all 24 fighters ([ADR-0016: armor is per hurtbox](./docs/adr/0016-armor-is-per-hurtbox.md)). Armor Break has no field at all: it's what supers and Drive Reversals do ([ADR-0017: Armor Break is a rule, not a flag](./docs/adr/0017-armor-break-is-a-rule-not-a-flag.md)).

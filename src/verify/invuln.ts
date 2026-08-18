@@ -165,7 +165,10 @@ export function verifyInvuln(characters?: string[], options: InvulnOptions = {})
     for (const move of geo.moves) {
       const info = fat[move.input]?.extraInfo;
       const action = geo.actions.find((a) => a.id === move.action);
-      if (!info || !action) continue;
+      // A Super Art's action includes the cinematic freeze and FAT's frames do
+      // not, so its published windows and the dump's are in different frame
+      // spaces. See ADR-0018.
+      if (!info || !action || move.category === "super") continue;
 
       for (const claim of info) {
         const kind = classify(claim);

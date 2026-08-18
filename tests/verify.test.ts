@@ -182,8 +182,10 @@ describe("MarginFrame is recovery, not animation length", () => {
     // MarginFrame measures the action alone. That gap is structural, not error,
     // and it is why the sim is *more* right than FAT for a follow-up.
     const score = (chained: boolean) => {
+      // Supers excluded, not `clean` — ADR-0011 measured this over every mapped
+      // move, and a super's frames are in a different space (ADR-0018).
       const rows = report.comparisons.filter(
-        (c) => c.check === "total" && c.input.includes(">") === chained,
+        (c) => c.check === "total" && c.category !== "super" && c.input.includes(">") === chained,
       );
       return rows.filter((c) => c.agrees).length / rows.length;
     };
@@ -424,10 +426,13 @@ describe("armor against the published notes", () => {
     const brk = verifyArmorBreak();
     expect(brk.checked).toBeGreaterThan(700);
     expect(brk.agreeing / brk.checked).toBeGreaterThan(0.98);
-    // The residue is the move mapper, not the rule: every disagreement is a super
-    // whose notation landed on a special.
+    // Every exception runs one way: FAT declining to tag a move the dump calls a
+    // super. They are the command-grab supers — Zangief's Atomic Buster, Lily's
+    // Raging Typhoon, Manon's SA3 — plus two mid-super follow-ups. A grab does not
+    // need to break armor to beat it. Nothing runs the other way, which is what
+    // would mean the rule is wrong rather than FAT's tag being editorial.
     for (const row of brk.rows.filter((r) => !r.agrees)) {
-      expect(`${row.character} ${row.input}: ${row.published}`).toBe(`${row.character} ${row.input}: true`);
+      expect(`${row.character} ${row.input}: ${row.published}`).toBe(`${row.character} ${row.input}: false`);
     }
   });
 

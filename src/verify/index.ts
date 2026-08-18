@@ -55,6 +55,12 @@ export interface Comparison {
   character: string;
   input: string;
   actionName: string;
+  /**
+   * FAT's own classification of the move. Worth carrying since ADR-0018 widened
+   * the mapping past normals: a population of mixed categories is not one
+   * population, and `super` in particular counts frames differently.
+   */
+  category: string;
   check: CheckName;
   /** What the dump says, and what FAT says the same number should be. */
   dump: number;
@@ -209,7 +215,17 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
       // An exact mapping of a single-hit move whose startup already agrees: the
       // population where a disagreement is a finding rather than a known-soft
       // mapping or a multi-hit move whose numbers describe a different hit.
-      const clean = move.match === "exact" && move.hits === 1 && !move.startupDelta;
+      //
+      // Super Arts are excluded outright. Their action includes the cinematic
+      // freeze and FAT's numbers do not — 47 to 115 frames of it, scaling with the
+      // level — so the two sources are counting in different frame spaces and a
+      // comparison between them means nothing. Until ADR-0018 there were no supers
+      // in the mapping and this held by accident; now it is stated. See ADR-0018.
+      const clean =
+        move.match === "exact" &&
+        move.hits === 1 &&
+        !move.startupDelta &&
+        move.category !== "super";
 
       const expected: Record<CheckName, number | undefined> = {
         hitstun: plainInt(columns.hitstun),
@@ -228,6 +244,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
           character: geo.character,
           input: move.input,
           actionName: move.actionName,
+          category: move.category,
           check,
           dump: mine,
           fat: theirs,
