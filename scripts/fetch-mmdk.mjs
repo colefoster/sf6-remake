@@ -71,10 +71,14 @@ async function fetchCharacter(name, dirs, sha) {
   return dir;
 }
 
-const names = process.argv.slice(2);
+const names = process.argv.slice(2).filter((a) => a !== "--refresh");
 const wanted = names.length ? names : ["Ryu", "Akuma"];
 
-const sha = await headSha();
+// Stay on the commit the existing dumps came from, so adding a character later
+// can't silently mix two upstream revisions under one recorded sha.
+const stampPath = path.join(OUT, "source.json");
+const prev = existsSync(stampPath) ? JSON.parse(await readFile(stampPath, "utf8")) : {};
+const sha = process.argv.includes("--refresh") || !prev.commit ? await headSha() : prev.commit;
 const dirs = await dumpDirs(sha);
 console.log(`MMDK @ ${sha.slice(0, 8)}`);
 
@@ -82,8 +86,6 @@ const fetched = [];
 for (const name of wanted) fetched.push(await fetchCharacter(name, dirs, sha));
 
 // Provenance: the extractor copies this into its output so a stale dump is visible.
-const stampPath = path.join(OUT, "source.json");
-const prev = existsSync(stampPath) ? JSON.parse(await readFile(stampPath, "utf8")) : {};
 await writeFile(
   stampPath,
   JSON.stringify(
