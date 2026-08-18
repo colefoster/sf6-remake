@@ -157,6 +157,13 @@ export interface GeometryAction {
   frames: number | null;
   mainFrame: number | null;
   marginFrame: number | null;
+  /**
+   * A Super Art's cinematic freeze, in frames, from the action's `WorldKey` timer.
+   * Everything after it sits `freeze - 1` frames later in the action's own timeline
+   * than in FAT's numbers, so a comparison between the two has to net it out.
+   * See ADR-0019.
+   */
+  freeze?: number;
   flags: {
     high: boolean;
     low: boolean;
@@ -230,7 +237,10 @@ export interface MoveMapping {
     onBlock: string | number | null;
     onHit: string | number | null;
   };
+  /** Net of the action's freeze, so it is in FAT's frame space. See ADR-0019. */
   startupDelta: number | null;
+  /** Copied off the action when it has one, so a caller need not look it up. */
+  freeze?: number;
   alternates: number[];
   category: string;
   /** Absent when the move cannot be cancelled into a special at all. */
@@ -433,6 +443,18 @@ export function armorWindows(action: GeometryAction): ArmorWindow[] {
 /** Whether an attack at this height is absorbed rather than landing. */
 export function armoredAt(action: GeometryAction, frame: number, part: keyof ArmorWindow["covers"]): boolean {
   return armorWindows(action).some((w) => frame >= w.start && frame <= w.end && w.covers[part]);
+}
+
+/**
+ * A frame of the action expressed in FAT's frame space.
+ *
+ * A Super Art's action runs its cinematic freeze first, and FAT's numbers start
+ * counting after it. The two spaces differ by `freeze - 1` — the minus one is the
+ * frame they share, the same off-by-one the `total` identity carries. Everything
+ * else in the roster has no freeze and passes straight through. See ADR-0019.
+ */
+export function inFatFrames(action: GeometryAction, frame: number): number {
+  return action.freeze ? frame - action.freeze + 1 : frame;
 }
 
 /** Where the character origin is on this frame, relative to where it started. */

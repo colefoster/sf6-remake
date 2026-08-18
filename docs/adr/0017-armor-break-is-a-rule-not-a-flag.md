@@ -107,11 +107,11 @@ the field's *existence* is what invites a decode that cannot happen.
 
 ## Not settled
 
-- **FAT's Drive Reversal startup is 4 higher than the action's first active frame,
-  on all 22 fighters that have one.** Exactly 4, every time, so it is structural
-  rather than skew — most likely FAT counting from the block that a Drive Reversal
-  is performed out of. Not chased. Until it is, the mapping stays `weak`, which
-  keeps it out of every graded population.
+- ~~**FAT's Drive Reversal startup is 4 higher than the action's first active
+  frame.**~~ Closed by [ADR-0019](./0019-the-super-freeze-is-in-the-dump.md):
+  `ATK_CTA_4` carries a `WorldKey` freeze of 5, and freeze − 1 is the 4. The mapping
+  is `exact` now, which promoted it into the clean population and turned up a second
+  guard-release constant — its blockstun is published + 6, not + 4.
 - **Five supers are still mis-mapped** (Cammy `236236P`, Chun-Li `236236K`,
   Kimberly `236236P`). Supers have character-specific action names — `SAA_HADOUKEN`,
   `SAA_SHINSYORYU` — so the `SAA` prefix identifies them as a class but cannot pick

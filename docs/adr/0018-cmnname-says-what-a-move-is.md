@@ -5,6 +5,8 @@
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md),
   [ADR-0009](./0009-what-a-cancel-costs.md),
   [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md)
+- Extended by: [ADR-0019](./0019-the-super-freeze-is-in-the-dump.md) — the freeze is
+  in the dump after all, so supers are gradeable and back in the clean population.
 
 ## Context
 
@@ -120,9 +122,10 @@ never again be read as one.
 
 ## Not settled
 
-- **The super freeze itself.** If the dump records the flash duration somewhere,
-  supers become gradeable and 73 moves join the checked population. Nothing was
-  looked for yet; `MotionKey` and the `VfxKey` list are where to start.
+- ~~**The super freeze itself.**~~ Closed by
+  [ADR-0019](./0019-the-super-freeze-is-in-the-dump.md): it is `WorldKey.Timer`, and
+  `startup − freeze + 1` reproduces FAT's startup on 43 of 46 supers. Supers are back
+  in the clean population, and the same field explains ADR-0017's Drive Reversal +4.
 - **Specials are still 0 solidly mapped of 196.** `cmnName` covers them —
   `"MP Fireball"`, `"LK Tatsu"`, `"OD Rekka 1"` — and that is a strength-plus-family
   label the dump's action names do not use, so it needs a different join than the

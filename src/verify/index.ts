@@ -28,7 +28,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { loadGeometry, type GeometryFile, type MoveMapping } from "../data/geometry.js";
+import { inFatFrames, loadGeometry, type GeometryFile, type MoveMapping } from "../data/geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 import { runScenario } from "../sim/index.js";
 
@@ -145,7 +145,12 @@ function dumpNumbers(geo: GeometryFile, move: MoveMapping, character: string) {
   return {
     hitstun: data?.hit?.stun,
     blockstun: data?.block?.stun,
-    total: action && action.marginFrame && action.marginFrame > 0 ? action.marginFrame : undefined,
+    // `MarginFrame` is in the action's own frames; FAT's `total` is not, for a
+    // Super Art. Netting out the freeze puts them in one space. See ADR-0019.
+    total:
+      action && action.marginFrame && action.marginFrame > 0
+        ? inFatFrames(action, action.marginFrame)
+        : undefined,
     cancelEnd:
       move.cancel && data?.hit
         ? move.cancel.end - move.startup + data.hit.hitStop.owner + 2
@@ -216,16 +221,11 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
       // population where a disagreement is a finding rather than a known-soft
       // mapping or a multi-hit move whose numbers describe a different hit.
       //
-      // Super Arts are excluded outright. Their action includes the cinematic
-      // freeze and FAT's numbers do not — 47 to 115 frames of it, scaling with the
-      // level — so the two sources are counting in different frame spaces and a
-      // comparison between them means nothing. Until ADR-0018 there were no supers
-      // in the mapping and this held by accident; now it is stated. See ADR-0018.
-      const clean =
-        move.match === "exact" &&
-        move.hits === 1 &&
-        !move.startupDelta &&
-        move.category !== "super";
+      // Super Arts were excluded outright by ADR-0018, because their action runs
+      // the cinematic freeze and FAT's numbers do not. ADR-0019 found the freeze
+      // in the dump, so the two are in one frame space again and supers are back
+      // in on the same terms as everything else.
+      const clean = move.match === "exact" && move.hits === 1 && !move.startupDelta;
 
       const expected: Record<CheckName, number | undefined> = {
         hitstun: plainInt(columns.hitstun),

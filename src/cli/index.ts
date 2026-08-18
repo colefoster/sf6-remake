@@ -569,6 +569,23 @@ function printVerification(report: ReturnType<typeof verify>): void {
     console.log(`  ${"".padEnd(10)} ${pct(t.other).padEnd(18)} (multi-hit and soft mappings)`);
   }
 
+  // The clean population is no longer one population — ADR-0019 let supers and the
+  // Drive moves in — so the pooled figure alone hides where a check stands.
+  const categories = [
+    ...new Set(report.comparisons.filter((c) => c.clean).map((c) => c.category ?? "?")),
+  ].sort();
+  console.log("\n  by move category, clean population:");
+  console.log(`    ${"".padEnd(10)} ${categories.map((c) => c.padStart(9)).join(" ")}`);
+  for (const check of Object.keys(CHECKS)) {
+    const cell = (cat: string) => {
+      const rows = report.comparisons.filter(
+        (c) => c.clean && c.check === check && (c.category ?? "?") === cat,
+      );
+      return rows.length ? `${rows.filter((r) => r.agrees).length}/${rows.length}` : "—";
+    };
+    console.log(`    ${check.padEnd(10)} ${categories.map((c) => cell(c).padStart(9)).join(" ")}`);
+  }
+
   const worst = report.byCharacter.slice(0, 5);
   if (worst.length) {
     console.log("\n  worst agreement, clean population only:");

@@ -237,6 +237,13 @@ function extractAction(action, rect, unresolvedPush) {
     cancels.push(entry);
   }
 
+  // A Super Art's `WorldKey` carries a negative `Timer`: the cinematic freeze, in
+  // frames. Everything after it sits that much later in the action's own timeline
+  // than in FAT's numbers. See docs/adr/0019.
+  const freezes = ordered(action.WorldKey)
+    .filter((k) => k && k._IsTIMER && typeof k.Timer === "number" && k.Timer !== 0)
+    .map((k) => Math.abs(k.Timer));
+
   const branches = ordered(action.BranchKey)
     .filter((k) => typeof k.Action === "number" && k.Action > 0)
     .map((k) => ({ frame: (k._StartFrame ?? 0) + 1, action: k.Action, type: k.Type ?? null }));
@@ -266,6 +273,7 @@ function extractAction(action, rect, unresolvedPush) {
   const motion = extractMotion(action, fab.Frame);
   if (motion) out.motion = motion;
   if (branches.length) out.branches = dedupeBranches(branches);
+  if (freezes.length) out.freeze = Math.max(...freezes);
   if (action.mot_name) out.mot = action.mot_name;
   return out;
 }
@@ -675,10 +683,18 @@ function mapMove(fatMove, actions, sigs, superActions) {
   const years = pool.filter((a) => /_Y\d$/.test(a.name));
   if (years.length) pool = years;
 
+  // A frozen action's frames run `freeze - 1` later than FAT's, so the comparison
+  // has to happen in one frame space. The `- 1` is the frame the freeze and the
+  // startup share, the same off-by-one CONTEXT.md's `total` identity carries.
+  const inFatSpace = (action, startup) => (action.freeze ? startup - action.freeze + 1 : startup);
   const scored = pool
     .map((a) => ({ action: a, sig: sigs.get(a.id) }))
     .filter((c) => c.sig)
-    .map((c) => ({ ...c, delta: fatStartup === undefined ? null : Math.abs(c.sig.startup - fatStartup) }))
+    .map((c) => ({
+      ...c,
+      delta:
+        fatStartup === undefined ? null : Math.abs(inFatSpace(c.action, c.sig.startup) - fatStartup),
+    }))
     .sort((a, b) => (a.delta ?? 99) - (b.delta ?? 99));
 
   const best = scored[0];
@@ -714,6 +730,7 @@ function mapping(fatMove, cand, match, scored) {
     startup: cand.sig.startup,
     active: cand.sig.active,
     hits: cand.sig.hits,
+    ...(cand.action.freeze ? { freeze: cand.action.freeze } : {}),
     fat: {
       startup: fatMove.startup ?? null,
       active: fatMove.active ?? null,
@@ -721,7 +738,15 @@ function mapping(fatMove, cand, match, scored) {
       onBlock: fatMove.onBlock ?? null,
       onHit: fatMove.onHit ?? null,
     },
-    startupDelta: int(fatMove.startup) === undefined ? null : cand.sig.startup - int(fatMove.startup),
+    // `startup` is the action's own first active frame; `startupDelta` compares it
+    // to FAT in FAT's frame space, which for a frozen action means net of the
+    // cinematic freeze. The two differ by `freeze - 1` and both are wanted: the
+    // sim counts in the action's frames, the grader in FAT's. See docs/adr/0019.
+    startupDelta:
+      int(fatMove.startup) === undefined
+        ? null
+        : (cand.action.freeze ? cand.sig.startup - cand.action.freeze + 1 : cand.sig.startup) -
+          int(fatMove.startup),
     alternates: scored.slice(1, 4).map((c) => c.action.id),
   };
 }

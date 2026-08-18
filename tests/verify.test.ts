@@ -36,14 +36,58 @@ describe("the game's data against the published frame data", () => {
       // the pre-Season-3 patch skew that ADR-0004 and ADR-0008 describe, and it
       // is per-character rather than per-check. `advantage` sits lowest of the
       // five because it compounds three extractions into one number.
-      expect(`${check} ${rate(clean) > 0.8}`).toBe(`${check} true`);
+      // Pooled across categories now (ADR-0019), so this is a coarse regression
+      // guard; the per-category assertion below is the sharp one.
+      expect(`${check} ${rate(clean) > 0.85}`).toBe(`${check} true`);
     }
+  });
+
+  it("keeps each check honest per category, not just pooled", () => {
+    // ADR-0019 let supers and the Drive moves into the clean population, so a
+    // pooled floor no longer says much. Normals are the population every identity
+    // in this project was measured on; they are asserted directly.
+    for (const check of ["hitstun", "blockstun", "total", "cancelEnd", "advantage"] as const) {
+      const rows = report.comparisons.filter((c) => c.check === check && c.clean && c.category === "normal");
+      expect(rows.length).toBeGreaterThan(100);
+      const ok = rows.filter((c) => c.agrees).length / rows.length;
+      expect(`${check} ${ok > 0.85}`).toBe(`${check} true`);
+    }
+  });
+
+  it("finds a second guard-release constant on Drive Reversal, and it is uniform", () => {
+    // Drive Reversal was `weak` until ADR-0019 explained its startup (a 5-frame
+    // freeze), which promoted it into the clean population and immediately turned
+    // up a new constant: its blockstun is FAT's published value plus 6, not the
+    // plus 4 ADR-0006 measured on normals. Every fighter, the same 2 frames — a
+    // structural difference rather than skew, and left in the pooled number rather
+    // than curated out of it.
+    const rows = report.comparisons.filter(
+      (c) => c.check === "blockstun" && c.clean && c.input === "6HPHK",
+    );
+    expect(rows.length).toBeGreaterThan(15);
+    for (const c of rows) expect(`${c.character}: ${c.dump - c.fat}`).toBe(`${c.character}: 2`);
   });
 
   it("confirms hitstun with no constant at all", () => {
     // The hit table and FAT agree outright: no offset, no fudge. This is the
     // control for the blockstun sweep below.
     expect(rate(report.totals.hitstun.clean)).toBeGreaterThan(0.9);
+  });
+
+  it("explains Drive Reversal's startup as its cinematic freeze", () => {
+    // ADR-0017 left FAT's Drive Reversal startup 4 frames above the action's own
+    // first active frame, on every fighter, unexplained. `ATK_CTA_4` carries a
+    // `WorldKey` freeze of 5, and freeze - 1 is that 4. See ADR-0019.
+    let checked = 0;
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      const move = geo?.moves.find((m) => m.input === "6HPHK");
+      if (!geo || !move) continue;
+      const action = geo.actions.find((a) => a.id === move.action)!;
+      checked++;
+      expect(`${geo.id}: freeze ${action.freeze} delta ${move.startupDelta}`).toBe(`${geo.id}: freeze 5 delta 0`);
+    }
+    expect(checked).toBeGreaterThan(20);
   });
 
   /**
@@ -54,9 +98,15 @@ describe("the game's data against the published frame data", () => {
    * every neighbour is markedly worse.
    */
   it("puts the guard release at exactly 4, and nowhere else", () => {
+    // Swept over normals, which is the population ADR-0006 measured it on. Drive
+    // Reversal needs +6 and would otherwise blunt the spike by 18 rows — see the
+    // per-category test above and ADR-0019.
     const scores = new Map<number, number>();
     for (let offset = 0; offset <= 8; offset++) {
-      scores.set(offset, rate(verify(undefined, { guardRelease: offset }).totals.blockstun.clean));
+      const rows = verify(undefined, { guardRelease: offset }).comparisons.filter(
+        (c) => c.check === "blockstun" && c.clean && c.category === "normal",
+      );
+      scores.set(offset, rows.filter((c) => c.agrees).length / rows.length);
     }
     const best = [...scores].sort((a, b) => b[1] - a[1])[0]!;
     expect(best[0]).toBe(4);
@@ -451,10 +501,11 @@ describe("armor against the published notes", () => {
       }
       if (dr) {
         reversal++;
-        expect(`${geo.id}: ${dr.actionName}`).toBe(`${geo.id}: ATK_CTA_4`);
-        // FAT's startup for a Drive Reversal is 4 higher than the action's own
-        // first active frame, on every fighter — structural, not a bad match.
-        expect(`${geo.id}: ${dr.startupDelta}`).toBe(`${geo.id}: 4`);
+        // The 4-frame gap ADR-0017 recorded here is now explained and netted out:
+        // `ATK_CTA_4` carries a 5-frame freeze, and freeze - 1 is the 4. ADR-0019.
+        expect(`${geo.id}: ${dr.actionName} delta ${dr.startupDelta}`).toBe(
+          `${geo.id}: ATK_CTA_4 delta 0`,
+        );
       }
     }
     expect(impact).toBe(24);

@@ -229,7 +229,7 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   126 tests, including assertions against the real data
+tests/                   129 tests, including assertions against the real data
 ```
 
 ## Known limitations
@@ -245,7 +245,7 @@ tests/                   126 tests, including assertions against the real data
 To run the test suite and the type checker, run the following commands:
 
 ```bash
-npm test          # 126 tests
+npm test          # 129 tests
 npm run typecheck
 ```
 
@@ -263,10 +263,10 @@ The output is similar to the following:
 the game's dumped data vs the published frame data
 
   hitstun    269/292 92.1%      the hit table's hitstun == FAT's published hitstun
-  blockstun  304/326 93.3%      the hit table's blockstun == FAT's published blockstun + 4
-  total      209/224 93.3%      the action's MarginFrame == FAT's published total
+  blockstun  310/351 88.3%      the hit table's blockstun == FAT's published blockstun + 4
+  total      215/230 93.5%      the action's MarginFrame == FAT's published total
   cancelEnd  122/134 91.0%      the cancel window's last frame == FAT's published hit-confirm window
-  advantage  226/257 87.9%      the sim played out from the dump alone == FAT's published on-block
+  advantage  252/283 89.0%      the sim played out from the dump alone == FAT's published on-block
 
 per-frame invulnerability vs the published notes
 
