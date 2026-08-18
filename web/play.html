@@ -200,9 +200,13 @@ function draw() {
   if (!match) return;
 
   const [a, b] = match.fighters;
-  const mid = (a.position().x + b.position().x) / 2;
   // Keep both fighters and a comfortable margin on screen; never zoom past 1:1.
   const span = Math.max(560, Math.abs(b.position().x - a.position().x) + 420);
+  // The camera stops at the walls, so a corner reads as one on screen instead of
+  // the pair sliding to the middle of an empty view.
+  const room = match.half - span / 2;
+  const centre = (a.position().x + b.position().x) / 2;
+  const mid = room <= 0 ? 0 : Math.max(-room, Math.min(room, centre));
   // A fighter is about 210 units tall; leave headroom for a jump without letting
   // the pair shrink to nothing when they are far apart.
   const scale = Math.min(w / span, h / 330);
@@ -220,6 +224,19 @@ function draw() {
   ctx.fillStyle = "#151920";
   for (let x = Math.ceil((mid - span / 2) / 100) * 100; x < mid + span / 2; x += 100) {
     ctx.fillRect(sx(x), ground + 4, 1, 10);
+  }
+
+  // walls
+  for (const side of [-1, 1]) {
+    const x = sx(side * match.half);
+    if (x < -20 || x > w + 20) continue;
+    // Drawn on the *inside* of the wall: the camera stops at the corner, so a
+    // line hung outside it lands off the canvas exactly when it matters.
+    ctx.fillStyle = "rgba(148,163,184,.55)";
+    ctx.fillRect(side === -1 ? x : x - 3, ground - 260 * scale, 3, 260 * scale);
+    ctx.fillStyle = "rgba(148,163,184,.07)";
+    if (side === -1 && x > 0) ctx.fillRect(0, 0, x, ground);
+    if (side === 1 && x < w) ctx.fillRect(x, 0, w - x, ground);
   }
 
   for (const [i, fighter] of match.fighters.entries()) {
@@ -281,6 +298,15 @@ function draw() {
     ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";
     const filled = Math.max(0, hp) / max * bw;
     ctx.fillRect(i === 0 ? x + bw - filled : x, 16, filled, 12);
+  }
+
+  // round clock
+  if (match.clock !== null) {
+    ctx.fillStyle = "#e5e7eb";
+    ctx.font = "600 20px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(String(match.clock).padStart(2, "0"), w / 2, 32);
+    ctx.textAlign = "left";
   }
 }
 

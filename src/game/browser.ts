@@ -9,8 +9,8 @@
 
 export { Fighter, InputHistory, NEUTRAL, lean } from "./index.js";
 export type { Button, Direction, FighterState, InputFrame, Stance } from "./index.js";
-export { Match, hold, projectileBoxes, reactionFor } from "./match.js";
-export type { Contact, Hit, MatchOptions, Projectile } from "./match.js";
+export { COUNT, Match, STAGE_HALF_WIDTH, hold, projectileBoxes, reactionFor } from "./match.js";
+export type { Contact, Hit, MatchOptions, Projectile, Result } from "./match.js";
 export {
   activeWindows,
   hitboxesAt,

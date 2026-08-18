@@ -150,7 +150,9 @@ describe("fireballs", () => {
       match.advance(script[i] ?? hold(5), hold(5));
       for (const shot of match.projectiles) {
         seen++;
-        travelled = Math.max(travelled, Math.abs(shot.x + (shot.action.motion?.x?.[shot.frame - 1] ?? 0)));
+        // Distance from where it spawned — the stage has a centre now, so the
+        // shot's own x is a world position and not a travel any more.
+        travelled = Math.max(travelled, Math.abs(shot.action.motion?.x?.[shot.frame - 1] ?? 0));
       }
     }
     expect(seen).toBeGreaterThan(20);
@@ -211,5 +213,86 @@ describe("the reaction decode", () => {
     const clean = fight({ p1: [[5, ["MP"], 3]], p2: 5, distance: 110 });
     expect(blocked.match.hits[0]?.reaction).toMatch(/^GRD_/);
     expect(clean.match.hits[0]?.reaction).toMatch(/^DMG_/);
+  });
+});
+
+/**
+ * The stage, its two walls and the round clock. See ADR-0030.
+ *
+ * The half-width is the one number here that is not in either dump; what these
+ * check is not the 765 but that the rules built on it hold — a fighter cannot
+ * walk through a wall, a cornered defender's pushback goes into the attacker
+ * instead, and a fireball dies at the corner rather than sailing on forever.
+ */
+describe("the stage", () => {
+  it("stops a fighter at the wall, body first", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 400 });
+    // Walk forward long enough to cross the whole stage twice over.
+    for (let i = 0; i < 600 && !match.over; i++) match.advance(hold(4), hold(5));
+    const left = match.fighters[0].position().x;
+    expect(left).toBeGreaterThan(-match.half);
+    // The pushbox is against the wall, so the origin stops short of it by its
+    // own half-width rather than reaching it.
+    expect(left).toBeLessThan(-match.half + 60);
+    expect(match.cornered(0)).toBe(true);
+    expect(match.cornered(1)).toBe(false);
+  });
+
+  it("hands a cornered defender's pushback to the attacker", () => {
+    const roomy = matchFor("Ryu", "Ken", { distance: 110 });
+    const corner = matchFor("Ryu", "Ken", { distance: 110, stageHalfWidth: 120 });
+    const run = (m: ReturnType<typeof matchFor>) => {
+      for (let i = 0; i < 60; i++) m.advance(i < 3 ? hold(5, ["MP"]) : hold(5), hold(6));
+      return { attacker: m.fighters[0].position().x, defender: m.fighters[1].position().x };
+    };
+    const open = run(roomy);
+    const walled = run(corner);
+    expect(roomy.cornered(1)).toBe(false);
+    expect(corner.cornered(1)).toBe(true);
+    // Off a wall the attacker holds their ground and the defender takes all of
+    // the pushback. Against one the defender has nowhere to go, so the same
+    // pushback moves the attacker instead.
+    expect(open.attacker).toBeCloseTo(-55, 1);
+    expect(walled.attacker).toBeLessThan(-56);
+    expect(walled.defender).toBeLessThan(open.defender);
+  });
+
+  it("kills a fireball at the wall", () => {
+    const match = matchFor("Ryu", "Ryu", { distance: 200, stageHalfWidth: 300 });
+    const script = [hold(2), hold(3), hold(6, ["HP"])];
+    let airborne = 0;
+    for (let i = 0; i < 120; i++) {
+      match.advance(script[i] ?? hold(5), hold(5));
+      airborne = Math.max(airborne, match.projectiles.length);
+      for (const shot of match.projectiles) {
+        expect(Math.abs(shot.x)).toBeLessThan(match.half + 400);
+      }
+    }
+    expect(airborne).toBe(1);
+    // Its action runs 70 frames and it travels 586 units; on a 600-unit stage
+    // the wall retires it well before either of those runs out.
+    expect(match.projectiles).toHaveLength(0);
+  });
+});
+
+describe("the round clock", () => {
+  it("counts down in frames, holds still in hitstop, and times out on health", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 110, seconds: 2 });
+    expect(match.clock).toBe(2);
+    while (!match.hits.length) match.advance(match.frame < 3 ? hold(5, ["MP"]) : hold(5), hold(5));
+    // Eleven frames of hitstop are eleven frames the clock does not spend.
+    const stopped = match.timer;
+    match.advance(hold(5), hold(5));
+    expect(match.timer).toBe(stopped);
+    for (let i = 0; i < 200 && !match.over; i++) match.advance(hold(5), hold(5));
+    expect(match.timer).toBe(0);
+    expect(match.result).toEqual({ winner: 0, by: "timeout" });
+  });
+
+  it("runs without one when asked", () => {
+    const match = matchFor("Ryu", "Ken", { seconds: null });
+    for (let i = 0; i < 40; i++) match.advance();
+    expect(match.clock).toBeNull();
+    expect(match.over).toBe(false);
   });
 });

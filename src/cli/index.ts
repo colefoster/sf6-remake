@@ -438,9 +438,13 @@ function printFight(left: string, right: string, script: string, opponent?: stri
     seen = match.hits.length;
   }
   const [x, y] = match.fighters.map((f) => f.position().x.toFixed(0));
+  const corner = [0, 1].filter((s) => match.cornered(s as 0 | 1)).map((s) => (s === 0 ? left : right));
+  const end = match.result;
   console.log(
     `\n  ${match.frame} frames — health ${match.health.join(" / ")}, ` +
-      `positions ${x} / ${y}${match.over ? "  (KO)" : ""}`,
+      `positions ${x} / ${y}, clock ${match.clock}` +
+      (corner.length ? `, ${corner.join(" and ")} in the corner` : "") +
+      (end ? `  (${end.by}: ${end.winner === null ? "draw" : end.winner === 0 ? left : right})` : ""),
   );
 }
 
