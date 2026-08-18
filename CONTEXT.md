@@ -18,9 +18,10 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 - **On-block advantage (`onBlock`)** — net frames the **attacker** is ahead when the move is **blocked**, measured from the moment of contact resolution. `+` (plus) = attacker actionable first. `−` (minus) = defender actionable first.
 - **On-hit advantage (`onHit`)** — the same, when the move **hits** (defender in hitstun instead of blockstun).
 - **Plus / Minus** — shorthand for the sign of the ending advantage. "Ends plus" = attacker keeps their turn.
-- **Blockstun / Hitstun** — frames the defender is locked in guard / hit reaction. We do **not** store these directly; we **derive** them from listed advantage (see `blockstunFrom` in `frames.ts`), which keeps the data minimal and the source-of-truth singular.
+- **Blockstun / Hitstun** — frames the defender is locked in guard / hit reaction. Where a character has extracted geometry these are **real** (the game's hit-data table); elsewhere they are **derived** from listed advantage by `stunFrom` in `frames.ts`.
 
-  Identity (contact on the first active frame): `onBlock = blockstun − ((active − 1) + recovery)`, therefore `blockstun = onBlock + (active − 1) + recovery`.
+  Identity (contact on the first active frame): `stun = advantage + active + recovery`, plus **4 more when blocking** — see **Guard release**.
+- **Guard release** — the last 4 frames of blockstun, which the defender can already act out of. It is why blockstun exceeds what on-block advantage implies while hitstun matches it exactly. Verified against the game's hit-data table; see `docs/adr/0006-hit-data.md`.
 
 ## Scenario modifiers
 

@@ -16,17 +16,30 @@ export function totalFrames(move: Pick<Move, "startup" | "active" | "recovery">)
 }
 
 /**
- * Derive blockstun (or hitstun) from listed advantage. This is a *fallback*:
- * the source data usually carries real blockstun/hitstun and should be
- * preferred. Calibrated against FAT's own numbers, e.g. Ryu 5MP
- * (onBlock −1, active 4, recovery 11) → blockstun 14 = −1 + 4 + 11:
+ * Blocking holds the defender for four frames longer than the advantage implies:
+ * the tail of the guard animation is stun the defender can already act out of.
  *
- *   onBlock = stun − (active + recovery)   =>   stun = onBlock + active + recovery
+ * Measured, not assumed. Against the game's own hit-data table, blockstun comes
+ * out at exactly `onBlock + active + recovery + 4` on all 13 of Akuma's mapped
+ * moves and 8 of Ryu's 12 — and the four Ryu stragglers are the same moves whose
+ * startup the two sources already disagree about, which is patch skew between a
+ * 2024 dump and a newer frame-data set. Hitstun carries no such constant.
+ */
+const GUARD_RELEASE = 4;
+
+/**
+ * Derive blockstun (or hitstun) from listed advantage. This is a *fallback*:
+ * where a character has extracted geometry, `hitDataFor` carries the game's own
+ * numbers and should be preferred. Ryu 5MP (onBlock −1, onHit 7, active 4,
+ * recovery 11) derives to blockstun 18 and hitstun 22, which is what the hit
+ * data says to the frame:
+ *
+ *   stun = advantage + active + recovery (+ 4 when blocking)
  */
 export function stunFrom(move: Move, guard: Guard): number | undefined {
   const adv = guard === "block" ? move.onBlock : move.onHit;
   if (adv === undefined) return undefined;
-  return adv + move.active + move.recovery;
+  return adv + move.active + move.recovery + (guard === "block" ? GUARD_RELEASE : 0);
 }
 
 /**

@@ -17,7 +17,9 @@ import {
   overlaps,
   reach,
 } from "../src/data/geometry.js";
+import { hitDataFor } from "../src/data/geometry.js";
 import { requireCharacter, requireMove } from "../src/data/index.js";
+import { stunFrom } from "../src/engine/frames.js";
 
 const ryu = requireCharacter("Ryu");
 const geo = loadGeometry("ryu")!;
@@ -174,6 +176,75 @@ describe("motion", () => {
     expect(motion).toBeDefined();
     expect(withTravel - stationary).toBeCloseTo(originAt(action, 8).x, 1);
     expect(worldHitboxes(action)[0]!.frame).toBe(8);
+  });
+});
+
+describe("hit data", () => {
+  /** Moves whose FAT numbers are plain integers, so the identity is checkable. */
+  function checkable(character: ReturnType<typeof requireCharacter>) {
+    const g = loadGeometry(character.id)!;
+    return character.moves.flatMap((move) => {
+      const found = actionFor(g, move);
+      const data = found && hitDataFor(g, found.action);
+      const raw = move.raw ?? {};
+      if (!data?.hit || !data.block) return [];
+      if (move.onHit === undefined || move.onBlock === undefined) return [];
+      if (raw.active || raw.onHit || raw.onBlock || raw.recovery) return [];
+      return [{ move, data }];
+    });
+  }
+
+  const ryuMoves = checkable(ryu);
+  const akumaMoves = checkable(requireCharacter("Akuma"));
+  const all = [...ryuMoves, ...akumaMoves];
+
+  it("carries an outcome table keyed by the index the hit keys reference", () => {
+    expect(Object.keys(geo.hitData).length).toBeGreaterThan(100);
+    const { action } = actionFor(geo, requireMove(ryu, "2MK"))!;
+    const data = hitDataFor(geo, action)!;
+    expect(data.hit).toMatchObject({ damage: 500, stun: 23 });
+    expect(data.block!.damage).toBe(0);
+  });
+
+  it("confirms counter hit is exactly +2 frames of hitstun", () => {
+    expect(all.length).toBeGreaterThan(20);
+    for (const { move, data } of all) {
+      expect(`${move.input}:${data.counter!.stun}`).toBe(`${move.input}:${data.hit!.stun + 2}`);
+    }
+  });
+
+  it("confirms punish counter is +4, bar the moves that change the reaction", () => {
+    const exact = all.filter((m) => m.data.punishCounter?.stun === m.data.hit!.stun + 4);
+    // Ryu's 5HK punish counter crumples instead, so it carries its own stun.
+    expect(exact.length).toBeGreaterThanOrEqual(all.length - 2);
+  });
+
+  it("derives the blockstun the game's own table reports", () => {
+    // Akuma's dump and his frame data line up, so every one of his moves agrees
+    // — which is what pins the +4 guard release down as real and not a fudge.
+    for (const { move, data } of akumaMoves) {
+      expect(`${move.input} ${stunFrom(move, "block")}`).toBe(`${move.input} ${data.block!.stun}`);
+    }
+    // Ryu's two sources disagree on a handful of moves (the same ones whose
+    // startup already differs), so his agreement is high rather than total.
+    const agreeing = ryuMoves.filter((m) => stunFrom(m.move, "block") === m.data.block!.stun);
+    expect(agreeing.length).toBeGreaterThanOrEqual(ryuMoves.length - 4);
+  });
+
+  it("derives hitstun with no such constant", () => {
+    const agreeing = all.filter((m) => stunFrom(m.move, "hit") === m.data.hit!.stun);
+    // Four exceptions across the two characters: 2HP on both (its active frames
+    // come from a spliced continuation, so the count feeding the identity is a
+    // frame off) plus a target combo and one patch-skewed move.
+    expect(agreeing.length).toBeGreaterThanOrEqual(all.length - 4);
+    expect(agreeing.length / all.length).toBeGreaterThan(0.8);
+  });
+
+  it("launches an airborne opponent instead of pushing them back", () => {
+    const { action } = actionFor(geo, requireMove(ryu, "2MK"))!;
+    const data = hitDataFor(geo, action)!;
+    expect(data.airHit!.knockback.y).toBeGreaterThan(0);
+    expect(data.hit!.knockback.y).toBe(0);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   activeWindows,
   connectFrames,
   idleHurtboxes,
+  hitDataFor,
   loadGeometry,
   minDistance,
   originAt,
@@ -350,6 +351,22 @@ function printBoxes(character: Character, move: Move, args: Args): void {
       travel.maxY ? `${u(travel.maxY)} up` : null,
     ].filter(Boolean);
     console.log(`  travels      ${parts.join(", ")}`);
+  }
+
+  const data = hitDataFor(geo, action);
+  if (data?.hit) {
+    const { hit, block, counter, punishCounter } = data;
+    console.log(`  damage       ${hit.damage}${counter ? ` (counter ${counter.damage})` : ""}`);
+    const stuns = [
+      `${hit.stun} on hit`,
+      block ? `${block.stun} on block` : null,
+      counter ? `${counter.stun} CH` : null,
+      punishCounter ? `${punishCounter.stun} PC` : null,
+    ].filter(Boolean);
+    console.log(`  stun         ${stuns.join(", ")}`);
+    console.log(`  hitstop      ${hit.hitStop.owner}f attacker, ${hit.hitStop.target}f defender`);
+    console.log(`  knockback    ${u(hit.knockback.x)} over ${hit.knockback.frames}f`);
+    console.log(`  drive        +${hit.drive.own} you, ${hit.drive.target >= 0 ? "+" : ""}${hit.drive.target} them`);
   }
 
   const props = [

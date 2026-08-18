@@ -24,8 +24,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(root, "data/raw/mmdk");
 const REPO = "alphazolam/MMDK";
 const DUMP_DIR = "MMDK/reframework/data/MMDK/PlayerData";
-/** Only the files we actually parse — HIT_DT/triggers/commands are 10 MB+ each. */
-const FILES = ["rects", "moves_dict", "char_info", "Names"];
+/** Only the files we actually parse — triggers/commands are 10 MB+ and unused. */
+const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT"];
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 

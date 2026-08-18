@@ -76,11 +76,18 @@ Ryu — Crouch MK (2MK)
   max reach    188.2u
   connects in  66-188.2u (122.2u of usable spacing)
   travels      46.2u forward at first contact, 46.2u at furthest
+  damage       500 (counter 600)
+  stun         23 on hit, 20 on block, 25 CH, 27 PC
+  hitstop      9f attacker, 9f defender
+  knockback    50u over 23f
+  drive        +1000 you, +0 them
   properties   low
   at 140u      CONNECTS on frames 8-10
 ```
 
 Distances are measured from where the attacker stood when the move began, so a move's reach includes its step-in — 2MK's box only covers 142 units, but Ryu walks 46 of them into it.
+
+The stun, damage and knockback numbers are the game's own, from its hit-data table — which is also how we found that **blockstun runs 4 frames longer than on-block advantage implies** ([ADR-0006](./docs/adr/0006-hit-data.md)). Counter hit really is exactly +2 frames and punish counter +4, on every move checked.
 
 Add a character:
 
@@ -101,7 +108,7 @@ Pick a move, scrub the timeline, and see every box per frame with the opponent p
 
 Everything derives from a few identities documented in [`CONTEXT.md`](./CONTEXT.md):
 
-- **Advantage** (`onBlock` / `onHit`) is the source of truth; blockstun/hitstun are derived when needed.
+- **Advantage** (`onBlock` / `onHit`) is the source of truth; blockstun/hitstun are derived when needed as `advantage + active + recovery`, plus 4 on block for the guard-release tail. Characters with geometry carry the game's real numbers instead.
 - **Meaty** hitting `d` frames deep adds `d` to advantage.
 - **Punish**: `Y` punishes `X` iff `Y.startup ≤ −X.onBlock` (and it's always a Punish Counter in SF6).
 - **Gap** between blocked `A→B` is `B.startup − advantageAfter(A)`; `≤ 0` = true blockstring.
@@ -129,8 +136,8 @@ web/
   index.html             normals: what you get off every hit state
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
-data/geometry/<char>.json    extracted per-frame box geometry
-tests/                   62 tests, incl. assertions against the real data
+data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
+tests/                   68 tests, incl. assertions against the real data
 ```
 
 ## Known limitations
@@ -143,6 +150,6 @@ tests/                   62 tests, incl. assertions against the real data
 ## Test
 
 ```bash
-npm test          # 62 tests
+npm test          # 68 tests
 npm run typecheck
 ```

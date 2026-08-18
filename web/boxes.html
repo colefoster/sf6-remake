@@ -168,6 +168,11 @@
         <div class="big" id="r-frames">—</div>
         <div class="sub" id="r-frames-sub"></div>
       </div>
+      <div class="card">
+        <h3>On contact</h3>
+        <div class="big" id="r-hit">—</div>
+        <div class="sub" id="r-hit-sub"></div>
+      </div>
     </div>
 
     <div class="key">
@@ -544,6 +549,7 @@ function updateReadouts() {
     ? windows.map((w) => `${w.start}-${w.end}`).join(", ")
     : "—";
   const startup = windows[0]?.start;
+  updateHitData(action);
   $("r-frames-sub").textContent = windows.length
     ? `startup ${startup}, ${windows.reduce((n, w) => n + (w.end - w.start + 1), 0)} active frames` +
       (windows.length > 1 ? ` across ${windows.length} hits` : "")
@@ -551,6 +557,32 @@ function updateReadouts() {
 }
 
 const round1 = (n) => Math.round(n * 10) / 10;
+
+/** What the action's first damaging hit does, from the game's outcome table. */
+function hitDataFor(action) {
+  const key = action.hit.find((h) => h.kind !== "proximity");
+  return key ? state.data.hitData?.[String(key.attackData)] : undefined;
+}
+
+function updateHitData(action) {
+  const data = hitDataFor(action);
+  if (!data?.hit) {
+    $("r-hit").textContent = "—";
+    $("r-hit-sub").textContent = "this action deals no damage";
+    return;
+  }
+  const { hit, block, counter, punishCounter } = data;
+  $("r-hit").textContent = `${hit.damage} dmg`;
+  const stuns = [
+    `${hit.stun}f hitstun`,
+    block ? `${block.stun}f blockstun` : null,
+    counter ? `CH ${counter.stun}f` : null,
+    punishCounter ? `PC ${punishCounter.stun}f` : null,
+  ].filter(Boolean);
+  $("r-hit-sub").textContent =
+    `${stuns.join(" · ")} — knocks back ${round1(hit.knockback.x)}u over ${hit.knockback.frames}f, ` +
+    `${hit.hitStop.owner}f hitstop`;
+}
 
 /** [8,9,10,14] -> "8-10, 14" */
 function ranges(frames) {

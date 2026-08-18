@@ -26,6 +26,9 @@
  *
  *   PushCollisionKey    BoxNo                     -> rects[5] then rects[7] (pushbox)
  *
+ * `HIT_DT.json` is the outcome table an AttackCollisionKey's `AttackDataListIndex`
+ * points into: what the hit actually does. See `extractHitData`.
+ *
  * Boxes are placed relative to the character origin, and the origin itself moves
  * during dashes, jumps and stepping attacks. Two key types drive it, and they
  * are the whole movement model (see `extractMotion`):
@@ -233,6 +236,58 @@ function extractAction(action, rect, unresolvedPush) {
   if (motion) out.motion = motion;
   if (branches.length) out.branches = dedupeBranches(branches);
   if (action.mot_name) out.mot = action.mot_name;
+  return out;
+}
+
+/**
+ * A hit-data entry's `common` list is indexed by how the attack landed. Read off
+ * the numbers: entry 1 deals no damage and hands the defender Drive, entry 2 is
+ * damage x1.2 with exactly 2 more frames of stun, entry 3 exactly 4 more — which
+ * is SF6's counter hit and punish counter to the frame.
+ */
+const HIT_CONDITIONS = ["hit", "block", "counter", "punishCounter", "driveHit"];
+
+/** The fields worth keeping out of ~200 per entry. */
+function hitOutcome(entry) {
+  if (!entry) return null;
+  const out = {
+    damage: entry.DmgValue ?? 0,
+    stun: entry.HitStun ?? 0,
+    hitStop: { owner: entry.HitStopOwner ?? 0, target: entry.HitStopTarget ?? 0 },
+    /** Where the defender is carried to, over `moveTime` frames. */
+    knockback: { x: entry.MoveDest?.x ?? 0, y: entry.MoveDest?.y ?? 0, frames: entry.MoveTime ?? 0 },
+    downTime: entry.DownTime ?? 0,
+    juggle: { start: entry.Juggle1st ?? 0, add: entry.JuggleAdd ?? 0, limit: entry.JuggleLimit ?? 0 },
+    /** Drive gauge for attacker / defender, and super meter for each. */
+    drive: { own: entry.FocusOwn ?? 0, target: entry.FocusTgt ?? 0 },
+    super: { own: entry.SuperOwn ?? 0, target: entry.SuperTgt ?? 0 },
+    dmgType: entry.DmgType ?? 0,
+  };
+  if (entry.ArmorPoint) out.armor = entry.ArmorPoint;
+  return out;
+}
+
+/**
+ * The outcome table, keyed by the `attackData` index its hit keys carry.
+ * `common` holds one entry per hit condition; `param` is that crossed with the
+ * defender's state (index 2 of each group of four is the airborne variant, the
+ * one that launches — Ryu's 2MK carries a grounded opponent 50 units and an
+ * airborne one 100 up and 70 back).
+ */
+function extractHitData(file) {
+  const out = {};
+  for (const [index, entry] of Object.entries(file ?? {})) {
+    const common = entry?.common;
+    if (!common) continue;
+    const row = {};
+    HIT_CONDITIONS.forEach((name, i) => {
+      const outcome = hitOutcome(common[String(i)]);
+      if (outcome) row[name] = outcome;
+    });
+    const air = hitOutcome(entry.param?.["02"]);
+    if (air) row.airHit = air;
+    if (Object.keys(row).length) out[Number(index)] = row;
+  }
   return out;
 }
 
@@ -525,9 +580,10 @@ function calibrate(actions) {
 
 async function buildCharacter(fatName, dumpDir, fat, source) {
   const dir = path.join(RAW, dumpDir);
-  const [rectsFile, movesFile] = await Promise.all([
+  const [rectsFile, movesFile, hitFile] = await Promise.all([
     readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
+    readFile(path.join(dir, "HIT_DT.json"), "utf8").then(JSON.parse).catch(() => null),
   ]);
   const rect = makeRects(rectsFile);
 
@@ -565,10 +621,12 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
       note: "Boxes are game units: x=0 is the character origin, y=0 the ground, +x forward.",
     },
     calibration: calibrate(actions),
+    hitData: extractHitData(hitFile),
     counts: {
       actions: actions.length,
       withPushboxes: actions.filter((a) => a.push.length).length,
       withMotion: actions.filter((a) => a.motion).length,
+      hitData: Object.keys(extractHitData(hitFile)).length,
       withHitboxes: actions.filter((a) => a.hit.some((h) => h.kind !== "proximity")).length,
       mapped: moves.length,
       exact: moves.filter((m) => m.match === "exact").length,

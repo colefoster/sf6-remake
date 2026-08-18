@@ -22,10 +22,12 @@ describe("totalFrames", () => {
 });
 
 describe("stunFrom (fallback derivation)", () => {
-  it("matches FAT's real blockstun for Ryu 5MP (14)", () => {
-    expect(stunFrom(ryu5mp, "block")).toBe(14);
+  // Both numbers are the game's own, out of MMDK's hit-data table for action
+  // ATK_5MP — not derived, so they keep the identity honest.
+  it("matches the game's blockstun for Ryu 5MP (18)", () => {
+    expect(stunFrom(ryu5mp, "block")).toBe(18);
   });
-  it("matches FAT's real hitstun for Ryu 5MP (22)", () => {
+  it("matches the game's hitstun for Ryu 5MP (22)", () => {
     expect(stunFrom(ryu5mp, "hit")).toBe(22);
   });
   it("is undefined when advantage is missing", () => {

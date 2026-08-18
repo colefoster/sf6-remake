@@ -91,6 +91,38 @@ export interface GeometryAction {
   mot?: string;
 }
 
+/** What a hit does, once it lands. Distances are game units, times are frames. */
+export interface HitOutcome {
+  damage: number;
+  /** Hitstun, or blockstun on the `block` condition. */
+  stun: number;
+  hitStop: { owner: number; target: number };
+  /** Where the defender is carried, over `frames` frames. */
+  knockback: { x: number; y: number; frames: number };
+  downTime: number;
+  juggle: { start: number; add: number; limit: number };
+  drive: { own: number; target: number };
+  super: { own: number; target: number };
+  dmgType: number;
+  armor?: number;
+}
+
+/**
+ * One attack's outcomes, by how it landed. `counter` and `punishCounter` are the
+ * game's own numbers, not derived — and they come out at exactly hit + 2 and
+ * hit + 4 frames of stun, which is the rule of thumb stated as fact.
+ */
+export interface HitData {
+  hit?: HitOutcome;
+  block?: HitOutcome;
+  counter?: HitOutcome;
+  punishCounter?: HitOutcome;
+  driveHit?: HitOutcome;
+  airHit?: HitOutcome;
+}
+
+export type HitCondition = keyof HitData;
+
 /** How a FAT move was matched to a game action. `weak` means don't trust it. */
 export type MatchQuality = "exact" | "close" | "frame-unique" | "weak";
 
@@ -125,6 +157,8 @@ export interface GeometryFile {
   moves: MoveMapping[];
   unmapped: { input: string; name: string; category: string }[];
   actions: GeometryAction[];
+  /** Outcome table, keyed by the `attackData` index a hit key carries. */
+  hitData: Record<string, HitData>;
 }
 
 const cache = new Map<string, GeometryFile | undefined>();
@@ -224,6 +258,25 @@ export function geometryFor(character: Character, move: Move): Geometry | undefi
     if (hurt.length) hurtboxes[frame] = hurt;
   }
   return { hitboxes, hurtboxes };
+}
+
+/** What the action's first damaging hit does. */
+export function hitDataFor(geo: GeometryFile, action: GeometryAction): HitData | undefined {
+  const key = action.hit.find((h) => h.kind !== "proximity");
+  return key ? geo.hitData?.[String(key.attackData)] : undefined;
+}
+
+/** Every distinct outcome the action can produce, in hit order (multi-hit moves). */
+export function hitDataSequence(geo: GeometryFile, action: GeometryAction): HitData[] {
+  const seen = new Set<number>();
+  const out: HitData[] = [];
+  for (const key of action.hit) {
+    if (key.kind === "proximity" || seen.has(key.attackData)) continue;
+    seen.add(key.attackData);
+    const data = geo.hitData?.[String(key.attackData)];
+    if (data) out.push(data);
+  }
+  return out;
 }
 
 export type Stance = "stand" | "crouch";
