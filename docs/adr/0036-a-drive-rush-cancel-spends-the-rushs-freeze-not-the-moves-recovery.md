@@ -105,8 +105,12 @@ that discards the attacker's own recovery in favour of it, and a matching
 ## Not settled
 
 - **A third of the population is one or two frames out**, all in the same
-  direction. Cancel timing within the active window is the obvious suspect and
-  was not pursued.
+  direction, and four hypotheses have now been tested and rejected:
+  freeze + 1 (12.6%), freeze + 2 (16.6%), freeze + the active window's remaining
+  frames (16.9%), and a per-character freeze. The residual is **per move, not
+  per fighter** — every one of the 24 shows 10 dominant with the same 11/12/13
+  tail, and four fighters have no tail at all. What varies is not in any field
+  looked at so far.
 - **The parry rush is not modelled separately.** Its freeze is 11 and its cost
   half a bar, and the sim only ever uses the `DriveDash` value.
 - **The rush's own travel is unused in the sim.** It is 381 units over frames

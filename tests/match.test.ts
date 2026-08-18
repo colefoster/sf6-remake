@@ -4,7 +4,7 @@ import { hold, reactionFor } from "../src/game/match.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
-import { BAR } from "../src/data/geometry.js";
+import { BAR, breaksArmor } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
@@ -614,5 +614,64 @@ describe("drive rush", () => {
     expect(agreed).toBeGreaterThan(0.6);
     // A ceiling as well as a floor: this is the number to beat.
     expect(agreed).toBeLessThan(0.8);
+  });
+});
+
+/**
+ * Armor. See ADR-0037.
+ *
+ * The windows themselves have been graded since ADR-0016 (93.1% against FAT's
+ * published armor frames) and the runtime ignored them entirely. What is added
+ * here is the consequence: an armored hurtbox absorbs the hit instead of taking
+ * it, and a Super Art or Drive Reversal breaks through — ADR-0017's rule, which
+ * grades at 98.3% and is read off the triggers rather than any flag.
+ */
+describe("armor", () => {
+  const versusDriveImpact = (p1: (i: number) => ReturnType<typeof hold>) => {
+    const match = matchFor("Ryu", "Ken", { distance: 130, seconds: null });
+    for (let i = 0; i < 60; i++) match.advance(p1(i), i < 3 ? hold(5, ["HP", "HK"]) : hold(5));
+    return match;
+  };
+
+  it("absorbs a poke instead of taking it", () => {
+    const match = versusDriveImpact((i) => (i > 3 && i < 7 ? hold(5, ["MP"]) : hold(5)));
+    const absorbed = match.hits[0]!;
+    expect(absorbed.reaction).toBe("ARMOR");
+    // Absorbed, not ignored: the health still goes, and the defender is not
+    // interrupted — Drive Impact carries on and lands.
+    expect(absorbed.damage).toBeGreaterThan(0);
+    expect(absorbed.stun).toBe(0);
+    expect(match.fighters[1].actionName).toBe("ATK_CTA");
+    expect(match.hits.some((h) => h.action === "ATK_CTA")).toBe(true);
+  });
+
+  it("covers the legs, so a low does not go under Drive Impact", () => {
+    // ADR-0016's measurement: DI's window covers head, body and leg. A move
+    // whose armor skipped the leg box would let this through.
+    const low = versusDriveImpact((i) => (i > 3 && i < 7 ? hold(2, ["MK"]) : hold(5)));
+    expect(low.hits[0]?.reaction).toBe("ARMOR");
+  });
+
+  it("absorbs a fireball too", () => {
+    // Drive Impact eating a projectile is the reason the armor check has to run
+    // on the boxes that actually connected: a shot's are its own, and computing
+    // them from the thrower's position silently missed every one.
+    const match = matchFor("Ryu", "Ken", { distance: 130, seconds: null });
+    const script = [hold(2), hold(3), hold(6, ["HP"])];
+    for (let i = 0; i < 60; i++) match.advance(script[i] ?? hold(5), i < 3 ? hold(5, ["HP", "HK"]) : hold(5));
+    expect(match.hits[0]?.action).toMatch(/PROJ$/);
+    expect(match.hits[0]?.reaction).toBe("ARMOR");
+  });
+
+  it("is broken by a Super Art and a Drive Reversal, and by nothing else", () => {
+    // ADR-0017's rule, asserted directly rather than through an input: what
+    // breaks armor is what a move *is*, read off the triggers that reach it.
+    const geo = loadGeometry(requireCharacter("Ryu").id)!;
+    const named = (name: string) => geo.actions.find((a) => a.name === name)!;
+    expect(breaksArmor(geo, named("SAA_HADOUKEN"))).toBe(true);
+    expect(breaksArmor(geo, named("ATK_CTA_4"))).toBe(true);
+    expect(breaksArmor(geo, named("ATK_5MP"))).toBe(false);
+    expect(breaksArmor(geo, named("SPA_HADO"))).toBe(false);
+    expect(breaksArmor(geo, named("ATK_CTA"))).toBe(false);
   });
 });

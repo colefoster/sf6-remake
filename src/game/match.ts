@@ -26,9 +26,12 @@
  *   on the floor and gets up, and a throw is an unblockable horizontal range
  *   check against the throwable box.
  *
+   *   Armor as of ADR-0037: an armored hurtbox absorbs the hit, fireballs
+ *   included, and a super or a Drive Reversal breaks through.
+ *
  * WHAT IT DOES NOT
- *   throw damage and the throw follow-through, throw teching, quick rise, and
- *   the Drive mechanics themselves — Impact's armor, Parry, Rush.
+ *   throw teching, quick rise, Drive Parry, and the armor *count* — the dump
+ *   states no number of absorbed hits, so armor here never runs out.
  */
 
 import {
@@ -37,6 +40,8 @@ import {
   hitDataFor,
   hitKeysAt,
   knocksDown,
+  armoredAt,
+  breaksArmor,
   hitboxesAt,
   hurtboxesAt,
   overlaps,
@@ -319,7 +324,7 @@ export class Match {
       if (!boxes.length) continue;
       if (!worldHurtboxes(them).some((h) => boxes.some((box) => overlaps(box, h)))) continue;
       shot.spent = true;
-      this.land(shot.owner, them, shot.data, shot.action, side === 0 ? a : b, shot.facing);
+      this.land(shot.owner, them, shot.data, shot.action, side === 0 ? a : b, shot.facing, false, boxes);
     }
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       if (this.projectiles[i]!.spent) this.projectiles.splice(i, 1);
@@ -441,7 +446,7 @@ export class Match {
       // Marked only if it actually landed: a hit the juggle rules refuse has
       // not been spent, and the hitbox is still out.
       if (
-        this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing, key.kind === "throw")
+        this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing, key.kind === "throw", boxes)
       ) {
         this.connected.add(id);
         return;
@@ -465,6 +470,9 @@ export class Match {
     defenderInput: InputFrame,
     facing: 1 | -1,
     thrown = false,
+    /** The boxes that actually connected, in world space. A projectile's are its
+     *  own, not the thrower's — recomputing them here got that wrong. */
+    boxes: Box[] = [],
   ): boolean {
     // A throw cannot be blocked, so the guard check is skipped outright rather
     // than being allowed to return "block" for a defender holding back.
@@ -506,6 +514,15 @@ export class Match {
     this.gauges(attacker, them, data, outcome, type);
     const reaction = reactionFor(them.geo, outcome, type === "block", them.state.stance);
     const stun = outcome.stun - (type === "block" ? GUARD_RELEASE : 0);
+    // Armor: the defender absorbs it instead of taking it.
+    //
+    // Per *hurtbox*, not per fighter — Drive Impact's window covers head, body
+    // and leg, but a body-only armor is armor a low goes under, which is what
+    // ADR-0016 measured. An absorbed hit still costs health and still freezes
+    // both sides; what it does not do is interrupt. A Super Art or a Drive
+    // Reversal breaks through, which is ADR-0017's rule rather than a flag.
+    if (!thrown && this.absorbed(attacker, them, outcome, attack, boxes)) return true;
+
     // A throw that connects is not "a hit that did nothing". The catch row is
     // 0 damage and 10 stun by design; what follows is a branch of type 36
     // (`CATCH`) into the animation that carries the opponent, and the damage
@@ -571,6 +588,38 @@ export class Match {
     them.gain("super", outcome.super.target);
     const drain = type === "block" ? data.driveHit?.drive.target : data.punishCounter?.drive.target;
     if (drain) them.gain("drive", -Math.abs(drain));
+  }
+
+  /**
+   * Did the defender's armor eat this hit.
+   *
+   * Returns true when it did, and the hit is over: damage is applied, hitstop
+   * runs, and no reaction is entered.
+   */
+  private absorbed(
+    attacker: 0 | 1,
+    them: Fighter,
+    outcome: HitOutcome,
+    attack: GeometryAction,
+    boxes: Box[],
+  ): boolean {
+    const me = this.fighters[attacker]!;
+    const part = partHit(them, boxes);
+    if (!part) return false;
+    if (!armoredAt(them.state.action, them.state.frame, part)) return false;
+    if (breaksArmor(me.geo, attack)) return false;
+    this.health[attacker === 0 ? 1 : 0] -= outcome.damage;
+    this.freeze = outcome.hitStop.owner;
+    this.hits.push({
+      frame: this.frame,
+      attacker,
+      type: "hit",
+      damage: outcome.damage,
+      stun: 0,
+      action: attack.name,
+      reaction: "ARMOR",
+    });
+    return true;
   }
 
   /**
@@ -708,6 +757,25 @@ function worldThrowboxes(f: Fighter): Box[] {
   const { action, frame } = f.state;
   const boxes = action.hurt.filter((k) => frame >= k.start && frame <= k.end).flatMap((k) => k.throw);
   return placeAll(boxes, f);
+}
+
+/**
+ * Which body part's box an attack overlapped, if any.
+ *
+ * Armor is per hurtbox (ADR-0016), so absorbing a hit means knowing *what* it
+ * landed on: body-only armor is armor a low attack goes under, and that is the
+ * whole reason the parts are kept apart.
+ */
+function partHit(f: Fighter, attack: Box[]): "head" | "body" | "leg" | undefined {
+  const { action, frame } = f.state;
+  for (const key of action.hurt) {
+    if (frame < key.start || frame > key.end) continue;
+    for (const part of ["head", "body", "leg"] as const) {
+      const boxes = placeAll(key[part], f);
+      if (boxes.some((h) => attack.some((box) => overlaps(box, h)))) return part;
+    }
+  }
+  return undefined;
 }
 
 function worldHurtboxes(f: Fighter): Box[] {

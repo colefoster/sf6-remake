@@ -593,6 +593,24 @@ export function armorWindows(action: GeometryAction): ArmorWindow[] {
 }
 
 /** Whether an attack at this height is absorbed rather than landing. */
+/**
+ * Does this action break armor.
+ *
+ * The same rule `verifyArmorBreak` grades at 98.3% against FAT's own "Armor
+ * Break" tag: a Super Art or a Drive Reversal. There is no flag for it — ADR-0017
+ * found `ArmorPoint` is 0 on all 79,175 occurrences — so it is a rule about what
+ * a move *is*, read off the triggers that reach it.
+ */
+export function breaksArmor(geo: GeometryFile, action: GeometryAction): boolean {
+  for (const trigger of Object.values(geo.triggers ?? {})) {
+    if (trigger?.action !== action.id) continue;
+    const kind = trigger.kind ?? [];
+    if (kind.some((k) => /^Lv[1-4]$/.test(k)) || (trigger.super ?? 0) > 0) return true;
+    if (kind.includes("DReversal")) return true;
+  }
+  return false;
+}
+
 export function armoredAt(action: GeometryAction, frame: number, part: keyof ArmorWindow["covers"]): boolean {
   return armorWindows(action).some((w) => frame >= w.start && frame <= w.end && w.covers[part]);
 }
