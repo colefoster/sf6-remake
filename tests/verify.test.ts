@@ -59,7 +59,11 @@ describe("the game's data against the published frame data", () => {
       // The floor was 100 before ADR-0024 fixed the hit count; the clean
       // population is roughly two thirds larger now, and asserting that keeps a
       // regression in the count from reading as a quiet loss of coverage.
-      expect(clean.checked).toBeGreaterThan(200);
+      //
+      // `startScaling` is deliberately narrower than the rest: only the moves
+      // FAT states as "N% Start" are gradeable at all, and there are 200 of
+      // them on the roster. See ADR-0032.
+      expect(clean.checked).toBeGreaterThanOrEqual(check === "startScaling" ? 200 : 201);
       // A shared floor; the tighter per-check ones are below. The residue is
       // the pre-Season-3 patch skew that ADR-0004 and ADR-0008 describe, and it
       // is per-character rather than per-check. `advantage` sits lowest of the

@@ -255,6 +255,11 @@ function extractAction(action, rect, unresolvedPush) {
     // MainFrame is the action's own first active frame (0-indexed): startup - 1.
     mainFrame: af.MainFrame ?? null,
     marginFrame: af.MarginFrame ?? null,
+    // What starting a combo with this move costs it. `fab.Combo._StartScaling`
+    // is a percentage and −1 means "unset", which is most moves; it lines up
+    // with FAT's `dmgScaling` "20% Start" exactly. `ComboScaling`/`InstScaling`
+    // are its mid-combo and immediate siblings, kept on the same terms.
+    ...scaling(fab.Combo),
     flags: {
       high: !!cat._IsHigh,
       low: !!cat._IsLow,
@@ -312,6 +317,16 @@ function extractShots(action) {
  * is SF6's counter hit and punish counter to the frame.
  */
 const HIT_CONDITIONS = ["hit", "block", "counter", "punishCounter", "driveHit"];
+
+/** The three combo-scaling percentages, dropping the −1 that means "unset". */
+function scaling(combo) {
+  if (!combo) return {};
+  const out = {};
+  if ((combo._StartScaling ?? -1) >= 0) out.start = combo._StartScaling;
+  if ((combo.ComboScaling ?? -1) >= 0) out.combo = combo.ComboScaling;
+  if ((combo.InstScaling ?? -1) >= 0) out.immediate = combo.InstScaling;
+  return Object.keys(out).length ? { scaling: out } : {};
+}
 
 /** 65535 in a `Drive*` column means "no entry", not "65535 units of Drive". */
 const NONE_16 = 65535;

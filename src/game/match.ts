@@ -27,6 +27,7 @@ import {
   actionByName,
   activeWindows,
   hitDataFor,
+  hitKeysAt,
   hitboxesAt,
   hurtboxesAt,
   overlaps,
@@ -68,6 +69,32 @@ export type Contact = "block" | "hit" | "counter" | "punishCounter";
 
 /** How a round ended, or `null` while it is still being fought. */
 export type Result = { winner: 0 | 1 | null; by: "ko" | "timeout" };
+
+/**
+ * A run of hits the defender never got to act between.
+ *
+ * `juggle` is the counter the airborne rules run on: every hit-data row states
+ * a `Juggle1st`, a `JuggleAdd` and a `JuggleLimit`, and all three agree with
+ * FAT to within a few percent (96.4 / 96.9 / 95.0). What none of them state is
+ * the *rule* those numbers feed — that is asserted here. See ADR-0032.
+ */
+export interface Combo {
+  hits: number;
+  damage: number;
+  /** Where the defender is on the juggle counter. Zero on the ground. */
+  juggle: number;
+  /**
+   * Damage multiplier for the rest of the combo, as a percentage.
+   *
+   * The **only** scaling the dump states is the starter's: `fab.Combo._StartScaling`
+   * is 20 on a light, 30 on a Shoryuken, and matches FAT's `dmgScaling` "N% Start"
+   * on 196 of 200 moves. SF6's per-hit scaling curve is not in these files at all,
+   * so it is not modelled and this stays put after the first hit. See ADR-0032.
+   */
+  scaling: number;
+}
+
+const emptyCombo = (): Combo => ({ hits: 0, damage: 0, juggle: 0, scaling: 100 });
 
 export interface Hit {
   frame: number;
@@ -119,12 +146,26 @@ export class Match {
   /** Frames of hitstop still owed. Both sides freeze together. */
   private freeze = 0;
   private knockback: ({ perFrame: number; left: number } | null)[] = [null, null];
-  /** The action instance each fighter last connected with, so a swing hits once. */
-  private connected: [number, number] = [-1, -1];
+  /**
+   * `<side>:<action instance>:<HitID>` for contacts already made.
+   *
+   * A set rather than a last-seen value: a two-hit move's second HitID landing
+   * must not re-open the first, and the same shape already keys projectile
+   * spawning (ADR-0029).
+   */
+  private connected = new Set<string>();
   /** Fireballs currently in the air, either side's. */
   readonly projectiles: Projectile[] = [];
   /** `<fighter>:<action instance>:<shot index>` for shots already spawned. */
   private thrown = new Set<string>();
+  /**
+   * The combo each fighter is currently *taking*, if any.
+   *
+   * A hit that lands while the defender is already in hitstun continues it;
+   * anything else starts a new one. That is the rule the count on screen uses
+   * and it needs nothing from the dump. See ADR-0032.
+   */
+  readonly combo: [Combo, Combo] = [emptyCombo(), emptyCombo()];
   /** Distance from centre stage to either wall. */
   readonly half: number;
   /** Frames left on the round clock, or `null` if the match is untimed. */
@@ -361,18 +402,26 @@ export class Match {
   private resolve(attacker: 0 | 1, defenderInput: InputFrame): void {
     const me = this.fighters[attacker]!;
     const them = this.fighters[attacker === 0 ? 1 : 0]!;
-    const data = hitDataFor(me.geo, me.state.action);
-    if (!data) return;
-    const mine = worldHitboxes(me);
-    if (!mine.length) return;
     const theirs = worldHurtboxes(them);
-    if (!theirs.some((h) => mine.some((box) => overlaps(box, h)))) return;
-    // One contact per swing. The hitbox is out for three frames and hitstop is
-    // eleven, so anything time-based re-hits; the action instance is the only
-    // honest boundary. Multi-hit moves need juggles, which is a later stage.
-    if (this.connected[attacker] === me.instance) return;
-    this.connected[attacker] = me.instance;
-    this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing);
+    if (!theirs.length) return;
+    // One contact per *HitID*, not per swing. The hitbox is out for three frames
+    // and hitstop is eleven, so anything time-based re-hits — but the action
+    // instance is too coarse the other way: it caps a target combo or an OD
+    // fireball at one hit. ADR-0024 already found the boundary the game uses.
+    for (const key of hitKeysAt(me.state.action, me.state.frame)) {
+      const id = `${attacker}:${me.instance}:${key.hitId}`;
+      if (this.connected.has(id)) continue;
+      const data = me.geo.hitData?.[String(key.attackData)];
+      if (!data) continue;
+      const boxes = placeAll(key.boxes, me);
+      if (!theirs.some((h) => boxes.some((box) => overlaps(box, h)))) continue;
+      // Marked only if it actually landed: a hit the juggle rules refuse has
+      // not been spent, and the hitbox is still out.
+      if (this.land(attacker, them, data, me.state.action, defenderInput, me.state.facing)) {
+        this.connected.add(id);
+        return;
+      }
+    }
   }
 
   /**
@@ -390,17 +439,54 @@ export class Match {
     attack: GeometryAction,
     defenderInput: InputFrame,
     facing: 1 | -1,
-  ): void {
+  ): boolean {
     const type = this.contactType(them, defenderInput, attack);
     const outcome = data[type] ?? data.hit;
-    if (!outcome) return;
+    if (!outcome) return false;
+
+    const victim = attacker === 0 ? 1 : 0;
+    // Was the defender already stuck when this arrived? Then it is the same
+    // combo. A block never starts one.
+    const running = them.stunned > 0 && type !== "block";
+    const combo = this.combo[victim];
+    if (!running) {
+      combo.hits = 0;
+      combo.damage = 0;
+      combo.juggle = 0;
+      // Whatever opens the combo sets its penalty. The starter's own damage is
+      // not scaled — it is what everything after it pays for.
+      combo.scaling = 100 - (attack.scaling?.start ?? 0);
+    }
+
+    // The juggle rules, which are asserted rather than read. A defender already
+    // in the air is being juggled: the move states the highest counter it will
+    // still connect at, and each hit pushes the counter up by its own `add`. A
+    // hit that starts the juggle sets the counter to its `start` instead. This
+    // is the reading the field names invite; the dump states the numbers and
+    // never the rule. See ADR-0032.
+    //
+    // The numbers come off the *airborne* row when the defender is airborne.
+    // `HIT_DT`'s `param` block is the five conditions crossed with the four
+    // defender states, and the juggle values genuinely differ across it — Ryu's
+    // OD Hadoken states a limit of 2 on the ground and 3 in the air. Only the
+    // air row is extracted, which is exactly the one this needs.
+    const juggling = running && them.state.stance === "air";
+    const rules = (juggling ? data.airHit : undefined) ?? outcome;
+    if (juggling && combo.juggle > rules.juggle.limit) return false;
+    combo.juggle = juggling ? combo.juggle + rules.juggle.add : rules.juggle.start;
 
     this.gauges(attacker, them, data, outcome, type);
     const reaction = reactionFor(them.geo, outcome, type === "block", them.state.stance);
     const stun = outcome.stun - (type === "block" ? GUARD_RELEASE : 0);
     if (reaction) them.react(reaction, Math.max(0, stun));
-    const damage = type === "block" ? 0 : outcome.damage;
-    this.health[attacker === 0 ? 1 : 0] -= damage;
+    const raw = type === "block" ? 0 : outcome.damage;
+    // The starter is unscaled; everything the combo adds after it is not.
+    const damage = running ? Math.floor((raw * combo.scaling) / 100) : raw;
+    if (type !== "block") {
+      combo.hits++;
+      combo.damage += damage;
+    }
+    this.health[victim] -= damage;
     this.freeze = outcome.hitStop.owner;
     if (outcome.knockback.frames) {
       this.knockback[attacker === 0 ? 1 : 0] = {
@@ -419,6 +505,7 @@ export class Match {
       action: attack.name,
       reaction: reaction?.name ?? "?",
     });
+    return true;
   }
 
   /**
@@ -509,10 +596,15 @@ export function projectileBoxes(shot: Projectile): Box[] {
 }
 
 function worldHitboxes(f: Fighter): Box[] {
+  return placeAll(hitboxesAt(f.state.action, f.state.frame), f);
+}
+
+/** Local boxes of the action being played, put where the fighter is standing. */
+function placeAll(boxes: Box[], f: Fighter): Box[] {
   const { action, frame, facing } = f.state;
   const at = f.position();
   const origin = originAt(action, frame);
-  return hitboxesAt(action, frame).map((b) => place(shift(b, { x: 0, y: origin.y }), at.x, 0, facing));
+  return boxes.map((b) => place(shift(b, { x: 0, y: origin.y }), at.x, 0, facing));
 }
 
 function worldHurtboxes(f: Fighter): Box[] {

@@ -318,6 +318,17 @@ function draw() {
     gauge(42, f.superMeter, f.superMax, 3, "#facc15", 5);
   }
 
+  // combo counter, on the side taking it
+  for (const [i, combo] of match.combo.entries()) {
+    if (combo.hits < 2) continue;
+    ctx.fillStyle = "#e5e7eb";
+    ctx.font = "600 15px ui-monospace, monospace";
+    ctx.textAlign = i === 0 ? "left" : "right";
+    const scaled = combo.scaling < 100 ? ` ${combo.scaling}%` : "";
+    ctx.fillText(`${combo.hits} hits${scaled}`, i === 0 ? 22 : w - 22, 66);
+    ctx.textAlign = "left";
+  }
+
   // round clock
   if (match.clock !== null) {
     ctx.fillStyle = "#e5e7eb";

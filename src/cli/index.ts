@@ -447,6 +447,9 @@ function printFight(left: string, right: string, script: string, opponent?: stri
   console.log(
     `\n  ${match.frame} frames — health ${match.health.join(" / ")}, ` +
       `gauges ${gauges}, positions ${x} / ${y}, clock ${match.clock}` +
+      (match.combo.some((c) => c.hits > 1)
+        ? `, combo ${match.combo.map((c) => c.hits).join("/")} hits`
+        : "") +
       (corner.length ? `, ${corner.join(" and ")} in the corner` : "") +
       (end ? `  (${end.by}: ${end.winner === null ? "draw" : end.winner === 0 ? left : right})` : ""),
   );

@@ -375,3 +375,64 @@ describe("the gauges", () => {
     expect(ryu.burnout).toBe(false);
   });
 });
+
+/**
+ * Multi-hit contact, the combo counter, juggles and scaling. See ADR-0032.
+ *
+ * The juggle and scaling *numbers* are graded against FAT by `sf6 verify`
+ * (96.4 / 96.9 / 95.0 / 98.0%). What is asserted here is that the runtime reads
+ * them off the right rows and spends them — the rule they feed is this
+ * project's assertion, and it is written down as one.
+ */
+describe("combos", () => {
+  it("lands every HitID of a multi-hit move, not one per swing", () => {
+    // Ryu's 6MP is two hits on one action. Keyed on the action instance it
+    // landed once, which is what ADR-0027 and ADR-0029 both listed as open.
+    const match = matchFor("Ryu", "Ken", { distance: 120, seconds: null });
+    for (let i = 0; i < 80; i++) match.advance(i < 3 ? hold(6, ["MP"]) : hold(5), hold(5));
+    expect(match.hits).toHaveLength(2);
+    expect(match.hits.map((h) => h.action)).toEqual(["ATK_6MP", "ATK_6MP"]);
+    expect(match.hits[0]!.frame).toBeLessThan(match.hits[1]!.frame);
+  });
+
+  it("counts them as one combo", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 120, seconds: null });
+    for (let i = 0; i < 80; i++) match.advance(i < 3 ? hold(6, ["MP"]) : hold(5), hold(5));
+    expect(match.combo[1].hits).toBe(2);
+    expect(match.combo[1].damage).toBe(match.hits.reduce((n, h) => n + h.damage, 0));
+  });
+
+  it("still connects once per HitID, however long the hitstop", () => {
+    // The original guard, restated for the new boundary: hitstop is eleven
+    // frames and the box is out for three, so a time-based rule re-hits.
+    const one = fight({ p1: [[5, ["MP"], 3]], p2: 5, frames: 200 });
+    expect(one.match.hits).toHaveLength(1);
+  });
+
+  it("takes the combo's penalty from whatever opened it", () => {
+    // `_StartScaling` is 20 on Ryu's 5LP and unset on 6MP. The dump states the
+    // starter's penalty and nothing about the per-hit curve, so that is all the
+    // runtime applies.
+    const light = matchFor("Ryu", "Ken", { distance: 110, seconds: null });
+    for (let i = 0; i < 40; i++) light.advance(i < 3 ? hold(5, ["LP"]) : hold(5), hold(5));
+    expect(light.combo[1].scaling).toBe(80);
+
+    const heavy = matchFor("Ryu", "Ken", { distance: 120, seconds: null });
+    for (let i = 0; i < 40; i++) heavy.advance(i < 3 ? hold(6, ["MP"]) : hold(5), hold(5));
+    expect(heavy.combo[1].scaling).toBe(100);
+    // Unscaled, so both hits of 6MP are the table's own damage.
+    expect(heavy.hits.map((h) => h.damage)).toEqual([300, 300]);
+  });
+
+  it("puts the defender on the juggle counter the row names", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 120, seconds: null });
+    for (let i = 0; i < 80; i++) match.advance(i < 3 ? hold(6, ["MP"]) : hold(5), hold(5));
+    const geo = loadGeometry(requireCharacter("Ryu").id)!;
+    const action = geo.actions.find((a) => a.name === "ATK_6MP")!;
+    const key = action.hit.find((h) => h.kind !== "proximity")!;
+    const row = geo.hitData?.[String(key.attackData)];
+    // Grounded, so the counter is the move's own starting value rather than an
+    // accumulation — the same `Juggle1st` the grader checks against FAT.
+    expect(match.combo[1].juggle).toBe(row!.hit!.juggle.start);
+  });
+});

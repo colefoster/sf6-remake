@@ -151,6 +151,12 @@ export interface GeometryAction {
   mainFrame: number | null;
   marginFrame: number | null;
   /**
+   * Combo-scaling percentages the action carries, absent when the dump's −1
+   * says unset. `start` is what opening a combo with this move scales it to and
+   * is FAT's `dmgScaling` "20% Start". See ADR-0032.
+   */
+  scaling?: { start?: number; combo?: number; immediate?: number };
+  /**
    * A Super Art's cinematic freeze, in frames, from the action's `WorldKey` timer.
    * Everything after it sits `freeze - 1` frames later in the action's own timeline
    * than in FAT's numbers, so a comparison between the two has to net it out.
@@ -450,7 +456,19 @@ export function spawnsFrom(geo: GeometryFile, action: GeometryAction): Spawn[] {
 
 /** Attack boxes live this frame, proximity boxes excluded. */
 export function hitboxesAt(action: GeometryAction, frame: number): Box[] {
-  return action.hit.filter((h) => h.kind !== "proximity" && covers(h, frame)).flatMap((h) => h.boxes);
+  return hitKeysAt(action, frame).flatMap((h) => h.boxes);
+}
+
+/**
+ * The live hit *keys*, not their boxes flattened together.
+ *
+ * A caller that only draws boxes does not care which key they came from. One
+ * deciding whether a move has connected does: ADR-0024 established that a hit is
+ * a `HitID`, and two keys sharing a window with different ids are two hits. See
+ * ADR-0032.
+ */
+export function hitKeysAt(action: GeometryAction, frame: number): HitKey[] {
+  return action.hit.filter((h) => h.kind !== "proximity" && covers(h, frame));
 }
 
 /**

@@ -66,7 +66,11 @@ export type CheckName =
   | "driveOnHit"
   | "driveOnBlock"
   | "superGain"
-  | "superGiven";
+  | "superGiven"
+  | "juggleStart"
+  | "juggleAdd"
+  | "juggleLimit"
+  | "startScaling";
 
 export const CHECKS: Record<CheckName, string> = {
   hitstun: "the hit table's hitstun == FAT's published hitstun",
@@ -79,6 +83,10 @@ export const CHECKS: Record<CheckName, string> = {
   driveOnBlock: "the hit table's Drive damage on block == FAT's DDoB",
   superGain: "the hit table's super gain for the attacker == FAT's SelfSoH",
   superGiven: "the hit table's super gain for the defender == FAT's OppSoH",
+  juggleStart: "the hit table's Juggle1st == FAT's jugStart",
+  juggleAdd: "the hit table's JuggleAdd == FAT's jugIncr",
+  juggleLimit: "the hit table's JuggleLimit == FAT's jugLimit",
+  startScaling: "the action's _StartScaling == FAT's dmgScaling \"N% Start\"",
 };
 
 export interface Comparison {
@@ -122,6 +130,17 @@ function plainInt(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * FAT states the starter penalty as prose: "20% Start", "30% Start". Only that
+ * form is graded — "20% Immediate", "15% Multiplier (Mid-Combo)" and
+ * "Combo (5% extra)" are different quantities wearing the same column.
+ */
+function startPercent(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const m = /^(\d+)% Start/.exec(value.trim());
+  return m ? Number.parseInt(m[1]!, 10) : undefined;
+}
+
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
@@ -160,6 +179,11 @@ interface FatColumns {
   DDoB?: string | number;
   SelfSoH?: string | number;
   OppSoH?: string | number;
+  /** The juggle system, which FAT states as often as not in multi-hit strings. */
+  jugStart?: string | number;
+  jugIncr?: string | number;
+  jugLimit?: string | number;
+  dmgScaling?: string | number;
 }
 
 let fatCache: Record<string, Record<string, FatColumns>> | undefined;
@@ -224,6 +248,10 @@ function dumpNumbers(
     driveOnBlock: magnitude(data?.driveHit?.drive.target),
     superGain: data?.hit?.super.own,
     superGiven: data?.hit?.super.target,
+    juggleStart: data?.hit?.juggle.start,
+    juggleAdd: data?.hit?.juggle.add,
+    juggleLimit: data?.hit?.juggle.limit,
+    startScaling: action?.scaling?.start,
   };
 }
 
@@ -327,6 +355,10 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         driveOnBlock: plainInt(columns.DDoB),
         superGain: plainInt(columns.SelfSoH),
         superGiven: plainInt(columns.OppSoH),
+        juggleStart: plainInt(columns.jugStart),
+        juggleAdd: plainInt(columns.jugIncr),
+        juggleLimit: plainInt(columns.jugLimit),
+        startScaling: startPercent(columns.dmgScaling),
       };
 
       for (const check of Object.keys(CHECKS) as CheckName[]) {
