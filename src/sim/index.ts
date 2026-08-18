@@ -22,6 +22,7 @@
 import type { Box, Character, Move } from "../domain/types.js";
 import {
   actionFor,
+  actionableFrame,
   activeWindows,
   hitDataFor,
   hurtboxesAt,
@@ -107,6 +108,12 @@ export interface ScenarioResult {
   /** Frames at which each side can act again, measured from contact. */
   attackerActionable: number | null;
   defenderActionable: number | null;
+  /**
+   * Where the attacker's recovery came from: the action's own MarginFrame, or
+   * the published active + recovery when the action has no margin recorded.
+   * Only the first makes the advantage a genuinely independent derivation.
+   */
+  recoverySource: "action" | "published" | null;
   /** Positive means the attacker recovers first. Null when the move whiffed. */
   advantage: number | null;
   damage: number;
@@ -186,6 +193,7 @@ export function runScenario(
   let damage = 0;
   let attackerActionable: number | null = null;
   let defenderActionable: number | null = null;
+  let recoverySource: ScenarioResult["recoverySource"] = null;
 
   const total = attacker.action.frames ?? 0;
   // The dummy is only asked to survive the move plus whatever stun it owes.
@@ -227,9 +235,17 @@ export function runScenario(
           };
         }
         // Both sides count from the contact frame: the attacker owes the rest of
-        // its active window plus recovery, the defender owes its stun. Hitstop
-        // freezes them equally, so it never changes the difference.
-        attackerActionable = attacker.move.active - depth + attacker.move.recovery;
+        // its recovery, the defender owes its stun. Hitstop freezes them
+        // equally, so it never changes the difference.
+        //
+        // The attacker's side comes from the action's own MarginFrame where it
+        // has one — the game's number, in the same frame space this loop is
+        // already counting in. `active + recovery` is the published fallback,
+        // and using it means the advantage is only half-derived. See ADR-0011.
+        const free = actionableFrame(attacker.action);
+        attackerActionable =
+          free !== undefined ? free - frame : attacker.move.active - depth + attacker.move.recovery;
+        recoverySource = free !== undefined ? "action" : "published";
         defenderActionable = stun;
         events.push({
           frame,
@@ -294,6 +310,7 @@ export function runScenario(
     contact,
     attackerActionable,
     defenderActionable,
+    recoverySource,
     advantage:
       attackerActionable === null || defenderActionable === null
         ? null

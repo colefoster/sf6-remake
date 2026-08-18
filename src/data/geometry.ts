@@ -394,6 +394,21 @@ export function cancellableAt(move: MoveMapping, frame: number): boolean {
   return !!window && frame >= window.start && frame <= window.end;
 }
 
+/**
+ * The frame the attacker can act again, 1-indexed in the action's own frames.
+ *
+ * `MarginFrame` is the action's last committed frame; you are free on the one
+ * after. It is strictly less than the action's `frames` on every action in the
+ * roster — the animation keeps playing past the point you can cancel out of it,
+ * which is what makes this recovery rather than animation length.
+ *
+ * Undefined where the action has no margin recorded, which is where the caller
+ * has to fall back on the published `active + recovery`. See docs/adr/0011.
+ */
+export function actionableFrame(action: GeometryAction): number | undefined {
+  return action.marginFrame && action.marginFrame > 0 ? action.marginFrame + 1 : undefined;
+}
+
 export type Stance = "stand" | "crouch";
 
 /** Pushboxes live this frame. */

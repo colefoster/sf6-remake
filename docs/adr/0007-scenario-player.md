@@ -2,6 +2,10 @@
 
 - Status: accepted
 - Date: 2026-08-17
+- Amended by: [ADR-0011](./0011-margin-frame-is-recovery.md) — the sim read FAT's
+  `active` and `recovery` for the attacker's side of the comparison below, so the
+  check was narrower than it reads. It now takes recovery from the action's own
+  `MarginFrame` and reads no published number at all.
 - Builds on: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md),
   [ADR-0005](./0005-origin-motion-from-place-and-steer-keys.md),
   [ADR-0006](./0006-hit-data.md)

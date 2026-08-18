@@ -47,7 +47,8 @@ soft-mapping noise ADR-0004 and ADR-0008 already describe.
 
 ## Findings
 
-Four checks, over the 24 characters with geometry:
+Four checks at the time of writing, over the 24 characters with geometry. A
+fifth, `advantage`, was added by [ADR-0011](./0011-margin-frame-is-recovery.md).
 
 | check | clean | what it compares |
 |---|---|---|
@@ -108,11 +109,11 @@ Two errors in the record, found by the checks and corrected:
   which is a bug rather than skew.
 - The floors are set below today's rates on purpose. They are there to catch a
   regression, not to pin an exact number that a re-dump would move.
-- **This makes `MarginFrame` the obvious next question.** It agrees with FAT's
-  `total` on 93.3% of clean moves and is read by nothing, while `src/sim` still
-  borrows FAT's `active + recovery` for exactly that number. Adopting it where
-  it is proven would close the gap the README amendment above admits to. The
-  disagreement class is multi-hit moves and travelling specials with a landing
-  tail — Ryu's Tatsus read 47/62/79 against FAT's 29/27/32 — so `MarginFrame`
-  may turn out to be the animation's length rather than the actionable frame.
-  That is a characterisation job, and this grader is what it gets graded on.
+- **This made `MarginFrame` the obvious next question**, and the grader is what
+  answered it. It agreed with FAT's `total` on 93.3% of clean moves while being
+  read by nothing, and `src/sim` was borrowing FAT's `active + recovery` for
+  exactly that number. The open worry was that it might be the animation's
+  length rather than the actionable frame — Ryu's Tatsus read 47/62/79 against
+  FAT's 29/27/32. It is not:
+  [ADR-0011](./0011-margin-frame-is-recovery.md) settles it as recovery, the sim
+  uses it, and the sim now reads nothing published at all.

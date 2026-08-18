@@ -19,6 +19,9 @@
  *
  * Four of FAT's columns had never been read (`hitstun`, `blockstun`, `total`,
  * `hcWinSpCa`). They turn out to check the three claims the project rests on.
+ *
+ * It does import `src/sim` — the arrow points this way round on purpose. A
+ * grader may read what it grades; what it must never do is be read back.
  */
 
 import { readFileSync } from "node:fs";
@@ -27,6 +30,7 @@ import { dirname, join } from "node:path";
 
 import { loadGeometry, type GeometryFile, type MoveMapping } from "../data/geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
+import { runScenario } from "../sim/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
@@ -37,13 +41,14 @@ const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
  */
 export const GUARD_RELEASE = 4;
 
-export type CheckName = "hitstun" | "blockstun" | "total" | "cancelEnd";
+export type CheckName = "hitstun" | "blockstun" | "total" | "cancelEnd" | "advantage";
 
 export const CHECKS: Record<CheckName, string> = {
   hitstun: "the hit table's hitstun == FAT's published hitstun",
   blockstun: `the hit table's blockstun == FAT's published blockstun + ${GUARD_RELEASE}`,
   total: "the action's MarginFrame == FAT's published total",
   cancelEnd: "the cancel window's last frame == FAT's published hit-confirm window",
+  advantage: "the sim played out from the dump alone == FAT's published on-block",
 };
 
 export interface Comparison {
@@ -121,7 +126,7 @@ function fatMoves(character: string): Record<string, FatColumns> {
  * publishes for it: `hcWinSpCa` counts from the move's startup to the last
  * cancellable frame, plus the attacker's hitstop, plus 2.
  */
-function dumpNumbers(geo: GeometryFile, move: MoveMapping) {
+function dumpNumbers(geo: GeometryFile, move: MoveMapping, character: string) {
   const action = geo.actions.find((a) => a.id === move.action);
   const key = action?.hit.find((h) => h.kind !== "proximity");
   const data = key ? geo.hitData?.[String(key.attackData)] : undefined;
@@ -133,7 +138,30 @@ function dumpNumbers(geo: GeometryFile, move: MoveMapping) {
       move.cancel && data?.hit
         ? move.cancel.end - move.startup + data.hit.hitStop.owner + 2
         : undefined,
+    advantage: simAdvantage(character, move.input),
   };
+}
+
+/**
+ * The scenario player's own answer, which reads nothing published at all — stun
+ * from the hit table, recovery from `MarginFrame`, contact from box overlap.
+ * That is what makes comparing it to FAT's `onBlock` a two-source check rather
+ * than an identity restated. See ADR-0011.
+ */
+function simAdvantage(character: string, input: string): number | undefined {
+  try {
+    const result = runScenario(character, input, { guard: true });
+    return result.advantage ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A signed FAT value: advantage columns run negative. */
+function signedInt(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) return Number.parseInt(value, 10);
+  return undefined;
 }
 
 export interface VerifyOptions {
@@ -163,7 +191,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
     for (const move of geo.moves) {
       const columns = fat[move.input];
       if (!columns) continue;
-      const dump = dumpNumbers(geo, move);
+      const dump = dumpNumbers(geo, move, geo.character);
       // An exact mapping of a single-hit move whose startup already agrees: the
       // population where a disagreement is a finding rather than a known-soft
       // mapping or a multi-hit move whose numbers describe a different hit.
@@ -174,6 +202,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         blockstun: add(plainInt(columns.blockstun), guardRelease),
         total: plainInt(columns.total),
         cancelEnd: plainInt(columns.hcWinSpCa),
+        advantage: signedInt(move.fat.onBlock),
       };
 
       for (const check of Object.keys(CHECKS) as CheckName[]) {

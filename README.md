@@ -112,7 +112,7 @@ Pick a move, scrub the timeline, and see every box per frame with the opponent p
 
 ### The scenario player
 
-Two fighters on a shared 60 fps clock. It never reads on-block or on-hit — it advances the action, finds contact by box overlap at your chosen spacing, and takes stun and knockback from the game's hit-data table. It does still read FAT's `active` and `recovery` to know when the attacker recovers, so what it proves is "the game's stun agrees with the published advantage, *given* the published active and recovery" rather than a fully independent derivation ([ADR-0010](./docs/adr/0010-the-grader.md)).
+Two fighters on a shared 60 fps clock. **It reads no published number at all** — it advances the action, finds contact by box overlap at your chosen spacing, takes stun and knockback from the game's hit-data table, and takes the attacker's recovery from the action's own `MarginFrame` ([ADR-0011](./docs/adr/0011-margin-frame-is-recovery.md)). Comparing what it says to the published advantage is therefore two independent sources agreeing.
 
 ```bash
 $ npm run sf6 -- play ryu 2mk --at 150
@@ -128,7 +128,7 @@ pushed to 205u (from 150u)
 drive +1000 you, +2000 them
 ```
 
-That −6 is derived, not looked up (with the caveat above) — and it's what the published frame data says. Across every mapped normal the sim reproduces on-block advantage on **13 of 13** of Akuma's moves and 8 of Ryu's 12, where the misses are exactly the moves whose two sources are already known to disagree ([ADR-0007](./docs/adr/0007-scenario-player.md)).
+That −6 is derived, not looked up — and it's what the published frame data says. Across the roster the sim reproduces published on-block advantage on **87% of cleanly mapped normals**, and the misses are the moves `sf6 verify` already flags as disagreeing between the two sources ([ADR-0007](./docs/adr/0007-scenario-player.md), [ADR-0011](./docs/adr/0011-margin-frame-is-recovery.md)).
 
 ## How it works
 
@@ -195,6 +195,7 @@ the game's dumped data vs the published frame data
   blockstun  239/256 93.4%      the hit table's blockstun == FAT's published blockstun + 4
   total      167/179 93.3%      the action's MarginFrame == FAT's published total
   cancelEnd  101/110 91.8%      the cancel window's last frame == FAT's published hit-confirm window
+  advantage  179/206 86.9%      the sim played out from the dump alone == FAT's published on-block
 ```
 
 The percentages are over cleanly mapped single-hit moves; the residue is the pre-Season-3 patch skew. The most useful thing it does is let a constant be **swept** instead of asserted: the +4 guard release of [ADR-0006](./docs/adr/0006-hit-data.md) scores 93.4% at exactly +4 and under 3% at every other offset, which is a spike rather than a trend. See [ADR-0010](./docs/adr/0010-the-grader.md).
