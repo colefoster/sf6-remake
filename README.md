@@ -154,6 +154,7 @@ src/
     interactions.ts      punish, gap, cancel, sequence
     index.ts             public API (the deep module)
   verify/index.ts        the grader: dumped data vs published, imported by neither
+  verify/invuln.ts       the invulnerability grader: frame ranges vs FAT's prose
   sim/index.ts           the scenario player: two fighters, shared clock
   cli/index.ts           the `sf6` command
 scripts/
@@ -165,7 +166,7 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   78 tests, incl. assertions against the real data
+tests/                   116 tests, incl. assertions against the real data
 ```
 
 ## Known limitations
@@ -179,7 +180,7 @@ tests/                   78 tests, incl. assertions against the real data
 ## Test
 
 ```bash
-npm test          # 78 tests
+npm test          # 116 tests
 npm run typecheck
 ```
 
@@ -191,11 +192,19 @@ The project has two independent descriptions of every fighter — the game's own
 $ npm run sf6 -- verify
 the game's dumped data vs the published frame data
 
-  hitstun    210/230 91.3%      the hit table's hitstun == FAT's published hitstun
-  blockstun  239/256 93.4%      the hit table's blockstun == FAT's published blockstun + 4
-  total      167/179 93.3%      the action's MarginFrame == FAT's published total
-  cancelEnd  101/110 91.8%      the cancel window's last frame == FAT's published hit-confirm window
-  advantage  179/206 86.9%      the sim played out from the dump alone == FAT's published on-block
+  hitstun    269/292 92.1%      the hit table's hitstun == FAT's published hitstun
+  blockstun  304/326 93.3%      the hit table's blockstun == FAT's published blockstun + 4
+  total      209/224 93.3%      the action's MarginFrame == FAT's published total
+  cancelEnd  119/134 88.8%      the cancel window's last frame == FAT's published hit-confirm window
+  advantage  226/257 87.9%      the sim played out from the dump alone == FAT's published on-block
+
+per-frame invulnerability vs the published notes
+
+  airborne-strike  45/56 80.4%   Immune bit 2 == FAT's 'invincible to airborne strikes on frames A-B'
+  projectile       48/60 80.0%   TypeFlag without bit 1 == FAT's 'projectile invincible on frames A-B'
+  strike           23/23 100.0%  TypeFlag without bit 0 == FAT's 'strike invincible on frame N'
 ```
+
+Invulnerability is the one thing FAT records only as prose, so that grader compares a **frame range to a sentence** ([ADR-0014](./docs/adr/0014-per-frame-invulnerability.md)).
 
 The percentages are over cleanly mapped single-hit moves; the residue is the pre-Season-3 patch skew. The most useful thing it does is let a constant be **swept** instead of asserted: the +4 guard release of [ADR-0006](./docs/adr/0006-hit-data.md) scores 93.4% at exactly +4 and under 3% at every other offset, which is a spike rather than a trend. See [ADR-0010](./docs/adr/0010-the-grader.md).

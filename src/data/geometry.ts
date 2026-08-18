@@ -43,8 +43,52 @@ export interface HurtKey {
   body: Box[];
   leg: Box[];
   throw: Box[];
-  /** Non-zero when the hurtbox is invulnerable to something this frame. */
+  /**
+   * What the box is invulnerable to, as a bitmask. Bit 2 is airborne strikes and
+   * reads against FAT; the rest do not. See ADR-0014.
+   */
   immune?: number;
+  /**
+   * Which kinds of attack the box answers to at all: bit 0 strikes, bit 1
+   * projectiles. Absent means 3 — both, the ordinary case.
+   */
+  typeFlag?: number;
+}
+
+/**
+ * How an incoming attack presents itself to a hurtbox. `airborne-strike` is a
+ * strike thrown by an opponent off the ground: the thing an anti-air is
+ * invulnerable to, and a separate question from whether the box responds to
+ * strikes at all.
+ */
+export type AttackKind = "strike" | "projectile" | "airborne-strike";
+
+/** `TypeFlag` bits. A box with neither answers to nothing and cannot be hit. */
+const RESPONDS_STRIKE = 1;
+const RESPONDS_PROJECTILE = 2;
+
+/**
+ * `Immune` bit 2: invulnerable to strikes from an airborne opponent.
+ *
+ * This is the one bit of the mask that reads. FAT publishes "Invincible to
+ * airborne strikes on frames A-B" in prose for 57 moves, and the frames a bit-2
+ * key covers reproduce that range exactly on 45 of them. See ADR-0014.
+ */
+const IMMUNE_AIRBORNE = 4;
+
+/**
+ * Whether this box can be hit by that kind of attack on the frames it covers.
+ *
+ * Two independent gates, and they are not the same question. `TypeFlag` is what
+ * the box responds to — a limb extension marked strike-only still eats
+ * projectiles, which is exactly why FAT describes those boxes as "cannot
+ * counter-poke projectiles". `Immune` is what it shrugs off on top of that.
+ */
+export function vulnerableTo(key: HurtKey, kind: AttackKind): boolean {
+  const responds = key.typeFlag ?? (RESPONDS_STRIKE | RESPONDS_PROJECTILE);
+  const bit = kind === "projectile" ? RESPONDS_PROJECTILE : RESPONDS_STRIKE;
+  if (!(responds & bit)) return false;
+  return !(kind === "airborne-strike" && ((key.immune ?? 0) & IMMUNE_AIRBORNE) !== 0);
 }
 
 /** A pushbox: what stops two characters occupying the same space. */
@@ -251,8 +295,14 @@ const cache = new Map<string, GeometryFile | undefined>();
 
 export function loadGeometry(characterId: string): GeometryFile | undefined {
   if (!cache.has(characterId)) {
-    const path = join(DIR, `${characterId}.json`);
-    cache.set(characterId, existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as GeometryFile) : undefined);
+    // The domain model slugs punctuation to hyphens (`a-k-i`) and the extractor
+    // drops it (`aki`), so five of the twenty-four fighters were reachable under
+    // one spelling and not the other — and every caller treats a miss as "no
+    // geometry" rather than an error. Try both.
+    const path = [characterId, characterId.replace(/[^a-z0-9]/gi, "")]
+      .map((id) => join(DIR, `${id}.json`))
+      .find((p) => existsSync(p));
+    cache.set(characterId, path ? (JSON.parse(readFileSync(path, "utf8")) as GeometryFile) : undefined);
   }
   return cache.get(characterId);
 }
@@ -288,13 +338,50 @@ export function hitboxesAt(action: GeometryAction, frame: number): Box[] {
   return action.hit.filter((h) => h.kind !== "proximity" && covers(h, frame)).flatMap((h) => h.boxes);
 }
 
-/** Every hurtbox live this frame. Throwable boxes are excluded by default. */
-export function hurtboxesAt(action: GeometryAction, frame: number, includeThrow = false): Box[] {
+/**
+ * Every hurtbox live this frame. Throwable boxes are excluded by default.
+ *
+ * `to` narrows to the boxes a given kind of attack can actually hit, which is
+ * what an anti-air or a fireball is asking. Left off, every live box counts —
+ * the shape callers wanted before invulnerability was decoded.
+ */
+export function hurtboxesAt(
+  action: GeometryAction,
+  frame: number,
+  options: boolean | { includeThrow?: boolean; to?: AttackKind } = false,
+): Box[] {
+  const { includeThrow = false, to } = typeof options === "boolean" ? { includeThrow: options } : options;
   const out: Box[] = [];
   for (const key of action.hurt) {
     if (!covers(key, frame)) continue;
+    if (to && !vulnerableTo(key, to)) continue;
     out.push(...key.head, ...key.body, ...key.leg);
     if (includeThrow) out.push(...key.throw);
+  }
+  return out;
+}
+
+/**
+ * The frames on which nothing that kind of attack can hit is live — the
+ * character's own invulnerability, as opposed to one box's.
+ *
+ * A limb extension marked strike-invincible does not make the fighter
+ * invincible: the ordinary body box is still there beside it, and this reports
+ * only frames where every live box declines. That is the same distinction FAT
+ * draws between "the extended leg hurtbox is strike invincible" and "invincible
+ * to airborne strikes on frames 1-14". See ADR-0014.
+ */
+export function invulnerableWindows(
+  action: GeometryAction,
+  kind: AttackKind,
+): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (let frame = 1; frame <= (action.frames ?? 0); frame++) {
+    const live = action.hurt.filter((k) => covers(k, frame));
+    if (!live.length || live.some((k) => vulnerableTo(k, kind))) continue;
+    const last = out[out.length - 1];
+    if (last && last.end === frame - 1) last.end = frame;
+    else out.push({ start: frame, end: frame });
   }
   return out;
 }

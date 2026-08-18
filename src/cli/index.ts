@@ -24,6 +24,7 @@ import {
   BAR,
   cancelOptions,
   hitDataFor,
+  invulnerableWindows,
   loadGeometry,
   minDistance,
   originAt,
@@ -32,6 +33,7 @@ import {
 } from "../data/geometry.js";
 import { runScenario, type ScenarioResult } from "../sim/index.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
+import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -304,7 +306,9 @@ function main(): void {
       }
 
       case "verify": {
-        printVerification(verify(p.length ? p.map((q) => requireCharacter(q).name) : undefined));
+        const only = p.length ? p.map((q) => requireCharacter(q).name) : undefined;
+        printVerification(verify(only));
+        printInvulnerability(verifyInvuln(only));
         return;
       }
 
@@ -361,6 +365,12 @@ function printBoxes(character: Character, move: Move, args: Args): void {
   console.log(`${character.name} — ${move.name} (${move.input})`);
   console.log(`  action       ${action.name} (#${action.id})`);
   console.log(`  active       ${windows.map((w) => `${w.start}-${w.end}`).join(", ") || "no hitboxes"}`);
+  const invuln = (["airborne-strike", "projectile", "strike"] as const)
+    .map((kind) => ({ kind, windows: invulnerableWindows(action, kind) }))
+    .filter((row) => row.windows.length);
+  for (const { kind, windows } of invuln) {
+    console.log(`  invuln       ${windows.map((w) => `${w.start}-${w.end}`).join(", ")} to ${kind}`);
+  }
   console.log(`  vs           ${defender.name}, ${stance}ing (${opponent.length} hurtboxes)`);
   if (closest !== undefined) console.log(`  point blank  ${u(closest)} (pushboxes touching)`);
   console.log(`  max reach    ${maxReach === undefined ? "never connects" : u(maxReach)}`);
@@ -565,5 +575,35 @@ function printVerification(report: ReturnType<typeof verify>): void {
       );
     }
     if (bad.length > 40) console.log(`    ... and ${bad.length - 40} more`);
+  }
+}
+
+/**
+ * The invulnerability grader, which compares frame ranges to FAT's prose rather
+ * than numbers to a column, because prose is the only place FAT records it.
+ */
+function printInvulnerability(report: ReturnType<typeof verifyInvuln>): void {
+  const pct = (n: number, of: number) => (of ? `${n}/${of} ${((n / of) * 100).toFixed(1)}%` : "—");
+
+  console.log("\n\nper-frame invulnerability vs the published notes\n");
+  for (const [kind, describes] of Object.entries(INVULN_CHECKS)) {
+    const t = report.totals[kind as keyof typeof report.totals];
+    console.log(`  ${kind.padEnd(16)} ${pct(t.exact, t.checked).padEnd(18)} ${describes}`);
+    console.log(
+      `  ${"".padEnd(16)} ${pct(t.within1, t.checked).padEnd(18)} (within a frame; ${t.absent} not in the dump at all)`,
+    );
+  }
+
+  const bad = invulnDisagreements(report);
+  if (bad.length) {
+    console.log(`\n  ${bad.length} claims the dump does not reproduce:`);
+    for (const c of bad.slice(0, 30)) {
+      const got = c.dump ? `${c.dump[0]}-${c.dump[1]}` : "absent";
+      console.log(
+        `    ${c.character.padEnd(9)} ${c.input.padEnd(16)} ${c.kind.padEnd(16)} ` +
+          `published ${`${c.fat[0]}-${c.fat[1]}`.padStart(7)} vs dump ${got.padStart(7)}`,
+      );
+    }
+    if (bad.length > 30) console.log(`    ... and ${bad.length - 30} more`);
   }
 }

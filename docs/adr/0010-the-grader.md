@@ -48,7 +48,15 @@ soft-mapping noise ADR-0004 and ADR-0008 already describe.
 ## Findings
 
 Four checks at the time of writing, over the 24 characters with geometry. A
-fifth, `advantage`, was added by [ADR-0011](./0011-margin-frame-is-recovery.md).
+fifth, `advantage`, was added by [ADR-0011](./0011-margin-frame-is-recovery.md),
+and three more — invulnerability, graded against prose rather than a column — by
+[ADR-0014](./0014-per-frame-invulnerability.md).
+
+> **The rates below were measured over 19 characters, not 24.**
+> [ADR-0014](./0014-per-frame-invulnerability.md) found that `loadGeometry`
+> silently missed the five fighters whose ids carry punctuation. Four of the five
+> rates move by under a point once they are included; `cancelEnd` drops to 88.8%,
+> because those five are worse than the roster on that check specifically.
 
 | check | clean | what it compares |
 |---|---|---|

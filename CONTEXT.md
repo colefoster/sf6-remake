@@ -41,6 +41,8 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 
 - **Box** — an axis-aligned rectangle in **game units**: `x = 0` is the character origin, `y = 0` the ground, `+x` forward. A fighter is roughly 166 units tall.
 - **Hitbox** — a box that, while active, can make contact. **Hurtbox** — a box that can be hit, split into `head` / `body` / `leg` and a separate throwable box. **Proximity box** — triggers the defender's guard animation without hitting.
+- **Attack kind** — how an incoming attack presents itself to a hurtbox: `strike`, `projectile`, or `airborne-strike` (a strike from an opponent off the ground). A hurtbox answers to some and not others, and the two mechanisms are separate: `TypeFlag` is what the box responds to at all, `Immune` is what it shrugs off on top. See `docs/adr/0014-per-frame-invulnerability.md`.
+- **Invulnerability** — a *box* declining a kind of attack is not the *fighter* being invincible. A strike-invincible limb extension sits beside an ordinary body box that can still be hit; `invulnerableWindows` reports only frames where every live box declines.
 - **Action** — the game's own unit of animation + collision (`ATK_2MK_Y2`, `SPA_SYORYU_START`). A **move** in this engine's sense maps onto an action; the mapping carries a **match quality** (`exact`, `close`, `frame-unique`, `weak`).
 - **Reach** — the furthest distance at which a move's hitboxes still overlap the defender's hurtboxes. Distinct from FAT's coarse `range` scalar, which `Move.reach` holds as a fallback.
 - **Pushbox** — the box that stops two characters occupying the same space. One per frame, by stance: standing, crouching, airborne, plus per-move overrides (a Shoryuken's pushbox rises with it).

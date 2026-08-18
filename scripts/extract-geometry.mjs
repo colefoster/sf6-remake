@@ -190,6 +190,9 @@ function extractAction(action, rect, unresolvedPush) {
     if (!Object.values(parts).some((b) => b.length)) continue;
     const entry = { start, end, ...parts };
     if (key.Immune) entry.immune = key.Immune;
+    // `TypeFlag` says which kinds of attack the box answers to at all: 1 strike,
+    // 2 projectile. 3 is the ordinary box and is left off. See ADR-0014.
+    if ((key.TypeFlag ?? 3) !== 3) entry.typeFlag = key.TypeFlag ?? 0;
     hurt.push(entry);
   }
 

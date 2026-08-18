@@ -3,7 +3,15 @@ import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 
 import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
-import { actionableFrame, airOnly, loadGeometry, touchdownFrame } from "../src/data/geometry.js";
+import { verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
+import {
+  actionableFrame,
+  airOnly,
+  hurtboxesAt,
+  loadGeometry,
+  touchdownFrame,
+  vulnerableTo,
+} from "../src/data/geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 
@@ -210,6 +218,93 @@ describe("airborne actions recover on landing", () => {
       }
     }
     expect(landing).toBeGreaterThan(50);
+  });
+});
+
+describe("per-frame invulnerability against the published notes", () => {
+  const invuln = verifyInvuln();
+  const share = (kind: InvulnKind) => {
+    const t = invuln.totals[kind];
+    return t.exact / t.checked;
+  };
+
+  it("reproduces the strike-invincible limb extension exactly, every time", () => {
+    // The hardest of the three, and it comes out clean: FAT documents a brief
+    // extended hurtbox a frame or two before a heavy's active frames that a
+    // strike passes through, and `TypeFlag` marks precisely those frames.
+    const t = invuln.totals.strike;
+    expect(t.checked).toBeGreaterThan(20);
+    expect(t.exact).toBe(t.checked);
+  });
+
+  it("reads projectile and airborne-strike invulnerability off the dump", () => {
+    expect(invuln.totals.projectile.checked).toBeGreaterThan(50);
+    expect(invuln.totals["airborne-strike"].checked).toBeGreaterThan(50);
+    expect(share("projectile")).toBeGreaterThan(0.75);
+    expect(share("airborne-strike")).toBeGreaterThan(0.75);
+  });
+
+  it("puts the airborne gate on Immune bit 2, and nowhere else", () => {
+    // The same shape as the guard-release sweep: if bit 2 is the airborne gate
+    // it is the unique best of the eight, and its neighbours collapse rather
+    // than scoring a little lower.
+    const scores = new Map<number, number>();
+    for (let bit = 0; bit <= 7; bit++) {
+      const t = verifyInvuln(undefined, { airborneBit: bit }).totals["airborne-strike"];
+      scores.set(bit, t.exact / t.checked);
+    }
+    const best = [...scores].sort((a, b) => b[1] - a[1])[0]!;
+    expect(best[0]).toBe(2);
+    expect(best[1]).toBeGreaterThan(0.75);
+    // And every other bit scores nothing at all, not merely less.
+    for (const [bit, score] of scores) {
+      if (bit !== 2) expect(`bit ${bit}: ${score}`).toBe(`bit ${bit}: 0`);
+    }
+  });
+
+  it("anchors on the move the whole decode started from", () => {
+    // Ryu's 623LP: FAT says "Invincible to airborne strikes on frames 1-14" and
+    // the dump's bit-2 keys cover exactly frames 1-14. See ADR-0014.
+    const dp = loadGeometry("ryu")!.actions.find((a) => a.name === "SPA_SYORYU_START")!;
+    const immune = dp.hurt.filter((h) => ((h.immune ?? 0) & 4) !== 0);
+    expect(Math.min(...immune.map((h) => h.start))).toBe(1);
+    expect(Math.max(...immune.map((h) => h.end))).toBe(14);
+    expect(hurtboxesAt(dp, 10, { to: "airborne-strike" })).toEqual([]);
+    expect(hurtboxesAt(dp, 10, { to: "strike" }).length).toBeGreaterThan(0);
+  });
+
+  it("keeps a strike-invincible box vulnerable to projectiles", () => {
+    // FAT's own gloss on these boxes is "cannot counter-poke projectiles", so
+    // the two gates have to stay separate: the box is skipped for a strike and
+    // still counted for a fireball. A single "invulnerable" flag would lose it.
+    const key = { start: 1, end: 1, head: [], body: [], leg: [], throw: [], typeFlag: 2 };
+    expect(vulnerableTo(key, "strike")).toBe(false);
+    expect(vulnerableTo(key, "projectile")).toBe(true);
+    // And the ordinary box, with nothing recorded, answers to everything.
+    const plain = { start: 1, end: 1, head: [], body: [], leg: [], throw: [] };
+    for (const kind of ["strike", "projectile", "airborne-strike"] as const) {
+      expect(vulnerableTo(plain, kind)).toBe(true);
+    }
+  });
+
+  it("leaves the rest of the Immune mask undecoded and says so", () => {
+    // 128 is on every character's light normals and 239 on every jump's
+    // start-up, and no published column separates either from bit 2. What can
+    // be said is structural: 128 and the strike-invincible TypeFlag never occur
+    // on the same action, across the whole roster. See ADR-0014.
+    let seen128 = 0;
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      for (const action of geo.actions) {
+        const has128 = action.hurt.some((h) => h.immune === 128);
+        if (has128) seen128++;
+        expect(`${geo.id}#${action.id}:${has128 && action.hurt.some((h) => h.typeFlag === 2)}`).toBe(
+          `${geo.id}#${action.id}:false`,
+        );
+      }
+    }
+    expect(seen128).toBeGreaterThan(150);
   });
 });
 
