@@ -70,7 +70,7 @@ export class Match {
   /** The action instance each fighter last connected with, so a swing hits once. */
   private connected: [number, number] = [-1, -1];
 
-  constructor(left: string, right: string, options: MatchOptions = {}) {
+  constructor(left: GeometryFile, right: GeometryFile, options: MatchOptions = {}) {
     const gap = options.distance ?? 200;
     this.fighters = [new Fighter(left, 0, 1), new Fighter(right, gap, -1)];
     this.health = [vitality(this.fighters[0].geo), vitality(this.fighters[1].geo)];

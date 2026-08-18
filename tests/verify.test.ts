@@ -23,10 +23,10 @@ import {
   spawnsFrom,
   inFatFrames,
   hurtboxesAt,
-  loadGeometry,
   touchdownFrame,
   vulnerableTo,
 } from "../src/data/geometry.js";
+import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 

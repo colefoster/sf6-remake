@@ -21,10 +21,10 @@ import { dirname, join } from "node:path";
 import {
   fullyInvulnerableWindows,
   inFatFrames,
-  loadGeometry,
   type GeometryAction,
   type HurtKey,
 } from "../data/geometry.js";
+import { loadGeometry } from "../data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

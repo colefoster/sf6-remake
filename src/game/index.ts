@@ -21,7 +21,6 @@
 import {
   actionById,
   actionByName,
-  loadGeometry,
   originAt,
   type Command,
   type CommandStep,
@@ -29,7 +28,6 @@ import {
   type GeometryFile,
   type Trigger,
 } from "../data/geometry.js";
-import { requireCharacter } from "../data/index.js";
 
 /** Numpad directions. 5 is neutral. */
 export type Direction = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
@@ -215,13 +213,19 @@ export class Fighter {
   /** The triggers available from neutral — the game's own list of what you can do. */
   private readonly neutral: { id: number; trigger: Trigger }[];
 
-  constructor(character: string, x = 0, facing: 1 | -1 = 1) {
-    const resolved = requireCharacter(character);
-    const geo = loadGeometry(resolved.id);
-    if (!geo) throw new Error(`no geometry for ${resolved.name} — run: npm run geometry`);
+  /**
+   * Takes the geometry itself, never a name.
+   *
+   * Looking a character up reads the file system, and this module has to run in
+   * a browser that fetched `<char>.boxes.json` and already holds the same bytes.
+   * `src/game/load.ts` is the Node-side convenience; keeping the lookup out of
+   * here is what lets the viewer run the real runtime instead of a second
+   * implementation of it, which is the duplication ADR-0007 has been carrying.
+   */
+  constructor(geo: GeometryFile, x = 0, facing: 1 | -1 = 1) {
     this.geo = geo;
     this.state = {
-      character: resolved.name,
+      character: geo.character,
       action: this.require(MOVEMENT.stand),
       frame: 1,
       x,

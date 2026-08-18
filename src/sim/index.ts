@@ -33,7 +33,6 @@ import {
   hitboxesAt,
   hurtboxesAt,
   idleHurtboxes,
-  loadGeometry,
   minDistance,
   originAt,
   overlaps,
@@ -49,6 +48,7 @@ import {
   type RecoverySource,
   type Stance,
 } from "../data/geometry.js";
+import { loadGeometry } from "../data/load-geometry.js";
 import { requireCharacter, requireMove } from "../data/index.js";
 
 /**

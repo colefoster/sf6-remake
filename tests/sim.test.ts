@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { runScenario } from "../src/sim/index.js";
 import { requireCharacter, requireMove } from "../src/data/index.js";
-import { actionFor, loadGeometry, minDistance } from "../src/data/geometry.js";
+import { actionFor, minDistance } from "../src/data/geometry.js";
+import { loadGeometry } from "../src/data/load-geometry.js";
 import type { Move } from "../src/domain/types.js";
 
 /**

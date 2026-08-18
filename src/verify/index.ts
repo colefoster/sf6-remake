@@ -31,11 +31,11 @@ import { dirname, join } from "node:path";
 import {
   inFatFrames,
   spawnsFrom,
-  loadGeometry,
   type GeometryAction,
   type GeometryFile,
   type MoveMapping,
 } from "../data/geometry.js";
+import { loadGeometry } from "../data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 import { runScenario } from "../sim/index.js";
 

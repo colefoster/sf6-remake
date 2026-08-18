@@ -10,7 +10,6 @@ import {
   hitboxesAt,
   hurtboxesAt,
   idleHurtboxes,
-  loadGeometry,
   mirrored,
   originAt,
   worldHitboxes,
@@ -21,6 +20,7 @@ import {
   affordable,
   BAR,
 } from "../src/data/geometry.js";
+import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { stunFrom } from "../src/engine/frames.js";
@@ -258,14 +258,14 @@ describe("hit data", () => {
 
 describe("geometryFor", () => {
   it("builds the frame-keyed Geometry the domain type describes", () => {
-    const g = geometryFor(ryu, requireMove(ryu, "2MK"))!;
+    const g = geometryFor(loadGeometry(ryu.id), requireMove(ryu, "2MK"))!;
     expect(Object.keys(g.hitboxes!).map(Number)).toEqual([8, 9, 10]);
     expect(g.hurtboxes![1]!.length).toBeGreaterThan(0);
   });
 
   it("is undefined for a move with no mapped action", () => {
     const unmapped = ryu.moves.find((m) => m.input === "5MP > LK > HK > HP");
-    if (unmapped) expect(geometryFor(ryu, unmapped)).toBeUndefined();
+    if (unmapped) expect(geometryFor(loadGeometry(ryu.id), unmapped)).toBeUndefined();
   });
 });
 

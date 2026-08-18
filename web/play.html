@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sf6 — play</title>
+<style>
+  :root {
+    --bg: #0c0e12;
+    --panel: #14171d;
+    --line: #262b34;
+    --ink: #d8dde6;
+    --dim: #79828f;
+    --hurt: #3b82f6;
+    --hit: #ef4444;
+    --push: #6b7280;
+    --armor: #f59e0b;
+    --p1: #38bdf8;
+    --p2: #fb7185;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  h1 { font-size: 13px; margin: 0 8px 0 0; font-weight: 600; letter-spacing: .04em; }
+  select, button {
+    background: #1b1f27; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 8px; font: inherit;
+  }
+  button:hover { border-color: #3b424f; }
+  button[aria-pressed="true"] { border-color: var(--p1); color: var(--p1); }
+  main { display: grid; grid-template-columns: 1fr 300px; gap: 0; height: calc(100vh - 47px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+  #stage { width: 100%; height: 100%; display: block; background: #0a0c10; }
+  aside { border-left: 1px solid var(--line); padding: 12px 14px; overflow: auto; background: var(--panel); }
+  aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 16px 0 6px; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; justify-content: space-between; gap: 10px; }
+  .row span:last-child { color: var(--dim); }
+  .p1 { color: var(--p1); } .p2 { color: var(--p2); }
+  #log { margin: 0; padding: 0; list-style: none; font-size: 12px; }
+  #log li { padding: 3px 0; border-bottom: 1px solid var(--line); }
+  kbd {
+    background: #1b1f27; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 3px; padding: 0 4px; font-size: 11px;
+  }
+  .hint { color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>sf6 · play</h1>
+  <label>P1 <select id="p1"></select></label>
+  <label>P2 <select id="p2"></select></label>
+  <button id="pause" aria-pressed="false">pause</button>
+  <button id="step">step</button>
+  <button id="reset">reset</button>
+  <button id="boxes" aria-pressed="true">boxes</button>
+  <span class="hint">P1 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · <kbd>U</kbd><kbd>I</kbd><kbd>O</kbd> punches · <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> kicks &nbsp;|&nbsp; P2 arrows · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> / <kbd>4</kbd><kbd>5</kbd><kbd>6</kbd></span>
+</header>
+
+<main>
+  <canvas id="stage"></canvas>
+  <aside>
+    <h2>state</h2>
+    <div class="row"><span>frame</span><span id="frame">0</span></div>
+    <div class="row"><span class="p1" id="n1">P1</span><span id="a1">—</span></div>
+    <div class="row"><span class="p2" id="n2">P2</span><span id="a2">—</span></div>
+    <div class="row"><span>gap</span><span id="gap">—</span></div>
+    <h2>contact log</h2>
+    <ul id="log"></ul>
+    <h2>what this is</h2>
+    <p class="hint">
+      Every box, every frame length and every outcome comes from the game's own
+      dumped tables. The page runs the same <code>Match</code> the CLI does —
+      it is not a re-implementation. Hurtboxes are blue, hitboxes red, pushboxes grey.
+    </p>
+  </aside>
+</main>
+
+<script type="module">
+import {
+  Match, hold, hitboxesAt, hurtboxesAt, pushboxesAt, originAt,
+} from "./play.js";
+
+const canvas = document.getElementById("stage");
+const ctx = canvas.getContext("2d");
+const index = await (await fetch("./boxes-index.json")).json();
+const cache = new Map();
+
+async function geometry(id) {
+  if (!cache.has(id)) cache.set(id, await (await fetch(`./${id}.boxes.json`)).json());
+  return cache.get(id);
+}
+
+for (const select of [document.getElementById("p1"), document.getElementById("p2")]) {
+  select.innerHTML = index.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+}
+document.getElementById("p1").value = "ryu";
+document.getElementById("p2").value = "ken";
+
+/* ---- input --------------------------------------------------------------- */
+
+const down = new Set();
+addEventListener("keydown", (e) => {
+  if (KEYS.has(e.key.toLowerCase())) e.preventDefault();
+  down.add(e.key.toLowerCase());
+});
+addEventListener("keyup", (e) => down.delete(e.key.toLowerCase()));
+
+const P1 = { up: "w", down: "s", left: "a", right: "d", LP: "u", MP: "i", HP: "o", LK: "j", MK: "k", HK: "l" };
+const P2 = {
+  up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright",
+  LP: "1", MP: "2", HP: "3", LK: "4", MK: "5", HK: "6",
+};
+const KEYS = new Set([...Object.values(P1), ...Object.values(P2)]);
+
+/** Held keys as one numpad direction plus the buttons that are down. */
+function read(map) {
+  const x = (down.has(map.right) ? 1 : 0) - (down.has(map.left) ? 1 : 0);
+  const y = (down.has(map.up) ? 1 : 0) - (down.has(map.down) ? 1 : 0);
+  const dir = 5 + x + y * 3;
+  const buttons = ["LP", "MP", "HP", "LK", "MK", "HK"].filter((b) => down.has(map[b]));
+  return hold(dir, buttons);
+}
+
+/* ---- the match ----------------------------------------------------------- */
+
+let match = null;
+let paused = false;
+let showBoxes = true;
+let logged = 0;
+
+async function reset() {
+  const a = await geometry(document.getElementById("p1").value);
+  const b = await geometry(document.getElementById("p2").value);
+  match = new Match(a, b, { distance: 220 });
+  logged = 0;
+  document.getElementById("log").innerHTML = "";
+  document.getElementById("n1").textContent = a.character;
+  document.getElementById("n2").textContent = b.character;
+}
+
+document.getElementById("reset").onclick = reset;
+document.getElementById("p1").onchange = reset;
+document.getElementById("p2").onchange = reset;
+document.getElementById("pause").onclick = (e) => {
+  paused = !paused;
+  e.target.setAttribute("aria-pressed", String(paused));
+};
+document.getElementById("boxes").onclick = (e) => {
+  showBoxes = !showBoxes;
+  e.target.setAttribute("aria-pressed", String(showBoxes));
+};
+document.getElementById("step").onclick = () => {
+  paused = true;
+  document.getElementById("pause").setAttribute("aria-pressed", "true");
+  tick();
+};
+
+function tick() {
+  if (!match || match.over) return;
+  match.advance(read(P1), read(P2));
+}
+
+/* ---- drawing ------------------------------------------------------------- */
+
+/** A fighter's boxes in world space: the runtime's own placement, mirrored. */
+function boxesOf(fighter) {
+  const { action, frame, facing } = fighter.state;
+  const at = fighter.position();
+  const origin = originAt(action, frame);
+  const place = (b) => {
+    const y = b.y + origin.y;
+    const x = facing === 1 ? at.x + b.x : at.x - (b.x + b.width);
+    return { x, y, width: b.width, height: b.height };
+  };
+  return {
+    hurt: hurtboxesAt(action, frame).map(place),
+    hit: hitboxesAt(action, frame).map(place),
+    push: pushboxesAt(action, frame).map((p) => place(p)),
+  };
+}
+
+function draw() {
+  const dpr = devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!match) return;
+
+  const [a, b] = match.fighters;
+  const mid = (a.position().x + b.position().x) / 2;
+  // Keep both fighters and a comfortable margin on screen; never zoom past 1:1.
+  const span = Math.max(560, Math.abs(b.position().x - a.position().x) + 420);
+  // A fighter is about 210 units tall; leave headroom for a jump without letting
+  // the pair shrink to nothing when they are far apart.
+  const scale = Math.min(w / span, h / 330);
+  const ground = h - 56;
+  const sx = (x) => w / 2 + (x - mid) * scale;
+  const sy = (y) => ground - y * scale;
+
+  // floor
+  ctx.strokeStyle = "#20252e";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, ground + 0.5);
+  ctx.lineTo(w, ground + 0.5);
+  ctx.stroke();
+  ctx.fillStyle = "#151920";
+  for (let x = Math.ceil((mid - span / 2) / 100) * 100; x < mid + span / 2; x += 100) {
+    ctx.fillRect(sx(x), ground + 4, 1, 10);
+  }
+
+  for (const [i, fighter] of match.fighters.entries()) {
+    const boxes = boxesOf(fighter);
+    const tint = i === 0 ? "#38bdf8" : "#fb7185";
+    const rect = (bx, stroke, fill) => {
+      ctx.strokeStyle = stroke;
+      ctx.fillStyle = fill;
+      const x = sx(bx.x);
+      const y = sy(bx.y + bx.height);
+      const bw = bx.width * scale;
+      const bh = bx.height * scale;
+      ctx.fillRect(x, y, bw, bh);
+      ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
+    };
+    if (showBoxes) {
+      for (const p of boxes.push) rect(p, "rgba(107,114,128,.6)", "rgba(107,114,128,.08)");
+      for (const hb of boxes.hurt) rect(hb, "rgba(59,130,246,.75)", "rgba(59,130,246,.14)");
+      for (const hb of boxes.hit) rect(hb, "rgba(239,68,68,.95)", "rgba(239,68,68,.28)");
+    } else {
+      // Boxes off: one silhouette per fighter, from the hurtbox extents.
+      const xs = boxes.hurt.flatMap((r) => [r.x, r.x + r.width]);
+      const ys = boxes.hurt.flatMap((r) => [r.y, r.y + r.height]);
+      if (xs.length) {
+        ctx.fillStyle = tint + "33";
+        ctx.strokeStyle = tint;
+        const x = sx(Math.min(...xs));
+        const y = sy(Math.max(...ys));
+        ctx.fillRect(x, y, (Math.max(...xs) - Math.min(...xs)) * scale, (Math.max(...ys) - Math.min(...ys)) * scale);
+        ctx.strokeRect(x, y, (Math.max(...xs) - Math.min(...xs)) * scale, (Math.max(...ys) - Math.min(...ys)) * scale);
+      }
+    }
+    // origin marker and facing
+    const ox = sx(fighter.position().x);
+    ctx.fillStyle = tint;
+    ctx.fillRect(ox - 1, ground - 3, 2, 6);
+    ctx.fillRect(ox + (fighter.state.facing === 1 ? 4 : -10), ground - 1, 6, 2);
+  }
+
+  // health bars
+  for (const [i, hp] of match.health.entries()) {
+    const max = match.fighters[i].geo.fighter?.health ?? 10000;
+    const bw = w / 2 - 40;
+    const x = i === 0 ? 20 : w / 2 + 20;
+    ctx.fillStyle = "#1b1f27";
+    ctx.fillRect(x, 16, bw, 12);
+    ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";
+    const filled = Math.max(0, hp) / max * bw;
+    ctx.fillRect(i === 0 ? x + bw - filled : x, 16, filled, 12);
+  }
+}
+
+/* ---- loop ---------------------------------------------------------------- */
+
+let acc = 0;
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(now - last, 200);
+  last = now;
+  if (!paused) {
+    acc += dt;
+    while (acc >= 1000 / 60) {
+      acc -= 1000 / 60;
+      tick();
+    }
+  }
+  draw();
+  report();
+  requestAnimationFrame(frame);
+}
+
+function report() {
+  if (!match) return;
+  const [a, b] = match.fighters;
+  document.getElementById("frame").textContent = match.frame;
+  document.getElementById("a1").textContent = `${a.actionName} f${a.state.frame}${a.stunned ? ` (stun ${a.stunned})` : ""}`;
+  document.getElementById("a2").textContent = `${b.actionName} f${b.state.frame}${b.stunned ? ` (stun ${b.stunned})` : ""}`;
+  document.getElementById("gap").textContent = `${(b.position().x - a.position().x).toFixed(0)}u`;
+  const log = document.getElementById("log");
+  for (const hit of match.hits.slice(logged)) {
+    const li = document.createElement("li");
+    li.className = hit.attacker === 0 ? "p1" : "p2";
+    li.textContent = `f${hit.frame} ${hit.action} ${hit.type} — ${hit.damage} dmg, ${hit.stun}f, ${hit.reaction}`;
+    log.prepend(li);
+  }
+  logged = match.hits.length;
+}
+
+await reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

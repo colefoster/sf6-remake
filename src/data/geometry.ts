@@ -10,14 +10,7 @@
  * module is what spacing questions ("does 2MK reach from here?") are built on.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-
 import type { Box, Character, Geometry, Move } from "../domain/types.js";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DIR = join(HERE, "..", "..", "data", "geometry");
 
 /** What an attack box can be. Proximity boxes only trigger guard animations. */
 export type HitKind = "strike" | "projectile" | "throw" | "proximity";
@@ -402,26 +395,6 @@ export interface GeometryFile {
   neutralGroups: number[];
 }
 
-const cache = new Map<string, GeometryFile | undefined>();
-
-export function loadGeometry(characterId: string): GeometryFile | undefined {
-  if (!cache.has(characterId)) {
-    // The domain model slugs punctuation to hyphens (`a-k-i`) and the extractor
-    // drops it (`aki`), so five of the twenty-four fighters were reachable under
-    // one spelling and not the other — and every caller treats a miss as "no
-    // geometry" rather than an error. Try both.
-    const path = [characterId, characterId.replace(/[^a-z0-9]/gi, "")]
-      .map((id) => join(DIR, `${id}.json`))
-      .find((p) => existsSync(p));
-    cache.set(characterId, path ? (JSON.parse(readFileSync(path, "utf8")) as GeometryFile) : undefined);
-  }
-  return cache.get(characterId);
-}
-
-export function hasGeometry(character: Character): boolean {
-  return loadGeometry(character.id) !== undefined;
-}
-
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export function actionById(geo: GeometryFile, id: number): GeometryAction | undefined {
@@ -643,8 +616,7 @@ export function worldHitboxes(action: GeometryAction): { frame: number; box: Box
 }
 
 /** The frame-keyed shape `Move.geometry` is typed for, built on demand. */
-export function geometryFor(character: Character, move: Move): Geometry | undefined {
-  const geo = loadGeometry(character.id);
+export function geometryFor(geo: GeometryFile | undefined, move: Move): Geometry | undefined {
   const found = geo && actionFor(geo, move);
   if (!found) return undefined;
   const { action } = found;

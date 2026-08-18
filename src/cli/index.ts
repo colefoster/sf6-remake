@@ -27,16 +27,16 @@ import {
   hitDataFor,
   fullyInvulnerableWindows,
   invulnerableWindows,
-  loadGeometry,
   minDistance,
   originAt,
   reach,
   spawnsFrom,
   type GeometryAction,
 } from "../data/geometry.js";
+import { loadGeometry } from "../data/load-geometry.js";
 import { runScenario, type ScenarioResult } from "../sim/index.js";
-import { Fighter, type Button, type Direction } from "../game/index.js";
-import { Match } from "../game/match.js";
+import type { Button, Direction } from "../game/index.js";
+import { fighterFor, matchFor } from "../game/load.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
@@ -378,7 +378,7 @@ function printWalk(character: string, script: string): void {
     if (!Number.isInteger(d) || d < 1 || d > 9) throw new Error(`"${part}" — expected <numpad>x<frames>`);
     return { dir: d as Direction, frames: Math.max(1, Number(frames ?? 1)) };
   });
-  const fighter = new Fighter(character);
+  const fighter = fighterFor(character);
   let last = "";
   let frame = 0;
   console.log(`${character}: ${script}\n`);
@@ -422,7 +422,7 @@ function printFight(left: string, right: string, script: string, opponent?: stri
     steps.flatMap((s) => Array.from({ length: s.frames }, () => ({ dir: s.dir, buttons: s.buttons })));
   const a = flatten(one);
   const b = flatten(two);
-  const match = new Match(left, right, at !== undefined ? { distance: at } : {});
+  const match = matchFor(left, right, at !== undefined ? { distance: at } : {});
   const total = Math.max(a.length, b.length) + 120;
   console.log(`${left} vs ${right} at ${(at ?? 200)}u\n`);
   let seen = 0;

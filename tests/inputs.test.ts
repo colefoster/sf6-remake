@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import { loadGeometry, type Command } from "../src/data/geometry.js";
+import { type Command } from "../src/data/geometry.js";
+import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 
 /**

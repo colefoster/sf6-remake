@@ -167,6 +167,32 @@ npm run web
 
 Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — the viewer reports which frames connect there and the furthest distance that still lands. Moving actions are drawn along their real trajectory, with the travel path traced. Arrow keys step frames, space plays.
 
+### Playing it
+
+There is a runtime as well as an oracle. `src/game` holds a fighter on a fixed 60 fps clock — position, facing, stance, and the action it is playing — walking, crouching, jumping and dashing on the game's own actions and origin motion, with motions and buttons read from the trigger table's own input specs. `src/game/match.ts` puts two of them on one clock: pushbox separation, box-overlap contact, hit / counter / punish-counter from the defender's real state, the reaction animation the hit table asks for, stun, hitstop, knockback and health.
+
+```bash
+npm run sf6 -- fight ryu ken "2+MKx3,5x60" "3x80" --at 150
+```
+
+```
+Ryu vs Ken at 150u
+
+     7  Ryu ATK_2MK_Y2 block — 0 damage, 16f stun, into GRD_CM
+
+  200 frames — health 10000 / 10000, positions 0 / 205
+```
+
+For the version you can actually play, run the following command and open `http://localhost:8777/play.html`:
+
+```bash
+npm run play
+```
+
+Two fighters on one keyboard, drawn as their real collision boxes — hurtboxes blue, hitboxes red, pushboxes grey, flashing on their true active frames. The page runs the **same** `Match` the CLI does, bundled to 23 KB; it is not a second implementation ([ADR-0026: the fighter moves](./docs/adr/0026-the-fighter-moves-under-its-own-power.md), [ADR-0027: two fighters](./docs/adr/0027-two-fighters-and-the-reaction-the-table-asks-for.md), [ADR-0028: the viewer runs the runtime](./docs/adr/0028-the-viewer-runs-the-runtime.md)).
+
+The advantage the match leaves on a blocked move is asserted equal to the scenario player's, from two completely different code paths, neither of which reads a published number.
+
 ### The scenario player
 
 Two fighters on a shared 60 frames-per-second (fps) clock. **The scenario player reads no published number at all** — it advances the action, finds contact by box overlap at your chosen spacing, takes stun and knockback from the game's hit-data table, and takes the attacker's recovery from the action's own `MarginFrame` — or, for a move that ends in the air, from the landing it hands off to ([ADR-0011: MarginFrame is recovery](./docs/adr/0011-margin-frame-is-recovery.md), [ADR-0012: landing recovery](./docs/adr/0012-landing-recovery.md)). Comparing what the scenario player says to the published advantage is therefore two independent sources agreeing.

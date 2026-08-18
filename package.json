@@ -13,9 +13,17 @@
     "typecheck": "tsc --noEmit",
     "web:build": "node scripts/build-site.mjs",
     "geometry": "node scripts/fetch-mmdk.mjs && node scripts/extract-geometry.mjs",
-    "web": "node scripts/build-site.mjs && python3 -m http.server 8777 --directory web"
+    "web": "node scripts/build-site.mjs && python3 -m http.server 8777 --directory web",
+    "play": "node scripts/build-play.mjs && python3 -m http.server 8777 --directory web",
+    "build:play": "node scripts/build-play.mjs"
   },
-  "keywords": ["street-fighter", "sf6", "frame-data", "fgc", "engine"],
+  "keywords": [
+    "street-fighter",
+    "sf6",
+    "frame-data",
+    "fgc",
+    "engine"
+  ],
   "license": "GPL-3.0-only",
   "devDependencies": {
     "@types/node": "^22.10.0",

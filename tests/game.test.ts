@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 
-import { Fighter, type Direction, type InputFrame } from "../src/game/index.js";
-import { actionByName, loadGeometry } from "../src/data/geometry.js";
+import { type Direction, type InputFrame } from "../src/game/index.js";
+import { fighterFor } from "../src/game/load.js";
+import { actionByName} from "../src/data/geometry.js";
+import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 
 /**
@@ -19,7 +21,7 @@ const hold = (dir: Direction): InputFrame => ({ dir, buttons: [] });
 
 /** Run a script of [direction, frames] pairs and report where it ended up. */
 function play(character: string, script: [Direction, number][]) {
-  const fighter = new Fighter(character);
+  const fighter = fighterFor(character);
   const seen: string[] = [];
   const log: { name: string; x: number; y: number }[] = [];
   let peakY = 0;
@@ -162,7 +164,7 @@ describe("every fighter can be played", () => {
     for (const name of listCharacters()) {
       const geo = loadGeometry(requireCharacter(name).id);
       if (!geo) continue;
-      const fighter = new Fighter(name);
+      const fighter = fighterFor(name);
       for (let i = 0; i < 600; i++) fighter.advance(hold(dirs[i % dirs.length]!));
       for (let i = 0; i < 120; i++) fighter.advance();
       expect(`${geo.character} ${fighter.state.stance} y=${fighter.position().y}`).toBe(

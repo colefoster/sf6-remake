@@ -19,7 +19,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { armorWindows, loadGeometry } from "../data/geometry.js";
+import { armorWindows} from "../data/geometry.js";
+import { loadGeometry } from "../data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

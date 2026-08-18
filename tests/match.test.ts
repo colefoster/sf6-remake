@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 
-import { Match, hold, reactionFor } from "../src/game/match.js";
+import { hold, reactionFor } from "../src/game/match.js";
+import { matchFor } from "../src/game/load.js";
 import type { Button, Direction } from "../src/game/index.js";
-import { loadGeometry } from "../src/data/geometry.js";
+import {} from "../src/data/geometry.js";
+import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 
@@ -23,7 +25,7 @@ interface Script {
 }
 
 function fight({ p1, p2 = 5, distance = 130, frames = 160 }: Script) {
-  const match = new Match("Ryu", "Ken", { distance });
+  const match = matchFor("Ryu", "Ken", { distance });
   const flat: [Direction, Button[]][] = [];
   for (const [dir, buttons, n] of p1) for (let i = 0; i < n; i++) flat.push([dir, buttons]);
   const free: { attacker: number | null; defender: number | null } = { attacker: null, defender: null };
@@ -71,7 +73,7 @@ describe("two fighters", () => {
   it("counters a defender caught in their own start-up", () => {
     // Both press at once from a range only Ryu's button reaches. The one that
     // gets there second is mid-move, which is a counter hit and not a plain one.
-    const match = new Match("Ryu", "Ken", { distance: 130 });
+    const match = matchFor("Ryu", "Ken", { distance: 130 });
     for (let i = 0; i < 60; i++) {
       const press = i < 3;
       match.advance(hold(5, press ? ["MP"] : []), hold(5, press ? ["HK"] : []));
@@ -107,7 +109,7 @@ describe("two fighters", () => {
   it("keeps two bodies apart", () => {
     // Walking into the dummy shoves it; the two origins never come closer than
     // their pushboxes allow.
-    const match = new Match("Ryu", "Ken", { distance: 120 });
+    const match = matchFor("Ryu", "Ken", { distance: 120 });
     let closest = Infinity;
     for (let i = 0; i < 200; i++) {
       match.advance(hold(6), hold(5));
