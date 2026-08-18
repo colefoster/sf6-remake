@@ -67,6 +67,13 @@ This engine reasons about Street Fighter 6 (SF6) interactions **purely from fram
 - **Actionable-first** — the sim's version of advantage: `defenderActionable − attackerActionable`, both counted from the contact frame.
 - **Projectile actor** — a fireball the sim plays as a second body: spawned by the parent's `ShotKey`, on its own clock, travelling on its own motion, carrying its own hit data. Its advantage is therefore a **curve, not a number** — every frame it spends in the air is a frame of the thrower's recovery already spent. FAT publishes one number, and that number is the advantage **8 frames after the shot appears** (`PROJECTILE_CONTACT` in `src/verify`) — but only for a shot that travels; a stationary one is measured on contact like anything else. That is a convention of FAT's, not a mechanic, which is why it lives in the grader. A travelling *attacker* has no such offset: it carries its own recovery with it, so its first active frame is the first frame it can connect on. See `docs/adr/0023-the-sim-throws-a-fireball.md`.
 
+## Runtime
+
+- **Fighter** (`src/game`) — one side of a match on a fixed 60 Hz clock: a position, a facing, a stance and the action it is playing. Distinct from the **scenario player** (`src/sim`), which plays a single action against a passive dummy and reports a number. The fighter moves under its own power on the game's own actions and origin motion.
+- **Movement table** — the transitions *between* stances (holding forward starts a walk, releasing plays its `END`). The first thing in this project **asserted rather than measured**: the actions and their lengths are in the dump, the seams between them are not. Kept in one literal in `src/game/index.ts`. See `docs/adr/0026-the-fighter-moves-under-its-own-power.md`.
+- **Branch** — an action handing over to another on a given frame. Type 0 is the sequential handoff (a walk's `START` becoming its `Loop`); type 47 is the **burnout swap**, present on every ground state and pointing at the `_tired` twin.
+- **Edge history** — the input reader's memory: the directions the player has been *through*, not what was held each frame. A held forward is one entry, which is what stops the `66` dash command matching a walk.
+
 ## Move taxonomy
 
 - **Normal** — a punch/kick with a directional prefix: `5` neutral, `2` down, `j` jump; strength `LP MP HP LK MK HK`. Notation like `2MK` = crouching medium kick.

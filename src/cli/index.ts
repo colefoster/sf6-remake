@@ -35,6 +35,7 @@ import {
   type GeometryAction,
 } from "../data/geometry.js";
 import { runScenario, type ScenarioResult } from "../sim/index.js";
+import { Fighter, type Direction } from "../game/index.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
@@ -123,6 +124,8 @@ COMMANDS
                                    frames connect.  --at <units> --vs <char> --crouch
   verify [char ...]                Grade the game's dumped data against the
                                    published frame data. No args = whole roster.
+  walk <char> <script>             Play a fighter through held directions:
+                                   6x60,5x5,9x5,5x60 walks, releases, jumps.
   play <char> <move>               Run the move against a dummy frame by frame:
                                    contact, stun, knockback, who acts first.
                                    --at <units> --vs <char> --on hit --crouch --meaty N
@@ -302,6 +305,12 @@ function main(): void {
         return;
       }
 
+      case "walk": {
+        const c = requireCharacter(p[0] ?? fail("walk <char> <script>   e.g. sf6 walk ryu 6x60,5x5,9x5,5x60"));
+        printWalk(c.name, p[1] ?? fail("walk <char> <script>   e.g. 6x60,5x5,9x5,5x60"));
+        return;
+      }
+
       case "boxes": {
         const c = requireCharacter(p[0] ?? fail("boxes <char> <move> [--at N] [--vs <char>] [--crouch]"));
         const m = requireCharacterMove(c, p[1]);
@@ -343,6 +352,41 @@ function frameRanges(frames: number[]): string {
     else spans.push([frame, frame]);
   }
   return spans.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", ");
+}
+
+/**
+ * Play a fighter through a script of held directions and print what it did.
+ *
+ * The script is numpad directions with frame counts: `6x60,5x5,9x5,5x60` is
+ * "walk forward for a second, let go, jump forward, land". One line per action
+ * the fighter entered, so a double tap reading `BAS_DASH_F` is visible.
+ */
+function printWalk(character: string, script: string): void {
+  const steps = script.split(",").map((part) => {
+    const [dir, frames] = part.trim().split("x");
+    const d = Number(dir);
+    if (!Number.isInteger(d) || d < 1 || d > 9) throw new Error(`"${part}" — expected <numpad>x<frames>`);
+    return { dir: d as Direction, frames: Math.max(1, Number(frames ?? 1)) };
+  });
+  const fighter = new Fighter(character);
+  let last = "";
+  let frame = 0;
+  console.log(`${character}: ${script}\n`);
+  for (const step of steps) {
+    for (let i = 0; i < step.frames; i++) {
+      fighter.advance({ dir: step.dir, buttons: [] });
+      frame++;
+      if (fighter.actionName === last) continue;
+      last = fighter.actionName;
+      const at = fighter.position();
+      console.log(
+        `  ${String(frame).padStart(4)}  ${last.padEnd(22)} ` +
+          `x ${at.x.toFixed(1).padStart(8)}   y ${at.y.toFixed(1).padStart(6)}   ${fighter.state.stance}`,
+      );
+    }
+  }
+  const end = fighter.position();
+  console.log(`\n  ${frame} frames, ended at x ${end.x.toFixed(1)} in ${fighter.actionName}`);
 }
 
 function printBoxes(character: Character, move: Move, args: Args): void {

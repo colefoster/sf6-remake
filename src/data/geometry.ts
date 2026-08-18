@@ -421,6 +421,11 @@ export function actionById(geo: GeometryFile, id: number): GeometryAction | unde
   return geo.actions.find((a) => a.id === id);
 }
 
+/** By the game's own action name (`BAS_FORWARD_Loop`), exactly. */
+export function actionByName(geo: GeometryFile, name: string): GeometryAction | undefined {
+  return geo.actions.find((a) => a.name === name);
+}
+
 /** The action a move maps to, plus how much to trust the mapping. */
 export function actionFor(
   geo: GeometryFile,
