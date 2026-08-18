@@ -179,6 +179,13 @@ export interface GeometryAction {
   push: PushKey[];
   motion?: Motion;
   cancels?: CancelKey[];
+  /**
+   * Projectiles this action spawns, from its `ShotKey`. A fireball is its own
+   * action with its own timeline, so the parent carries no hitbox at all and
+   * `frame` — the frame the shot appears on — is the move's startup.
+   * See ADR-0022.
+   */
+  shots?: { action: number; frame: number; offset: { x: number; y: number } }[];
   /** Where an airborne action puts itself down, and that action's own margin. */
   lands?: { action: number; margin: number };
   branches?: { frame: number; action: number; type: number | null }[];
@@ -348,6 +355,32 @@ export function actionFor(
 
 const covers = (key: { start: number; end: number }, frame: number): boolean =>
   frame >= key.start && frame <= key.end;
+
+/** A projectile an action spawns: when, where, and the fireball's own action. */
+export interface Spawn {
+  /** Frame of the parent action the shot appears on — the move's startup. */
+  frame: number;
+  /** Game units from the character origin, the same frame as every box. */
+  offset: { x: number; y: number };
+  action: GeometryAction;
+}
+
+/**
+ * The projectiles an action throws.
+ *
+ * A fireball's hitbox is not on the move that threw it: `ShotKey` names a
+ * separate action which starts its own timeline at the spawn frame. That is why
+ * a projectile special has no hitbox of its own, and why `reach` on the parent
+ * says nothing. See ADR-0022.
+ */
+export function spawnsFrom(geo: GeometryFile, action: GeometryAction): Spawn[] {
+  const out: Spawn[] = [];
+  for (const shot of action.shots ?? []) {
+    const spawned = actionById(geo, shot.action);
+    if (spawned) out.push({ frame: shot.frame, offset: shot.offset, action: spawned });
+  }
+  return out;
+}
 
 /** Attack boxes live this frame, proximity boxes excluded. */
 export function hitboxesAt(action: GeometryAction, frame: number): Box[] {

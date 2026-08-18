@@ -5,6 +5,9 @@
 - Extends: [ADR-0016](./0016-armor-is-per-hurtbox.md),
   [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md),
   [ADR-0018](./0018-cmnname-says-what-a-move-is.md)
+- Extended by:
+  [ADR-0022](./0022-a-fireballs-startup-is-the-frame-it-spawns-on.md) — `ShotKey`
+  gives the fireball families a startup to score, so they map too.
 
 ## Context
 
@@ -144,15 +147,12 @@ handling of specials shows up as a test break rather than passing silently.
   the two are pinned by name in the test. What would settle it is a field: both
   are OD specials, and no OD flag by itself predicts Armor Break, since most OD
   specials do not have it.
-- **Fireballs cannot be mapped this way.** A projectile special's own action
-  carries no hitbox — the projectile is a separate `… PROJ` action — and the
-  frame it spawns on is not extracted, so there is no startup to score and the
-  family is skipped. Ryu's Hadoken and Hashogeki are both unmapped for this
-  reason. Extracting the spawn key would close it, and would also give the
-  projectile checks in ADR-0014 more to grade.
-- **381 specials remain unmapped**, mostly follow-ups, charge variants and air
-  versions whose notation carries no strength (`214P (charged)`, `214K (air)`),
-  plus the fireball families above.
+- ~~**Fireballs cannot be mapped this way.**~~ Closed by
+  [ADR-0022](./0022-a-fireballs-startup-is-the-frame-it-spawns-on.md): the parent
+  action's `ShotKey` names the projectile's action and the frame it spawns on,
+  and that frame is FAT's published startup. Specials go 193 → **234** exact.
+- **329 specials remain unmapped**, mostly follow-ups, charge variants and air
+  versions whose notation carries no strength (`214P (charged)`, `214K (air)`).
 - **The two armor windows that miss are both OD** — Marisa's `623PP` (FAT 6-17 vs
   dump 6-12) and E.Honda's `46PP` (1-8 vs 1-56). The Honda one is on an `_AIR`
   action, so it may be the wrong sibling of the family rather than a bad window.

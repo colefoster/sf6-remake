@@ -11,6 +11,7 @@ import {
   armoredAt,
   armorWindows,
   fullyInvulnerableWindows,
+  spawnsFrom,
   inFatFrames,
   hurtboxesAt,
   loadGeometry,
@@ -59,7 +60,7 @@ describe("the game's data against the published frame data", () => {
   });
 
   it("grades the specials ADR-0021 mapped, and says where they are weak", () => {
-    // 193 specials map exact where none did before, so they are a graded
+    // 234 specials map exact where none did before, so they are a graded
     // population now — and not an equal one. `total` says the mapping is right:
     // the action's own MarginFrame agrees with FAT on most of them. `advantage`
     // says the sim is wrong about them, which is a different problem and a real
@@ -592,6 +593,56 @@ describe("armor against the published notes", () => {
     ]);
   });
 
+  it("reads a fireball's startup off the frame it spawns on", () => {
+    // A projectile special's own action has no hitbox at all: `ShotKey` names a
+    // separate action for the fireball, which starts its own timeline when it
+    // appears. The spawn frame is what FAT publishes as the startup, and before
+    // ADR-0022 there was no number on the parent to compare with anything.
+    const ryu = loadGeometry("ryu")!;
+    const hado = ryu.actions.find((a) => a.name === "SPA_HADO")!;
+    expect(hado.hit.filter((h) => h.kind !== "proximity")).toEqual([]);
+    expect(hado.shots).toEqual([{ action: 909, frame: 16, offset: { x: 79, y: 110 } }]);
+    const [spawn] = spawnsFrom(ryu, hado);
+    expect(spawn!.action.name).toBe("SPA_HADO PROJ");
+    expect(ryu.moves.find((m) => m.input === "236LP")).toMatchObject({
+      actionName: "SPA_HADO",
+      match: "exact",
+      startup: 16,
+      startupDelta: 0,
+    });
+
+    // Roster-wide: every move whose action throws rather than hits, graded on
+    // the spawn frame alone.
+    let checked = 0;
+    let exact = 0;
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      for (const move of geo.moves) {
+        const action = geo.actions.find((a) => a.id === move.action);
+        if (!action?.shots?.length) continue;
+        if (action.hit.some((h) => h.kind !== "proximity")) continue;
+        checked++;
+        if (move.startupDelta === 0) exact++;
+      }
+    }
+    expect(checked).toBeGreaterThan(60);
+    expect(exact / checked).toBeGreaterThan(0.7);
+  });
+
+  it("prefers a rebalanced action only when the frames cannot separate them", () => {
+    // The `_Y2` preference was a filter until ADR-0022 gave shot-only actions a
+    // signature, at which point Juri's `ATK_5MP_TC2_SA1_Y2` — a super handoff,
+    // and the only `_Y2` among her `ATK_5MP*` — captured her 5MP at a delta of
+    // 73. It is a tie-break now, so the frames decide first.
+    const juri = loadGeometry("juri")!;
+    const move = juri.moves.find((m) => m.input === "5MP")!;
+    const action = juri.actions.find((a) => a.id === move.action)!;
+    expect(`${move.match} ${action.shots ? "throws" : "hits"}`).toBe("exact hits");
+    expect(action.name).toMatch(/^ATK_5MP/);
+    expect(action.name).not.toContain("SA1");
+  });
+
   it("maps specials through the triggers' own family and strength", () => {
     // ADR-0018 had 0 specials solidly mapped: their actions carry Japanese move
     // names, so nothing matches by string. The triggers classify them —
@@ -604,7 +655,7 @@ describe("armor against the published notes", () => {
       if (!geo) continue;
       exact += geo.moves.filter((m) => m.category === "special" && m.match === "exact").length;
     }
-    expect(exact).toBeGreaterThan(180);
+    expect(exact).toBeGreaterThan(220);
 
     // The family lands as a family: one dump stem, the strengths in order.
     const ryu = loadGeometry("ryu")!;

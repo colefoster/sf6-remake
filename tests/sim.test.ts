@@ -15,7 +15,13 @@ function checkable(name: string): Move[] {
   const geo = loadGeometry(character.id)!;
   return character.moves.filter((move) => {
     const raw = move.raw ?? {};
-    if (!actionFor(geo, move)) return false;
+    const found = actionFor(geo, move);
+    if (!found) return false;
+    // The sim resolves contact from hitbox overlap, so a move whose action has
+    // no hitbox of its own is not something it can get wrong — it is something
+    // it cannot attempt. ADR-0022 mapped the fireballs, whose hitbox belongs to
+    // the projectile's own action; modelling those is ADR-0021's open sim work.
+    if (!found.action.hit.some((h) => h.kind !== "proximity")) return false;
     if (move.onBlock === undefined || move.onHit === undefined) return false;
     return !(raw.active || raw.onBlock || raw.onHit || raw.recovery);
   });

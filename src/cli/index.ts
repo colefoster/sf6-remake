@@ -31,6 +31,7 @@ import {
   minDistance,
   originAt,
   reach,
+  spawnsFrom,
   type GeometryAction,
 } from "../data/geometry.js";
 import { runScenario, type ScenarioResult } from "../sim/index.js";
@@ -373,6 +374,15 @@ function printBoxes(character: Character, move: Move, args: Args): void {
     ws.map((w) => `${w.start}-${w.end}`).join(", ");
   // Frames with no hurtbox at all are invulnerable to every kind, so printing
   // them once as `everything` says more than three identical lines. See ADR-0020.
+  for (const shot of spawnsFrom(geo, action)) {
+    // The parent action has no hitbox at all: the fireball is this other action,
+    // and the frame it appears on is what FAT publishes as the startup. ADR-0022.
+    const live = activeWindows(shot.action);
+    console.log(
+      `  projectile   ${shot.action.name} spawns frame ${shot.frame} at ` +
+        `(${shot.offset.x}, ${shot.offset.y}), active ${live.map((w) => `${w.start}-${w.end}`).join(", ") || "none"}`,
+    );
+  }
   const full = fullyInvulnerableWindows(action);
   if (full.length) console.log(`  invuln       ${ranges(full)} to everything`);
   for (const kind of ["airborne-strike", "projectile", "strike"] as const) {

@@ -270,12 +270,39 @@ function extractAction(action, rect, unresolvedPush) {
     push,
   };
   if (cancels.length) out.cancels = cancels;
+  const shots = extractShots(action);
+  if (shots.length) out.shots = shots;
   const motion = extractMotion(action, fab.Frame);
   if (motion) out.motion = motion;
   if (branches.length) out.branches = dedupeBranches(branches);
   if (freezes.length) out.freeze = Math.max(...freezes);
   if (action.mot_name) out.mot = action.mot_name;
   return out;
+}
+
+/**
+ * `ShotKey` is where a projectile comes from: which action the fireball itself
+ * is, the frame it is spawned on, and where relative to the origin it appears.
+ *
+ * It is what makes a fireball gradeable at all. A projectile special's own
+ * action carries no hitbox — the fireball is a separate action with its own
+ * timeline starting at its frame 1 — so before this there was no startup on the
+ * parent to compare with anything. The spawn frame is that startup: Ryu's
+ * `SPA_HADO` spawns on 15 (0-indexed) and FAT publishes LP Hadoken at 16.
+ * See docs/adr/0022.
+ */
+function extractShots(action) {
+  const out = [];
+  for (const key of ordered(action.ShotKey)) {
+    if (typeof key.ActionId !== "number" || key.ActionId < 0) continue;
+    out.push({
+      action: key.ActionId,
+      frame: key._StartFrame + 1,
+      // Game units from the character origin, the same frame as every box.
+      offset: { x: key.PosOffset?.x ?? 0, y: key.PosOffset?.y ?? 0 },
+    });
+  }
+  return out.sort((a, b) => a.frame - b.frame || a.action - b.action);
 }
 
 /**
@@ -544,10 +571,25 @@ function spliceContinuations(actions) {
 }
 
 /** Startup / active as the frame data would read them, from the hit keys. */
-function signature(action) {
-  const strikes = action.hit.filter((h) => h.kind !== "proximity");
+function signature(action, byId) {
+  let strikes = action.hit.filter((h) => h.kind !== "proximity");
+  // A fireball's own action has no hitbox: it spawns one. The startup is the
+  // frame it spawns on, and the active window belongs to the projectile's own
+  // action. Without this a projectile special has no frames to match on at all,
+  // which is why every fireball family was unmapped. See docs/adr/0022.
+  let spawn;
+  if (!strikes.length && action.shots?.length && byId) {
+    for (const shot of action.shots) {
+      const projectile = byId.get(shot.action);
+      const own = projectile?.hit.filter((h) => h.kind !== "proximity") ?? [];
+      if (!own.length) continue;
+      spawn = shot.frame;
+      strikes = own;
+      break;
+    }
+  }
   if (!strikes.length) return null;
-  const start = Math.min(...strikes.map((h) => h.start));
+  const start = spawn ?? Math.min(...strikes.map((h) => h.start));
   // Contiguous keys are one active window; a gap means a multi-hit move.
   const windows = [];
   for (const h of [...strikes].sort((a, b) => a.start - b.start)) {
@@ -787,14 +829,15 @@ function mapMove(fatMove, actions, sigs, superActions, specials) {
         ? [specialAction]
         : candidatesFor(fatMove.numCmd, actions).filter((a) => !isSystemAction(a.name));
 
-  // Prefer the newest rebalance of a move when both are present.
-  const years = pool.filter((a) => /_Y\d$/.test(a.name));
-  if (years.length) pool = years;
-
   // A frozen action's frames run `freeze - 1` later than FAT's, so the comparison
   // has to happen in one frame space. The `- 1` is the frame the freeze and the
   // startup share, the same off-by-one CONTEXT.md's `total` identity carries.
   const inFatSpace = (action, startup) => (action.freeze ? startup - action.freeze + 1 : startup);
+  // Prefer the newest rebalance of a move, but only between candidates the frames
+  // cannot separate. As a filter it was a trap once ADR-0022 gave shot-only
+  // actions a signature: Juri's only `_Y2` named `ATK_5MP*` is a super handoff,
+  // and preferring it outright took her 5MP off `ATK_5MP` at a delta of 73.
+  const year = (a) => (/_Y\d$/.test(a.name) ? 0 : 1);
   const scored = pool
     .map((a) => ({ action: a, sig: sigs.get(a.id) }))
     .filter((c) => c.sig)
@@ -803,7 +846,7 @@ function mapMove(fatMove, actions, sigs, superActions, specials) {
       delta:
         fatStartup === undefined ? null : Math.abs(inFatSpace(c.action, c.sig.startup) - fatStartup),
     }))
-    .sort((a, b) => (a.delta ?? 99) - (b.delta ?? 99));
+    .sort((a, b) => (a.delta ?? 99) - (b.delta ?? 99) || year(a.action) - year(b.action));
 
   const best = scored[0];
   if (best && best.delta !== null && best.delta <= 1) {
@@ -990,7 +1033,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     const lands = extractLanding(action, byId);
     if (lands) action.lands = lands;
   }
-  const sigs = new Map(actions.map((a) => [a.id, signature(a)]));
+  const sigs = new Map(actions.map((a) => [a.id, signature(a, byId)]));
 
   const fatMoves = Object.values(fat.moves.normal);
   const superActions = superActionsByLevel(triggerFile);
