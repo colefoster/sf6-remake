@@ -1,24 +1,27 @@
 # sf6-engine
 
-A **headless (CLI) Street Fighter 6 frame-data engine**. No GUI, no rendering — you ask it a question about an interaction and it answers from the real frame data.
+A **headless Street Fighter 6 frame-data engine**, driven from a command-line interface (CLI). No graphical interface, no rendering — you ask it a question about an interaction and it answers from the real frame data.
 
 > Can I do 2MK into Hadoken on block and stay safe? Is a blocked HP Shoryuken punishable, and by what? Is this two-move string a true blockstring or a frame trap?
 
-Built on the community-standard **FAT** frame-data set (all 30 characters). See [`CONTEXT.md`](./CONTEXT.md) for the exact vocabulary the engine uses and [`docs/adr/`](./docs/adr) for the design decisions.
+Built on the community-standard **Frame Assistant Tool (FAT)** frame-data set, covering all 30 characters. See [`CONTEXT.md`](./CONTEXT.md) for the exact vocabulary the engine uses, and the [architecture decision records (ADRs)](./docs/adr) for the design decisions.
 
 ## Install
+
+To install the dependencies, run the following command:
 
 ```bash
 npm install
 ```
 
-(If npm gates `esbuild`'s install script, run `npm approve-scripts esbuild && npm rebuild esbuild`.)
+If npm gates the `esbuild` install script, then run `npm approve-scripts esbuild && npm rebuild esbuild`.
 
 ## Use
 
+Run a command through npm, or call the CLI entry point directly:
+
 ```bash
 npm run sf6 -- <command> [args] [--on block|hit] [--meaty N]
-# or directly:
 npx tsx src/cli/index.ts <command> ...
 ```
 
@@ -42,34 +45,69 @@ Moves accept **notation** (`2mk`, `236lp`), **ids**, or **name fragments** (`had
 
 ### Examples
 
+The flagship question — 2MK canceled into Hadoken on block, plus or minus:
+
 ```bash
-# The flagship: 2MK xx Hadoken from block — plus or minus?
-$ npm run sf6 -- seq ryu 2mk 236lp --on block
+npm run sf6 -- seq ryu 2mk 236lp --on block
+```
+
+The output is similar to the following:
+
+```
 Crouch MK -> LP Hadoken  (on block)
   Crouch MK xx LP Hadoken: CANCEL (no gap — recovery erased)
 ending advantage: -5  ->  MINUS ❌
 this is a TRUE blockstring
+```
 
-# Same on hit:
-$ npm run sf6 -- seq ryu 2mk 236lp --on hit
+To ask the same question on hit, run the following command:
+
+```bash
+npm run sf6 -- seq ryu 2mk 236lp --on hit
+```
+
+The output is similar to the following:
+
+```
 ending advantage: +2  ->  PLUS ✅
+```
 
-# Can Ken punish a blocked HP Shoryuken?
-$ npm run sf6 -- punish ryu 623hp --by ken
+To find out whether Ken can punish a blocked HP Shoryuken, run the following command:
+
+```bash
+npm run sf6 -- punish ryu 623hp --by ken
+```
+
+The output is similar to the following:
+
+```
 punishable: window 39f
 fastest punish by ken: Stand LP (5LP, 4f) — PUNISH COUNTER
+```
 
-# Meaty timing flips a minus move plus:
-$ npm run sf6 -- adv ryu 5hp --meaty 3
+Meaty timing flips a minus move plus:
+
+```bash
+npm run sf6 -- adv ryu 5hp --meaty 3
+```
+
+The output is similar to the following:
+
+```
 Stand HP on block (meaty 3 deep): +1  ->  PLUS ✅
 ```
 
 ### Spacing and boxes
 
-Per-frame hitbox/hurtbox geometry is extracted from the game's own collision data (see [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md)) for **all 24 characters MMDK dumps** — the Season 1 and 2 roster.
+Per-frame hitbox and hurtbox geometry is extracted from the game's own collision data (see [ADR-0004: hitbox geometry from MMDK dumps](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md)). It covers **all 24 characters that the Modding Dev Kit (MMDK) dumps** — the Season 1 and 2 roster.
 
 ```bash
-$ npm run sf6 -- boxes ryu 2mk --at 140
+npm run sf6 -- boxes ryu 2mk --at 140
+```
+
+The output is similar to the following:
+
+```
 Ryu — Crouch MK (2MK)
   action       ATK_2MK_Y2 (#640)
   active       8-10
@@ -89,13 +127,13 @@ Ryu — Crouch MK (2MK)
 
 Distances are measured from where the attacker stood when the move began, so a move's reach includes its step-in — 2MK's box only covers 142 units, but Ryu walks 46 of them into it.
 
-The stun, damage and knockback numbers are the game's own, from its hit-data table — which is also how we found that **blockstun runs 4 frames longer than on-block advantage implies** ([ADR-0006](./docs/adr/0006-hit-data.md)). Counter hit really is exactly +2 frames and punish counter +4, on every move checked.
+The stun, damage, and knockback numbers are the game's own, from its hit-data table — which is also how we found that **blockstun runs 4 frames longer than on-block advantage implies** ([ADR-0006: hit data](./docs/adr/0006-hit-data.md)). Counter hit is exactly +2 frames and punish counter +4, on every move checked.
 
-Cancel windows come from the same dumps: which frames of a move a special can be cancelled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008](./docs/adr/0008-cancel-windows.md)).
+Cancel windows come from the same dumps: which frames of a move a special can be canceled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008: cancel windows](./docs/adr/0008-cancel-windows.md)).
 
-Air-only options are marked: `_State` carries an airborne gate that reads cleanly, though the rest of `ConditionFlag` does not ([ADR-0013](./docs/adr/0013-conditionflag.md)). Each option carries its price, and the prices are the game's own — EX two bars of Drive, Drive Impact one, a Drive Rush cancel three, SA1/SA2/SA3 one/two/three bars of super, and a 4-frame input buffer on nearly everything ([ADR-0009](./docs/adr/0009-what-a-cancel-costs.md)).
+Air-only options are marked: `_State` carries an airborne gate that reads cleanly, though the rest of `ConditionFlag` does not ([ADR-0013: ConditionFlag](./docs/adr/0013-conditionflag.md)). Each option carries its price, and the prices are the game's own — EX two bars of Drive, Drive Impact one, a Drive Rush cancel three, Super Arts (SA) 1, 2, and 3 one, two, and three bars of super, and a 4-frame input buffer on nearly everything ([ADR-0009: what a cancel costs](./docs/adr/0009-what-a-cancel-costs.md)).
 
-Add a character:
+To add a character, run the following commands:
 
 ```bash
 node scripts/fetch-mmdk.mjs Ken        # downloads MMDK's dump (gitignored)
@@ -104,18 +142,25 @@ node scripts/extract-geometry.mjs Ken  # -> data/geometry/ken.json + web/ken.box
 
 ### The box viewer
 
+To start the viewer, run the following command, then open `http://localhost:8777/boxes.html`:
+
 ```bash
-npm run web        # then open http://localhost:8777/boxes.html
+npm run web
 ```
 
-Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — it reports which frames connect there and the furthest distance that still lands. Moving actions are drawn along their real trajectory, with the travel path traced. Arrow keys step frames, space plays.
+Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — the viewer reports which frames connect there and the furthest distance that still lands. Moving actions are drawn along their real trajectory, with the travel path traced. Arrow keys step frames, space plays.
 
 ### The scenario player
 
-Two fighters on a shared 60 fps clock. **It reads no published number at all** — it advances the action, finds contact by box overlap at your chosen spacing, takes stun and knockback from the game's hit-data table, and takes the attacker's recovery from the action's own `MarginFrame` — or, for a move that ends in the air, from the landing it hands off to ([ADR-0011](./docs/adr/0011-margin-frame-is-recovery.md), [ADR-0012](./docs/adr/0012-landing-recovery.md)). Comparing what it says to the published advantage is therefore two independent sources agreeing.
+Two fighters on a shared 60 frames-per-second (fps) clock. **The scenario player reads no published number at all** — it advances the action, finds contact by box overlap at your chosen spacing, takes stun and knockback from the game's hit-data table, and takes the attacker's recovery from the action's own `MarginFrame` — or, for a move that ends in the air, from the landing it hands off to ([ADR-0011: MarginFrame is recovery](./docs/adr/0011-margin-frame-is-recovery.md), [ADR-0012: landing recovery](./docs/adr/0012-landing-recovery.md)). Comparing what the scenario player says to the published advantage is therefore two independent sources agreeing.
 
 ```bash
-$ npm run sf6 -- play ryu 2mk --at 150
+npm run sf6 -- play ryu 2mk --at 150
+```
+
+The output is similar to the following:
+
+```
 Ryu Crouch MK (2MK) vs Ryu at 150u  [ATK_2MK_Y2]
   f  8  hitbox out at 150u
   f  8  block at 150u — 0 damage, 20f stun, 9f hitstop
@@ -128,7 +173,7 @@ pushed to 205u (from 150u)
 drive +1000 you, +2000 them
 ```
 
-That −6 is derived, not looked up — and it's what the published frame data says. Across the roster the sim reproduces published on-block advantage on **87% of cleanly mapped normals**, and the misses are the moves `sf6 verify` already flags as disagreeing between the two sources ([ADR-0007](./docs/adr/0007-scenario-player.md), [ADR-0011](./docs/adr/0011-margin-frame-is-recovery.md)).
+That −6 is derived, not looked up — and it's what the published frame data says. Across the roster the scenario player reproduces published on-block advantage on **87% of cleanly mapped normals**, and the misses are the moves `sf6 verify` already reports as disagreeing between the two sources ([ADR-0007: scenario player](./docs/adr/0007-scenario-player.md), [ADR-0011: MarginFrame is recovery](./docs/adr/0011-margin-frame-is-recovery.md)).
 
 ## How it works
 
@@ -138,7 +183,7 @@ Everything derives from a few identities documented in [`CONTEXT.md`](./CONTEXT.
 - **Meaty** hitting `d` frames deep adds `d` to advantage.
 - **Punish**: `Y` punishes `X` iff `Y.startup ≤ −X.onBlock` (and it's always a Punish Counter in SF6).
 - **Gap** between blocked `A→B` is `B.startup − advantageAfter(A)`; `≤ 0` = true blockstring.
-- **Cancel** (`A xx B`) erases `A`'s recovery, so the ending advantage is `B`'s own.
+- **Cancel** (`A xx B`) erases the recovery of `A`, so the ending advantage is the advantage of `B`.
 
 ## Architecture
 
@@ -166,30 +211,37 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   116 tests, incl. assertions against the real data
+tests/                   116 tests, including assertions against the real data
 ```
 
 ## Known limitations
 
-- **Geometry covers the 24 characters MMDK dumps**, and those dumps are a late-2024 snapshot of the game — so pre-Season-3 balance. FAT's six newer characters (Alex, C.Viper, Elena, Ingrid, Mai, Sagat) have no geometry and fall back to its coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
-- **Motion is per action, not composed across actions.** A jump attack is its own action and doesn't inherit the arc of the jump it came from, so air normals show at ground level. See [ADR-0005](./docs/adr/0005-origin-motion-from-place-and-steer-keys.md).
-- **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
-- **The dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`). Cancel windows, costs and buffers are extracted now ([ADR-0008](./docs/adr/0008-cancel-windows.md), [ADR-0009](./docs/adr/0009-what-a-cancel-costs.md)) — what's missing is a policy for choosing among them, and a sim that spends the meter it can read.
-- **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
+- **Geometry covers the 24 characters that MMDK dumps**, and those dumps are a late-2024 snapshot of the game — so pre-Season-3 balance. The six FAT characters without geometry (Alex, C.Viper, Elena, Ingrid, Mai, and Sagat) fall back to the coarse `reach` scalar that FAT publishes. See [ADR-0004: hitbox geometry from MMDK dumps](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
+- **Motion is per action, not composed across actions.** A jump attack is its own action and doesn't inherit the arc of the jump it came from, so air normals show at ground level. See [ADR-0005: origin motion from place and steer keys](./docs/adr/0005-origin-motion-from-place-and-steer-keys.md).
+- **Multi-hit and conditional frame values** (for example, `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
+- **The training dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`). Cancel windows, costs, and buffers are extracted ([ADR-0008: cancel windows](./docs/adr/0008-cancel-windows.md), [ADR-0009: what a cancel costs](./docs/adr/0009-what-a-cancel-costs.md)) — what's missing is a policy for choosing among them, and a scenario player that spends the meter it can read.
+- **Cancel-advantage** uses the first-order model, where the ending advantage is the advantage of the canceled-into move. You can supply exact per-cancel numbers with `move.comboAdvantage` overrides.
 
-## Test
+## Run the tests
+
+To run the test suite and the type checker, run the following commands:
 
 ```bash
 npm test          # 116 tests
 npm run typecheck
 ```
 
-### The grader
+## The grader
 
 The project has two independent descriptions of every fighter — the game's own dumped tables and the community frame data — and every finding here landed because one could be checked against the other. `sf6 verify` makes that a standing measurement rather than a claim in a document.
 
 ```bash
-$ npm run sf6 -- verify
+npm run sf6 -- verify
+```
+
+The output is similar to the following:
+
+```
 the game's dumped data vs the published frame data
 
   hitstun    269/292 92.1%      the hit table's hitstun == FAT's published hitstun
@@ -205,6 +257,6 @@ per-frame invulnerability vs the published notes
   strike           23/23 100.0%  TypeFlag without bit 0 == FAT's 'strike invincible on frame N'
 ```
 
-Invulnerability is the one thing FAT records only as prose, so that grader compares a **frame range to a sentence** ([ADR-0014](./docs/adr/0014-per-frame-invulnerability.md)).
+FAT records invulnerability only as prose, so that grader compares a **frame range to a sentence** ([ADR-0014: per-frame invulnerability](./docs/adr/0014-per-frame-invulnerability.md)).
 
-The percentages are over cleanly mapped single-hit moves; the residue is the pre-Season-3 patch skew. The most useful thing it does is let a constant be **swept** instead of asserted: the +4 guard release of [ADR-0006](./docs/adr/0006-hit-data.md) scores 93.4% at exactly +4 and under 3% at every other offset, which is a spike rather than a trend. See [ADR-0010](./docs/adr/0010-the-grader.md).
+The percentages are over cleanly mapped single-hit moves; the residue is the pre-Season-3 patch skew. The most useful thing the grader does is let a constant be **swept** instead of asserted: the +4 guard release of [ADR-0006: hit data](./docs/adr/0006-hit-data.md) scores 93.4% at exactly +4 and under 3% at every other offset, which is a spike rather than a trend. See [ADR-0010: the grader](./docs/adr/0010-the-grader.md).
