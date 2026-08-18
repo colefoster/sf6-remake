@@ -878,7 +878,10 @@ document.onkeydown = (e) => {
 };
 
 (async function init() {
-  const chars = await (await fetch("characters.json")).json();
+  // extract-geometry.mjs writes boxes-index.json; characters.json is the
+  // frame-data site's list and only covers characters that have move art.
+  const res = await fetch("boxes-index.json");
+  const chars = res.ok ? await res.json() : await (await fetch("characters.json")).json();
   const withGeometry = [];
   for (const c of chars) {
     if ((await fetch(`${c.id}.boxes.json`, { method: "HEAD" })).ok) withGeometry.push(c);

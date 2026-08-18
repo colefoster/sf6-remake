@@ -686,8 +686,10 @@ const wanted = (requested.length ? requested : ["Ryu", "Akuma"]).map((name) => {
   return { fatName, dumpDir };
 });
 
+const built = [];
 for (const { fatName, dumpDir } of wanted) {
-  const { mismatches } = await buildCharacter(fatName, dumpDir, fat[fatName], source);
+  const { id, mismatches } = await buildCharacter(fatName, dumpDir, fat[fatName], source);
+  built.push({ id, name: fatName });
   for (const m of mismatches) {
     console.log(
       `  ~ ${m.input.padEnd(16)} ${m.actionName.padEnd(16)} ` +
@@ -695,3 +697,13 @@ for (const { fatName, dumpDir } of wanted) {
     );
   }
 }
+
+// The box viewer's own character list. Separate from web/characters.json, which
+// build-site.mjs owns and which only holds characters that have move art.
+const indexPath = path.join(root, "web", "boxes-index.json");
+const existing = existsSync(indexPath) ? JSON.parse(await readFile(indexPath, "utf8")) : [];
+const merged = [...existing.filter((c) => !built.some((b) => b.id === c.id)), ...built].sort((a, b) =>
+  a.name.localeCompare(b.name),
+);
+await writeFile(indexPath, JSON.stringify(merged, null, 2));
+console.log(`boxes-index.json: ${merged.length} characters`);

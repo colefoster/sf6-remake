@@ -24,7 +24,10 @@ Populate geometry from the MMDK dumps, via two scripts:
 - `scripts/fetch-mmdk.mjs` — downloads the dumps (pinned to one commit) into
   `data/raw/mmdk/`, gitignored because they are large and unmodified upstream data.
 - `scripts/extract-geometry.mjs` — resolves them into `data/geometry/<char>.json`
-  (committed, ~250 KB per character) and a copy in `web/` for the box viewer.
+  (committed, ~600 KB per character, 14 MB for the full 24) and a copy in `web/`
+  for the box viewer. The web copy is byte-identical and gitignored: the viewer
+  is served straight out of `web/`, so it needs the file there, but the repo
+  does not need it twice.
 
 `src/data/geometry.ts` is the read side: box lookups per frame, plus `reach`
 and `connectFrames` for spacing questions. `sf6 boxes <char> <move>` and
@@ -79,6 +82,12 @@ The two stragglers are reported by the extractor rather than smoothed over.
   usable spacing is the band from there out to its reach, and any question below
   that floor is about a position the game cannot produce. The CLI and the viewer
   both refuse it rather than answering.
+- **All 24 dumped characters are extracted** (the Season 1 + 2 roster). 781 moves
+  map, 548 of them name-and-frame exact and 34 flagged `weak`. Kimberly is the
+  worst case at 10 weak, all of them target-combo follow-ups whose action names
+  the `stemsFor` heuristic does not reach. FAT's six newer characters — Alex,
+  C.Viper, Elena, Ingrid, Mai, Sagat — are not in the dumps and keep the `reach`
+  fallback.
 - **The dumps are a snapshot** of whatever patch the MMDK author last dumped
   (currently late 2024, so pre-Season-3 roster and balance). Refreshing them
   means running MMDK's own dump buttons with SF6 + REFramework on Windows; the
