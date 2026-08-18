@@ -34,6 +34,7 @@ npx tsx src/cli/index.ts <command> ...
 | `show <char> <move>` | Full frame data for a move. |
 | `moves <char> [filter]` | List a character's moves. |
 | `boxes <char> <move> [--at <units>] [--vs <char>] [--crouch]` | **Does it reach? Which frames connect at this spacing?** |
+| `play <char> <move> [--at N] [--vs <char>] [--on hit] [--meaty N]` | **Play the move out frame by frame: does it connect here, and what happens?** |
 | `characters` | List the roster. |
 
 Moves accept **notation** (`2mk`, `236lp`), **ids**, or **name fragments** (`hadoken`, `sweep`). Characters are fuzzy too (`chun`, `honda`).
@@ -104,6 +105,26 @@ npm run web        # then open http://localhost:8777/boxes.html
 
 Pick a move, scrub the timeline, and see every box per frame with the opponent placed at an adjustable distance — it reports which frames connect there and the furthest distance that still lands. Moving actions are drawn along their real trajectory, with the travel path traced. Arrow keys step frames, space plays.
 
+### The scenario player
+
+Two fighters on a shared 60 fps clock. It never reads on-block or on-hit — it advances the action, finds contact by box overlap at your chosen spacing, and takes stun and knockback from the game's hit-data table.
+
+```bash
+$ npm run sf6 -- play ryu 2mk --at 150
+Ryu Crouch MK (2MK) vs Ryu at 150u  [ATK_2MK_Y2]
+  f  8  hitbox out at 150u
+  f  8  block at 150u — 0 damage, 20f stun, 9f hitstop
+  f 24  defender (Ryu) can act
+  f 30  attacker (Ryu) can act
+
+BLOCKED on frame 8 — 0 damage
+attacker free in 22f, defender in 16f  ->  -6  MINUS ❌
+pushed to 205u (from 150u)
+drive +1000 you, +2000 them
+```
+
+That −6 is derived, not looked up — and it's what the published frame data says. Across every mapped normal the sim reproduces on-block advantage on **13 of 13** of Akuma's moves and 8 of Ryu's 12, where the misses are exactly the moves whose two sources are already known to disagree ([ADR-0007](./docs/adr/0007-scenario-player.md)).
+
 ## How it works
 
 Everything derives from a few identities documented in [`CONTEXT.md`](./CONTEXT.md):
@@ -127,6 +148,7 @@ src/
     frames.ts            pure frame math (advantage, meaty, stun)
     interactions.ts      punish, gap, cancel, sequence
     index.ts             public API (the deep module)
+  sim/index.ts           the scenario player: two fighters, shared clock
   cli/index.ts           the `sf6` command
 scripts/
   fetch-mmdk.mjs         downloads MMDK's dumps of the game's collision data
@@ -137,7 +159,7 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   68 tests, incl. assertions against the real data
+tests/                   78 tests, incl. assertions against the real data
 ```
 
 ## Known limitations
@@ -145,11 +167,12 @@ tests/                   68 tests, incl. assertions against the real data
 - **Geometry covers Ryu and Akuma so far**, and the dumps it comes from are a late-2024 snapshot of the game — so pre-Season-3 balance. Characters without geometry fall back to FAT's coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
 - **Motion is per action, not composed across actions.** A jump attack is its own action and doesn't inherit the arc of the jump it came from, so air normals show at ground level. See [ADR-0005](./docs/adr/0005-origin-motion-from-place-and-steer-keys.md).
 - **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
+- **The dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`) until the trigger data is read.
 - **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
 
 ## Test
 
 ```bash
-npm test          # 68 tests
+npm test          # 78 tests
 npm run typecheck
 ```

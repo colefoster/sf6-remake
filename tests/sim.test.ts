@@ -1,0 +1,105 @@
+import { describe, it, expect } from "vitest";
+import { runScenario } from "../src/sim/index.js";
+import { requireCharacter, requireMove } from "../src/data/index.js";
+import { actionFor, loadGeometry, minDistance } from "../src/data/geometry.js";
+import type { Move } from "../src/domain/types.js";
+
+/**
+ * The sim never reads `onBlock` / `onHit`. It advances the action frame by
+ * frame, finds contact by box overlap, and takes the stun from the game's
+ * hit-data table — so when its advantage matches the published number, the whole
+ * chain (geometry, motion, pushboxes, hit data, guard release) is right.
+ */
+function checkable(name: string): Move[] {
+  const character = requireCharacter(name);
+  const geo = loadGeometry(character.id)!;
+  return character.moves.filter((move) => {
+    const raw = move.raw ?? {};
+    if (!actionFor(geo, move)) return false;
+    if (move.onBlock === undefined || move.onHit === undefined) return false;
+    return !(raw.active || raw.onBlock || raw.onHit || raw.recovery);
+  });
+}
+
+describe("the scenario player reproduces published frame advantage", () => {
+  // Akuma's dump and his frame data come from the same balance patch.
+  const akuma = checkable("Akuma");
+
+  it("gets every one of Akuma's blocked normals exactly right", () => {
+    expect(akuma.length).toBeGreaterThan(10);
+    for (const move of akuma) {
+      const r = runScenario("Akuma", move.input, { guard: true });
+      expect(`${move.input} ${r.advantage}`).toBe(`${move.input} ${move.onBlock}`);
+    }
+  });
+
+  it("gets Ryu's right too, bar the moves his two sources disagree about", () => {
+    const ryu = checkable("Ryu");
+    const exact = ryu.filter((m) => runScenario("Ryu", m.input, { guard: true }).advantage === m.onBlock);
+    // 5HK, 2LK, 2HP and one target combo differ — the same set flagged in ADR-0006.
+    expect(exact.length).toBeGreaterThanOrEqual(ryu.length - 4);
+  });
+
+  it("gets on-hit advantage right across both characters", () => {
+    const all = [
+      ...checkable("Ryu").map((m) => ["Ryu", m] as const),
+      ...akuma.map((m) => ["Akuma", m] as const),
+    ];
+    const exact = all.filter(([c, m]) => runScenario(c, m.input, { guard: false }).advantage === m.onHit);
+    expect(exact.length / all.length).toBeGreaterThan(0.8);
+  });
+});
+
+describe("scenarios", () => {
+  it("connects at point blank and whiffs well outside the move's reach", () => {
+    const close = runScenario("Ryu", "2MK", { distance: 66 });
+    expect(close.contact?.type).toBe("block");
+    expect(close.advantage).toBe(-6);
+
+    const far = runScenario("Ryu", "2MK", { distance: 400 });
+    expect(far.contact).toBeNull();
+    expect(far.advantage).toBeNull();
+  });
+
+  it("refuses to place the fighters closer than their pushboxes allow", () => {
+    const geo = loadGeometry("ryu")!;
+    const closest = minDistance(geo, geo)!;
+    expect(runScenario("Ryu", "2MK", { distance: 0 }).distance).toBe(closest);
+  });
+
+  it("improves advantage one frame per frame of meaty depth", () => {
+    const base = runScenario("Ryu", "5HP", { guard: true })!;
+    for (const deep of [1, 2, 3]) {
+      const meaty = runScenario("Ryu", "5HP", { guard: true, meaty: deep });
+      expect(meaty.contact?.depth).toBe(deep);
+      expect(meaty.advantage).toBe(base.advantage! + deep);
+    }
+  });
+
+  it("takes damage and stun from the table, not from the advantage", () => {
+    const hit = runScenario("Ryu", "2MK", { guard: false });
+    expect(hit.damage).toBe(500);
+    expect(hit.contact!.outcome.stun).toBe(23);
+    const blocked = runScenario("Ryu", "2MK", { guard: true });
+    expect(blocked.damage).toBe(0);
+    expect(blocked.contact!.outcome.stun).toBe(20);
+  });
+
+  it("pushes the defender away by the knockback the hit specifies", () => {
+    const r = runScenario("Ryu", "2MK", { distance: 150 });
+    expect(r.endDistance).toBeGreaterThan(r.distance);
+    expect(r.endDistance - r.distance).toBeCloseTo(r.contact!.outcome.knockback.x, 0);
+  });
+
+  it("reaches a crouching opponent with a low that a standing one blocks the same", () => {
+    const crouch = runScenario("Ryu", "2MK", { defenderStance: "crouch", distance: 120 });
+    expect(crouch.contact).not.toBeNull();
+  });
+
+  it("runs across characters", () => {
+    const r = runScenario("Akuma", "5HP", { defender: "Ryu", distance: 120 });
+    expect(r.defender).toBe("Ryu");
+    expect(r.contact).not.toBeNull();
+    expect(requireMove(requireCharacter("Akuma"), "5HP").onBlock).toBe(r.advantage);
+  });
+});

@@ -49,6 +49,12 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 - **Usable spacing** — the band from point blank out to a move's reach. This is the honest answer to "how much room does this button cover".
 - **Origin motion** — the per-frame path the character origin travels during an action (a dash's 125 units, a jump's arc, 2MK's 46-unit step-in). Boxes hang off the origin, so spacing is measured from where the attacker stood **when the move began**. See `docs/adr/0005-origin-motion-from-place-and-steer-keys.md`.
 
+## Simulation
+
+- **Scenario** — one attacking move played out against a dummy at a chosen distance and stance, frame by frame. The **scenario player** (`src/sim`) resolves contact from box overlap and outcome from the hit-data table, never from listed advantage — so its answer can be checked against the published number rather than assuming it.
+- **Contact frame** — the frame a hitbox first overlaps a hurtbox. **Depth** is how far into the active window that happened; depth 0 is the first active frame, and depth `d` is a meaty `d` frames deep.
+- **Actionable-first** — the sim's version of advantage: `defenderActionable − attackerActionable`, both counted from the contact frame.
+
 ## Move taxonomy
 
 - **Normal** — a punch/kick with a directional prefix: `5` neutral, `2` down, `j` jump; strength `LP MP HP LK MK HK`. Notation like `2MK` = crouching medium kick.

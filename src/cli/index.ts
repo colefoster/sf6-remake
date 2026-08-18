@@ -28,6 +28,7 @@ import {
   reach,
   type GeometryAction,
 } from "../data/geometry.js";
+import { runScenario, type ScenarioResult } from "../sim/index.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -111,6 +112,9 @@ COMMANDS
   punish <char> <blockedMove>      Fastest punish. --by <defenderChar> [move]
   boxes <char> <move>              Hitbox/hurtbox geometry: reach, and which
                                    frames connect.  --at <units> --vs <char> --crouch
+  play <char> <move>               Run the move against a dummy frame by frame:
+                                   contact, stun, knockback, who acts first.
+                                   --at <units> --vs <char> --on hit --crouch --meaty N
 
 SCENARIO FLAGS
   --on block | hit   (default block)   --meaty N   (frames deep, default 0)
@@ -124,6 +128,8 @@ EXAMPLES
   sf6 gap ryu 5mp 2mk
   sf6 boxes ryu 2mk --at 140                # does crouching MK still reach?
   sf6 boxes akuma 5hp --vs ryu --crouch     # vs a crouching Ryu's hurtboxes
+  sf6 play ryu 2mk --at 150                 # does it reach, and what happens?
+  sf6 play ryu 5hp --meaty 3 --on block     # meaty timing, simulated
 
 Moves accept notation (2mk, 236lp), ids, or name fragments (hadoken, sweep).`;
 
@@ -271,6 +277,20 @@ function main(): void {
         return;
       }
 
+      case "play": {
+        const c = requireCharacter(p[0] ?? fail("play <char> <move> [--at N] [--vs <char>]"));
+        const m = requireCharacterMove(c, p[1]);
+        const opts: Parameters<typeof runScenario>[2] = {
+          guard: args.guard === "block",
+          defenderStance: args.crouch ? "crouch" : "stand",
+          meaty: args.meaty,
+        };
+        if (args.at !== undefined) opts.distance = args.at;
+        if (args.vs !== undefined) opts.defender = args.vs;
+        printScenario(runScenario(c.name, m.input, opts));
+        return;
+      }
+
       case "boxes": {
         const c = requireCharacter(p[0] ?? fail("boxes <char> <move> [--at N] [--vs <char>] [--crouch]"));
         const m = requireCharacterMove(c, p[1]);
@@ -415,6 +435,33 @@ function printReachTable(
       `/ --at ${max + 1} (whiff)`,
   );
 }
+
+function printScenario(r: ScenarioResult): void {
+  console.log(`${r.attacker} ${r.move} vs ${r.defender} at ${r.distance}u  [${r.action}]`);
+  if (r.note) console.log(`  note: ${r.note}`);
+
+  for (const e of r.events) console.log(`  f${String(e.frame).padStart(3)}  ${e.detail}`);
+
+  if (!r.contact) {
+    console.log(`\nWHIFF — nothing connected at ${r.distance}u.`);
+    return;
+  }
+  const { contact, advantage } = r;
+  console.log(
+    `\n${contact.type === "block" ? "BLOCKED" : "HIT"} on frame ${contact.frame}` +
+      (contact.depth ? `, ${contact.depth} frame${contact.depth > 1 ? "s" : ""} deep` : "") +
+      ` — ${r.damage} damage`,
+  );
+  console.log(
+    `attacker free in ${r.attackerActionable}f, defender in ${r.defenderActionable}f  ->  ` +
+      `${advantage === null ? "?" : f(advantage)}  ${advantage === null ? "" : verdict(signOfNumber(advantage))}`,
+  );
+  console.log(`pushed to ${r.endDistance}u (from ${r.distance}u)`);
+  const gain = contact.outcome.drive;
+  console.log(`drive ${gain.own >= 0 ? "+" : ""}${gain.own} you, ${gain.target >= 0 ? "+" : ""}${gain.target} them`);
+}
+
+const signOfNumber = (n: number): string => (n > 0 ? "plus" : n < 0 ? "minus" : "neutral");
 
 function isFastest(r: PunishResult | FastestPunish): r is FastestPunish {
   return "options" in r;
