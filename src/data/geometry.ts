@@ -207,6 +207,80 @@ export interface HitOutcome {
   super: { own: number; target: number };
   dmgType: number;
   armor?: number;
+  /**
+   * Which reaction the defender plays: `strength` picks a `DMG_*`/`GRD_*`
+   * action's L/M/H suffix and `part` its height prefix. See ADR-0025.
+   */
+  reaction: {
+    strength: "L" | "M" | "H" | "S";
+    kind: number;
+    part: number;
+    attr: [number, number, number, number];
+  };
+  combo: { add: number; none: boolean; black: boolean };
+  /** Recoverable ("grey") damage, and stun points toward a dizzy. */
+  recoverable: number;
+  stunPoint: number;
+  /** Frames the defender cannot be touched for afterwards. */
+  invulnAfter: number;
+  /** Present only where the hit does something at the wall. */
+  wall?: {
+    bounce: boolean;
+    first: boolean;
+    splat: boolean;
+    dest: { x: number; y: number };
+    stop: number;
+    time: number;
+  };
+  floor?: { bounce: boolean; dest: { x: number; y: number }; time: number; boundDest: number };
+  /** Drive gauge the defender loses: blocking costs, a just-parry costs less. */
+  driveDamage?: { normal: number; just: number };
+  /** Chip-damage rules, side switching, and the rest of the boolean column. */
+  flags?: string[];
+}
+
+/**
+ * A fighter's own constants, from `char_info.json`. `health` and `superMax` are
+ * the game's numbers; the Drive maximum is **not** in the dump — ADR-0009
+ * inferred 60000 from what an OD special costs. See ADR-0025.
+ */
+export interface FighterInfo {
+  health: number;
+  superMax: number;
+  weight: number;
+  armor: { point: number; timer: number };
+  size: { up: number; front: number; back: number };
+  driveRecover: { normal: number; just: number };
+  scales?: {
+    offensive: number;
+    defensive: number;
+    moveSpeed: number;
+    gaugeGain: number;
+    focusRecover: { normal: number; normalAir: number; burnout: number; burnoutAir: number };
+  };
+}
+
+/**
+ * One step of a motion input. `dir` is a numpad direction; `any` is the table's
+ * wildcard, a step matched by anything it does not forbid. See ADR-0025.
+ */
+export interface CommandStep {
+  /** How long this step stays satisfied while the next is waited for. */
+  frames: number;
+  dir?: number;
+  any?: boolean;
+  forbid?: string[];
+  /** A charge release: `charge` is the slot, `dir` the inferred held direction. */
+  release?: boolean;
+  charge?: number;
+}
+
+/** One accepted way to input a move: the ordered steps and the whole window. */
+export interface Command {
+  steps: CommandStep[];
+  window?: number;
+  /** Bitmask of the charge slots this command consumes. */
+  chargeSlots?: number;
 }
 
 /**
@@ -271,6 +345,11 @@ export interface Trigger {
   super?: number;
   /** The game's own flags, `_Is` stripped: `Extra` is EX, `Lv1`..`Lv4` supers. */
   kind?: string[];
+  /** Buttons that fire it: `["LP","MP","HP"]` is any punch, i.e. OD. ADR-0025. */
+  keys?: string[];
+  forbid?: string[];
+  /** Accepted motions, any one of which satisfies it. Absent on a bare button. */
+  motions?: Command[];
 }
 
 /** One bar of Drive or super gauge, in the units the triggers are denominated in. */
@@ -300,6 +379,8 @@ export interface GeometryFile {
     /** Pushbox half-widths: what sets the closest two characters can stand. */
     pushHalfWidth: { stand: number | null; crouch: number | null };
   } | null;
+  /** Health, meter maxima and Drive regen, from `char_info.json`. See ADR-0025. */
+  fighter: FighterInfo | null;
   counts: Record<string, number>;
   moves: MoveMapping[];
   unmapped: { input: string; name: string; category: string }[];

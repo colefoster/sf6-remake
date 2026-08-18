@@ -26,11 +26,12 @@ const REPO = "alphazolam/MMDK";
 const DUMP_DIR = "MMDK/reframework/data/MMDK/PlayerData";
 /**
  * Only the files we actually parse. `tgroups` is the cancel lists, `triggers`
- * is what each cancel costs and buffers. `commands` (445 KB per fighter) is the
- * motion inputs — what to press rather than what happens — and stays unfetched.
- * See docs/adr/0008 and 0009.
+ * is what each cancel costs and buffers, `commands` (445 KB per fighter) is the
+ * motion inputs — what to *press* rather than what happens, which a frame-data
+ * grader never needed and a playable sim cannot do without.
+ * See docs/adr/0008, 0009 and 0025.
  */
-const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT", "tgroups", "triggers"];
+const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT", "tgroups", "triggers", "commands"];
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -77,12 +78,14 @@ async function fetchCharacter(name, dirs, sha) {
 }
 
 const names = process.argv.slice(2).filter((a) => a !== "--refresh");
-const wanted = names.length ? names : ["Ryu", "Akuma"];
 
 // Stay on the commit the existing dumps came from, so adding a character later
 // can't silently mix two upstream revisions under one recorded sha.
 const stampPath = path.join(OUT, "source.json");
 const prev = existsSync(stampPath) ? JSON.parse(await readFile(stampPath, "utf8")) : {};
+// No arguments means "top up whatever has already been fetched" — which is what
+// a re-run after widening FILES wants. Only a first run needs naming.
+const wanted = names.length ? names : (prev.characters ?? ["Ryu", "Akuma"]);
 const sha = process.argv.includes("--refresh") || !prev.commit ? await headSha() : prev.commit;
 const dirs = await dumpDirs(sha);
 console.log(`MMDK @ ${sha.slice(0, 8)}`);

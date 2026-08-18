@@ -313,7 +313,18 @@ function extractShots(action) {
  */
 const HIT_CONDITIONS = ["hit", "block", "counter", "punishCounter", "driveHit"];
 
-/** The fields worth keeping out of ~200 per entry. */
+/** 65535 in a `Drive*` column means "no entry", not "65535 units of Drive". */
+const NONE_16 = 65535;
+
+/**
+ * The fields worth keeping out of the 104 per entry.
+ *
+ * The first block is what a *grader* needs — damage and stun to check against
+ * FAT. The rest is what a *player* needs, and none of it was extracted before
+ * ADR-0025: which reaction animation to put the defender in, what the corner
+ * does, whether the hit combos, and what it costs the defender's Drive gauge.
+ * Sound, hit sparks, screen shake and the animation curves are still dropped.
+ */
 function hitOutcome(entry) {
   if (!entry) return null;
   const out = {
@@ -328,8 +339,70 @@ function hitOutcome(entry) {
     drive: { own: entry.FocusOwn ?? 0, target: entry.FocusTgt ?? 0 },
     super: { own: entry.SuperOwn ?? 0, target: entry.SuperTgt ?? 0 },
     dmgType: entry.DmgType ?? 0,
+    /**
+     * Which reaction the defender plays. `strength` picks the L/M/H suffix of a
+     * `DMG_*` / `GRD_*` action and `part` its height prefix; `kind` separates the
+     * ordinary reactions from crumple, launch and the rest. See docs/adr/0025.
+     */
+    reaction: {
+      strength: entry._IsStrength_S ? "S" : entry._IsStrength_H ? "H" : entry._IsStrength_M ? "M" : "L",
+      kind: entry.DmgKind ?? 0,
+      part: entry.DmgPart ?? 0,
+      attr: [entry.Attr0 ?? 0, entry.Attr1 ?? 0, entry.Attr2 ?? 0, entry.Attr3 ?? 0],
+    },
+    /** Combo counting: `add` is what this hit adds, and two flags that opt out. */
+    combo: {
+      add: entry.ComboAdd ?? 0,
+      none: entry._no_combo === true,
+      black: entry._black_combo === true,
+    },
+    /** Recoverable ("grey") damage, and the stun/dizzy points the hit is worth. */
+    recoverable: entry.DmgRecover ?? 0,
+    stunPoint: entry.PiyoPoint ?? 0,
+    /** Frames the defender is untouchable for afterwards. */
+    invulnAfter: entry.MutekiTime ?? 0,
   };
   if (entry.ArmorPoint) out.armor = entry.ArmorPoint;
+
+  // What the corner does with this hit: a wall bounce, a wall splat, or nothing.
+  if (entry._kabe_bound || entry._kabe_tataki || entry.WallTime) {
+    out.wall = {
+      bounce: entry._kabe_bound === true,
+      first: entry._kabe_bound_1st === true,
+      splat: entry._kabe_tataki === true,
+      dest: { x: entry.WallDest?.x ?? 0, y: entry.WallDest?.y ?? 0 },
+      stop: entry.WallStop ?? 0,
+      time: entry.WallTime ?? 0,
+    };
+  }
+  // And what the ground does: a bounce, and where it puts them.
+  if (entry._jimen_bound || entry.FloorTime || entry.BoundDest) {
+    out.floor = {
+      bounce: entry._jimen_bound === true,
+      dest: { x: entry.FloorDest?.x ?? 0, y: entry.FloorDest?.y ?? 0 },
+      time: entry.FloorTime ?? 0,
+      boundDest: entry.BoundDest ?? 0,
+    };
+  }
+  // Drive gauge the *defender* loses: blocking costs, and a just-parry costs less.
+  const norm = entry.DriveNorm ?? NONE_16;
+  const just = entry.DriveJust ?? NONE_16;
+  if (norm !== NONE_16 || just !== NONE_16) {
+    out.driveDamage = { normal: norm === NONE_16 ? 0 : norm, just: just === NONE_16 ? 0 : just };
+  }
+  // Chip damage rules, and which side the defender ends up facing.
+  const flags = [];
+  if (entry._kezu_down) flags.push("chipDown");
+  if (entry._kezu_stand) flags.push("chipStand");
+  if (entry._no_death) flags.push("noDeath");
+  if (entry._no_kezu_death) flags.push("noChipDeath");
+  if (entry._no_esc) flags.push("noEscape");
+  if (entry._weak_attack) flags.push("weak");
+  if (entry._chara_forward) flags.push("turnForward");
+  if (entry._chara_reverse) flags.push("turnReverse");
+  if (entry._no_gauge_gain) flags.push("noGauge");
+  if (entry._no_hit_stop) flags.push("noHitStop");
+  if (flags.length) out.flags = flags;
   return out;
 }
 
@@ -394,7 +467,138 @@ function extractCancelGroups(file, referenced) {
  * `focus_need` is a flag rather than an amount (0 or 1 on all but one trigger
  * in the roster); `focus_consume` is the number that matters.
  */
-function extractTriggers(file, used) {
+/**
+ * The input bitmask, decoded.
+ *
+ * Directions are the low nibble and buttons the next six bits, which reads
+ * straight off the motions: Ryu's command 1 is `0x2, 0xa, 0x8` and FAT calls it
+ * `236` — down, down-forward, forward. The multi-button masks are unions of the
+ * single ones, so OD (`0x70`, all three punches) needs no separate flag.
+ * See docs/adr/0025.
+ */
+const KEY_BITS = {
+  up: 0x1,
+  down: 0x2,
+  back: 0x4,
+  forward: 0x8,
+  LP: 0x10,
+  MP: 0x20,
+  HP: 0x40,
+  LK: 0x80,
+  MK: 0x100,
+  HK: 0x200,
+};
+
+/** The eight numpad directions, as the direction nibble spells them. */
+const NUMPAD = { 0x4: 4, 0x8: 6, 0x2: 2, 0x1: 8, 0x6: 1, 0xa: 3, 0x5: 7, 0x9: 9 };
+
+/** `ok_key_flags` as names: `0x70` is `["LP","MP","HP"]`, `0xa` is `["down","forward"]`. */
+function keyNames(mask) {
+  return Object.entries(KEY_BITS)
+    .filter(([, bit]) => (mask & bit) === bit)
+    .map(([name]) => name);
+}
+
+/**
+ * A motion input: the ordered directions to sweep through, and how long each
+ * step stays valid.
+ *
+ * A step with `ok_key_flags` bit 30 set and `rotate.point` non-zero is a
+ * **wildcard**: any direction the step does not forbid. It is how the table
+ * writes the parts of a motion that are not pinned — a `236236` is stored as
+ * wildcard, `6`, wildcard, `6`, and a `66` dash as wildcard, `6`, wildcard, `6`
+ * with back and down forbidden. Kept as `any` rather than expanded, because what
+ * the wildcard has to pass through is not stated.
+ */
+function extractCommand(cmd) {
+  if (!cmd || !cmd.input_num) return null;
+  const steps = [];
+  for (let i = 0; i < cmd.input_num; i++) {
+    const step = cmd.inputs?.[String(i).padStart(2, "0")];
+    if (!step) continue;
+    const mask = step.normal?.ok_key_flags ?? 0;
+    const out = { frames: step.frame_num ?? 0 };
+    // A charge release writes its slot id into the low bits and sets bit 16, so
+    // the nibble is not a direction on this step. Which *way* the slot is held is
+    // not in the table at all; `chargeHold` infers it from what follows.
+    if (step.charge?.is_release) {
+      out.charge = step.charge.id;
+      out.release = true;
+    } else if (step.rotate?.point) out.any = true;
+    else if (mask & 0xf) out.dir = NUMPAD[mask & 0xf] ?? mask & 0xf;
+    if (step.normal?.ng_key_flags) out.forbid = keyNames(step.normal.ng_key_flags);
+    steps.push(out);
+  }
+  if (!steps.length) return null;
+  const hold = chargeHold(steps);
+  if (hold) steps[0].dir = hold;
+  const out = { steps };
+  if (cmd.CommandTimer > 0) out.window = cmd.CommandTimer;
+  if (cmd.charge_bit) out.chargeSlots = cmd.charge_bit;
+  return out;
+}
+
+/**
+ * Which direction a charge move is held in — **inferred, not read**.
+ *
+ * The table names a charge slot and never says which way the slot is held. But
+ * across the six charge fighters the release is the only thing that varies, and
+ * it varies with the charge: every slot released into forward is a back charge
+ * (`[4]6`, `[4]646`) and every slot released into up is a down charge (`[2]8`).
+ * Fourteen commands, no counterexample. Recorded here as an inference so it is
+ * visible as one. See docs/adr/0025.
+ */
+function chargeHold(steps) {
+  if (!steps[0]?.release) return null;
+  const next = steps.find((s) => s.dir);
+  if (!next) return null;
+  return next.dir === 6 ? 4 : next.dir === 8 ? 2 : null;
+}
+
+/**
+ * The fighter's own constants, from `char_info.json` — health, meter maxima, and
+ * the Drive gauge's regeneration rates.
+ *
+ * `Vitality` and `Gauge` are the game's numbers outright. The Drive maximum is
+ * not stated anywhere in the dump; ADR-0009 inferred 60000 from what the triggers
+ * charge for an OD special, and that inference is recorded here rather than
+ * silently assumed elsewhere.
+ *
+ * `Recover*` and `FocusRecover*` are regeneration, in units whose period is not
+ * stated. They are copied through undecoded. See docs/adr/0025.
+ */
+function extractFighter(file) {
+  const pl = file?.PlData;
+  const basic = file?.Styles?.["0"]?.StyleData?.Basic;
+  if (!pl) return null;
+  return {
+    health: pl.Vitality ?? 0,
+    superMax: pl.Gauge ?? 0,
+    weight: pl.Weight ?? 0,
+    /** Drive Impact's armour, and how long it holds: the same 100/50 on everyone. */
+    armor: { point: pl.ArmorPoint ?? 0, timer: pl.ArmorTimer ?? 0 },
+    /** Body size in game units — `SizeU` is the standing height the boxes agree with. */
+    size: { up: pl.SizeU ?? 0, front: pl.SizeF ?? 0, back: pl.SizeB ?? 0 },
+    driveRecover: { normal: pl.RecoverDrvNorm ?? 0, just: pl.RecoverDrvJust ?? 0 },
+    scales: basic
+      ? {
+          offensive: basic.OffensiveScale ?? 100,
+          defensive: basic.DefensiveScale ?? 100,
+          moveSpeed: basic.MoveSpeedScale ?? 100,
+          gaugeGain: basic.GaugeGainRatio ?? 100,
+          /** Drive regen: `NM` neutral, `IC` in burnout, `A` the airborne pair. */
+          focusRecover: {
+            normal: basic.FocusRecoverNM ?? 0,
+            normalAir: basic.FocusRecoverNMA ?? 0,
+            burnout: basic.FocusRecoverIC ?? 0,
+            burnoutAir: basic.FocusRecoverICA ?? 0,
+          },
+        }
+      : undefined,
+  };
+}
+
+function extractTriggers(file, used, commandFile) {
   const out = {};
   for (const slots of Object.values(file ?? {})) {
     if (!slots || typeof slots !== "object") continue;
@@ -404,11 +608,22 @@ function extractTriggers(file, used) {
       // Classic is the style that has a command on all but 32 triggers; the
       // others are Modern and the assist styles, which reuse the same trigger.
       const style = ["norm", "sprt", "easy", "supr"].find((s) => (trigger[s]?.command_index ?? -1) > -1);
+      const scheme = trigger[style ?? "norm"] ?? {};
       const record = {
         action: trigger.action_id,
         /** Input buffer in frames: 4 almost everywhere, 6 on air specials. */
-        buffer: trigger[style ?? "norm"]?.preceding_time ?? 0,
+        buffer: scheme.preceding_time ?? 0,
       };
+      // Which buttons, and (where there is one) the motion in front of them.
+      if (scheme.ok_key_flags) record.keys = keyNames(scheme.ok_key_flags);
+      if (scheme.ng_key_flags) record.forbid = keyNames(scheme.ng_key_flags);
+      if (commandFile && (scheme.command_index ?? -1) > -1) {
+        const group = commandFile[String(scheme.command_no).padStart(2, "0")];
+        const motions = Object.values(group ?? {})
+          .map(extractCommand)
+          .filter(Boolean);
+        if (motions.length) record.motions = motions;
+      }
       if (trigger.focus_consume) record.drive = trigger.focus_consume;
       if (trigger.gauge_consume) record.super = trigger.gauge_consume;
       const kinds = Object.entries(trigger)
@@ -1026,12 +1241,14 @@ function calibrate(actions) {
 
 async function buildCharacter(fatName, dumpDir, fat, source) {
   const dir = path.join(RAW, dumpDir);
-  const [rectsFile, movesFile, hitFile, groupFile, triggerFile] = await Promise.all([
+  const [rectsFile, movesFile, hitFile, groupFile, triggerFile, infoFile, commandFile] = await Promise.all([
     readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "HIT_DT.json"), "utf8").then(JSON.parse).catch(() => null),
     readFile(path.join(dir, "tgroups.json"), "utf8").then(JSON.parse).catch(() => null),
     readFile(path.join(dir, "triggers.json"), "utf8").then(JSON.parse).catch(() => null),
+    readFile(path.join(dir, "char_info.json"), "utf8").then(JSON.parse).catch(() => null),
+    readFile(path.join(dir, "commands.json"), "utf8").then(JSON.parse).catch(() => null),
   ]);
   const rect = makeRects(rectsFile);
 
@@ -1040,7 +1257,18 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   for (const action of Object.values(movesFile)) {
     if (typeof action?.id !== "number" || !action.name) continue;
     const extracted = extractAction(action, rect, unresolvedPush);
-    if (!extracted.hit.length && !extracted.hurt.length && !extracted.prox.length && !extracted.push.length) {
+    // No boxes at all is normally a round intro or a win pose. `NGD_*` is the
+    // exception: being thrown is a real state a fighter spends frames in, and it
+    // carries no boxes precisely because you cannot be hit while held. A state
+    // machine needs it; the grader never did. See docs/adr/0025.
+    const stateOnly = /^NGD_/.test(extracted.name);
+    if (
+      !stateOnly &&
+      !extracted.hit.length &&
+      !extracted.hurt.length &&
+      !extracted.prox.length &&
+      !extracted.push.length
+    ) {
       continue;
     }
     actions.push(extracted);
@@ -1070,7 +1298,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
 
   const referenced = new Set(actions.flatMap((a) => (a.cancels ?? []).map((c) => c.group)));
   const cancelGroups = extractCancelGroups(groupFile, referenced);
-  const triggers = extractTriggers(triggerFile, new Set(Object.values(cancelGroups).flat()));
+  const triggers = extractTriggers(triggerFile, new Set(Object.values(cancelGroups).flat()), commandFile);
   const unresolvedTriggers = Object.values(cancelGroups)
     .flat()
     .filter((index) => !triggers[index]).length;
@@ -1104,6 +1332,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
       note: "Boxes are game units: x=0 is the character origin, y=0 the ground, +x forward.",
     },
     calibration: calibrate(actions),
+    fighter: extractFighter(infoFile),
     hitData: extractHitData(hitFile),
     cancelGroups,
     triggers,

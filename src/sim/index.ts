@@ -456,6 +456,11 @@ function emptyOutcome(): HitOutcome {
     drive: { own: 0, target: 0 },
     super: { own: 0, target: 0 },
     dmgType: 0,
+    reaction: { strength: "L", kind: 0, part: 0, attr: [0, 0, 0, 0] },
+    combo: { add: 0, none: false, black: false },
+    recoverable: 0,
+    stunPoint: 0,
+    invulnAfter: 0,
   };
 }
 
