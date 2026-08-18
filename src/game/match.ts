@@ -395,6 +395,7 @@ export class Match {
     const outcome = data[type] ?? data.hit;
     if (!outcome) return;
 
+    this.gauges(attacker, them, data, outcome, type);
     const reaction = reactionFor(them.geo, outcome, type === "block", them.state.stance);
     const stun = outcome.stun - (type === "block" ? GUARD_RELEASE : 0);
     if (reaction) them.react(reaction, Math.max(0, stun));
@@ -418,6 +419,32 @@ export class Match {
       action: attack.name,
       reaction: reaction?.name ?? "?",
     });
+  }
+
+  /**
+   * What a connection does to the four gauges.
+   *
+   * Three of the four numbers are on the row that was just used: the attacker
+   * banks `drive.own` and `super.own`, and the defender is *given* `super.target`
+   * for being hit. The fourth is not. The Drive the defender **loses** is zero on
+   * the hit row and a positive number on the block row, and the drain FAT
+   * publishes is authored on the punish-counter and driveHit rows instead — 96%
+   * and 97% agreement there against 0% and 36% on the rows you would expect.
+   * So that is where it is read from. See ADR-0031.
+   */
+  private gauges(
+    attacker: 0 | 1,
+    them: Fighter,
+    data: HitData,
+    outcome: HitOutcome,
+    type: Contact,
+  ): void {
+    const me = this.fighters[attacker]!;
+    me.gain("drive", outcome.drive.own);
+    me.gain("super", outcome.super.own);
+    them.gain("super", outcome.super.target);
+    const drain = type === "block" ? data.driveHit?.drive.target : data.punishCounter?.drive.target;
+    if (drain) them.gain("drive", -Math.abs(drain));
   }
 
   /**

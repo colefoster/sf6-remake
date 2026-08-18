@@ -56,7 +56,17 @@ export const GUARD_RELEASE = 4;
  */
 export const PROJECTILE_CONTACT = 8;
 
-export type CheckName = "hitstun" | "blockstun" | "total" | "cancelEnd" | "advantage";
+export type CheckName =
+  | "hitstun"
+  | "blockstun"
+  | "total"
+  | "cancelEnd"
+  | "advantage"
+  | "driveGain"
+  | "driveOnHit"
+  | "driveOnBlock"
+  | "superGain"
+  | "superGiven";
 
 export const CHECKS: Record<CheckName, string> = {
   hitstun: "the hit table's hitstun == FAT's published hitstun",
@@ -64,6 +74,11 @@ export const CHECKS: Record<CheckName, string> = {
   total: "the action's MarginFrame == FAT's published total",
   cancelEnd: "the cancel window's last frame == FAT's published hit-confirm window",
   advantage: "the sim played out from the dump alone == FAT's published on-block",
+  driveGain: "the hit table's Drive gain for the attacker == FAT's DGain",
+  driveOnHit: "the hit table's Drive damage on hit == FAT's DDoH",
+  driveOnBlock: "the hit table's Drive damage on block == FAT's DDoB",
+  superGain: "the hit table's super gain for the attacker == FAT's SelfSoH",
+  superGiven: "the hit table's super gain for the defender == FAT's OppSoH",
 };
 
 export interface Comparison {
@@ -109,6 +124,18 @@ function plainInt(value: unknown): number | undefined {
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/**
+ * Drive drain as a positive amount.
+ *
+ * The dump signs it from the defender's side — `FocusTgt` is −4000, four
+ * thousand off their gauge — and FAT publishes the same quantity as a positive
+ * `DDoH`. Zero means the row states no drain, which is not the same as agreeing
+ * with a published zero, so it is dropped rather than compared.
+ */
+function magnitude(value: number | undefined): number | undefined {
+  return value === undefined || value === 0 ? undefined : Math.abs(value);
+}
+
 /** The raw FAT columns this module grades with — none of them reach the domain model. */
 interface FatColumns {
   numCmd?: string;
@@ -122,6 +149,17 @@ interface FatColumns {
    * loses outright. See ADR-0015.
    */
   hcWinTc?: string | number;
+  /**
+   * The gauge columns. FAT publishes no cost column — a cost is a *negative*
+   * `DGain` or `SelfSoH` — and the `plainInt` filter drops those along with the
+   * multi-hit strings (`"2500*2500"`), which is deliberate: what these grade is
+   * the per-hit gauge economy, and a move that spends is a different question.
+   */
+  DGain?: string | number;
+  DDoH?: string | number;
+  DDoB?: string | number;
+  SelfSoH?: string | number;
+  OppSoH?: string | number;
 }
 
 let fatCache: Record<string, Record<string, FatColumns>> | undefined;
@@ -176,6 +214,16 @@ function dumpNumbers(
         ? move.cancel.end - move.startup + data.hit.hitStop.owner + 2
         : undefined,
     advantage: add(simAdvantage(character, move.input), movingProjectile(geo, action) ? projectileContact : 0),
+    // The gauge economy. The attacker's side reads off the hit and block rows
+    // like everything else — but the Drive the *defender* loses does not live
+    // there. The hit row's `FocusTgt` is 0 and the block row's is a positive
+    // amount the defender gains; the drain FAT publishes is authored on the
+    // punish-counter and driveHit rows instead, and matches there. See ADR-0031.
+    driveGain: data?.hit?.drive.own,
+    driveOnHit: magnitude(data?.punishCounter?.drive.target),
+    driveOnBlock: magnitude(data?.driveHit?.drive.target),
+    superGain: data?.hit?.super.own,
+    superGiven: data?.hit?.super.target,
   };
 }
 
@@ -274,6 +322,11 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         total: plainInt(columns.total),
         cancelEnd: plainInt(columns[confirmColumn]),
         advantage: signedInt(move.fat.onBlock),
+        driveGain: plainInt(columns.DGain),
+        driveOnHit: plainInt(columns.DDoH),
+        driveOnBlock: plainInt(columns.DDoB),
+        superGain: plainInt(columns.SelfSoH),
+        superGiven: plainInt(columns.OppSoH),
       };
 
       for (const check of Object.keys(CHECKS) as CheckName[]) {

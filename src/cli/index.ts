@@ -440,9 +440,13 @@ function printFight(left: string, right: string, script: string, opponent?: stri
   const [x, y] = match.fighters.map((f) => f.position().x.toFixed(0));
   const corner = [0, 1].filter((s) => match.cornered(s as 0 | 1)).map((s) => (s === 0 ? left : right));
   const end = match.result;
+  const bars = (n: number) => (n / 10000).toFixed(1);
+  const gauges = match.fighters
+    .map((f) => `${bars(f.drive)}D/${bars(f.superMeter)}S${f.burnout ? " burnt" : ""}`)
+    .join(" / ");
   console.log(
     `\n  ${match.frame} frames — health ${match.health.join(" / ")}, ` +
-      `positions ${x} / ${y}, clock ${match.clock}` +
+      `gauges ${gauges}, positions ${x} / ${y}, clock ${match.clock}` +
       (corner.length ? `, ${corner.join(" and ")} in the corner` : "") +
       (end ? `  (${end.by}: ${end.winner === null ? "draw" : end.winner === 0 ? left : right})` : ""),
   );

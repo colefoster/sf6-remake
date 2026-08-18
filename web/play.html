@@ -85,7 +85,7 @@
 
 <script type="module">
 import {
-  Match, hold, hitboxesAt, hurtboxesAt, pushboxesAt, originAt, projectileBoxes,
+  Match, hold, hitboxesAt, hurtboxesAt, pushboxesAt, originAt, projectileBoxes, DRIVE_MAX,
 } from "./play.js";
 
 const canvas = document.getElementById("stage");
@@ -298,6 +298,24 @@ function draw() {
     ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";
     const filled = Math.max(0, hp) / max * bw;
     ctx.fillRect(i === 0 ? x + bw - filled : x, 16, filled, 12);
+
+    // Drive under the health bar, in its six bars, and super under that in three.
+    const f = match.fighters[i];
+    const gauge = (y, value, cap, segments, colour, height) => {
+      const gw = bw * 0.62;
+      const gx = i === 0 ? x + bw - gw : x;
+      ctx.fillStyle = "#1b1f27";
+      ctx.fillRect(gx, y, gw, height);
+      const on = Math.max(0, value) / cap * gw;
+      ctx.fillStyle = colour;
+      ctx.fillRect(i === 0 ? gx + gw - on : gx, y, on, height);
+      ctx.fillStyle = "#0a0c10";
+      for (let s = 1; s < segments; s++) ctx.fillRect(gx + (gw * s) / segments, y, 1, height);
+    };
+    // Burnout is the state the `_tired` actions belong to; it reads as a gauge
+    // that is empty and refilling, so it gets its own colour rather than none.
+    gauge(32, f.drive, DRIVE_MAX, 6, f.burnout ? "#ef4444" : "#22d3ee", 7);
+    gauge(42, f.superMeter, f.superMax, 3, "#facc15", 5);
   }
 
   // round clock

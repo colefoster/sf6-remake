@@ -7,7 +7,7 @@
  * system: geometry arrives as the `<char>.boxes.json` the page fetched.
  */
 
-export { Fighter, InputHistory, NEUTRAL, lean } from "./index.js";
+export { DRIVE_MAX, Fighter, InputHistory, NEUTRAL, lean } from "./index.js";
 export type { Button, Direction, FighterState, InputFrame, Stance } from "./index.js";
 export { COUNT, Match, STAGE_HALF_WIDTH, hold, projectileBoxes, reactionFor } from "./match.js";
 export type { Contact, Hit, MatchOptions, Projectile, Result } from "./match.js";

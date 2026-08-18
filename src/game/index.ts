@@ -204,9 +204,33 @@ const WALK_BACK = new Set([MOVEMENT.walkBack, MOVEMENT.walkBackLoop, MOVEMENT.wa
  */
 const BRANCH_SEQUENTIAL = 0;
 
+/**
+ * A full Drive gauge, in the units the triggers are denominated in.
+ *
+ * Six bars of 10000. The bar size is the dump's — an OD special costs 20000 and
+ * the game calls that two bars — but the **maximum is not in the dump**:
+ * `char_info` states `Gauge: 30000` for the super gauge and nothing for Drive.
+ * Six bars is the inference the whole codebase has been carrying in comments
+ * since ADR-0009; this is the first place it has to be a number. See ADR-0031.
+ */
+export const DRIVE_MAX = 60000;
+
 export class Fighter {
   readonly geo: GeometryFile;
   state: FighterState;
+  /** Drive gauge, 0..{@link DRIVE_MAX}. */
+  drive = DRIVE_MAX;
+  /** Super Art gauge, 0..`superMax`. */
+  superMeter = 0;
+  /** The dump's own `char_info.Gauge` — 30000 on all 24. */
+  readonly superMax: number;
+  /**
+   * Out of Drive. The dump carries the whole burnout state — a `_tired` twin of
+   * every ground action and a type-47 branch pointing at it — and until there
+   * was a gauge nothing could take it. What the dump does *not* say is how long
+   * burnout lasts or what ends it. See ADR-0031.
+   */
+  burnout = false;
   /** Which jump is in the air, so `_START -> _AIR -> _LAND` can be walked. */
   private jumpFamily: string | null = null;
   readonly history = new InputHistory();
@@ -224,6 +248,7 @@ export class Fighter {
    */
   constructor(geo: GeometryFile, x = 0, facing: 1 | -1 = 1) {
     this.geo = geo;
+    this.superMax = geo.fighter?.superMax ?? 30000;
     this.state = {
       character: geo.character,
       action: this.require(MOVEMENT.stand),
@@ -271,10 +296,16 @@ export class Fighter {
   private fired(input: InputFrame, presses: Button[]): GeometryAction | undefined {
     const ranked = this.options()
       .filter((t) => this.satisfied(t, input, presses))
+      // What the gauges cannot pay for is not an option. This is the whole of
+      // what a gauge *is* to the state machine: the dump prices every trigger,
+      // and until now nothing checked the price. In burnout there is no Drive
+      // to spend at all, which is what takes OD moves and Drive Rush away.
+      .filter((t) => this.affords(t))
       .sort((a, b) => score(b) - score(a));
     for (const trigger of ranked) {
       const action = actionById(this.geo, trigger.action);
       if (!action) continue;
+      this.spend(trigger);
       // Spend the press. A button stays "pressed" for its buffer so a cancel
       // can land a few frames late, and without spending it the same press
       // would fire the move again the moment the fighter is free.
@@ -282,6 +313,61 @@ export class Fighter {
       return action;
     }
     return undefined;
+  }
+
+  /** Can the gauges pay this trigger's price. */
+  private affords(trigger: Trigger): boolean {
+    return (trigger.drive ?? 0) <= this.drive && (trigger.super ?? 0) <= this.superMeter;
+  }
+
+  private spend(trigger: Trigger): void {
+    this.drive -= trigger.drive ?? 0;
+    this.superMeter -= trigger.super ?? 0;
+    this.checkBurnout();
+  }
+
+  /**
+   * Gauge movement that is not a purchase: what a hit banks, and regen.
+   *
+   * Clamped at both ends, and the moment Drive reaches zero the fighter is in
+   * burnout. Leaving it is the assumption: SF6 refills the gauge and lets you
+   * out at the top, and nothing in the dump states either the duration or the
+   * exit, so the exit is "full again". See ADR-0031.
+   */
+  gain(gauge: "drive" | "super", amount: number): void {
+    if (gauge === "super") {
+      this.superMeter = Math.max(0, Math.min(this.superMax, this.superMeter + amount));
+      return;
+    }
+    this.drive = Math.max(0, Math.min(DRIVE_MAX, this.drive + amount));
+    this.checkBurnout();
+  }
+
+  private checkBurnout(): void {
+    if (this.drive <= 0) {
+      this.drive = 0;
+      this.burnout = true;
+    } else if (this.burnout && this.drive >= DRIVE_MAX) {
+      this.burnout = false;
+    }
+  }
+
+  /**
+   * Drive regenerates every frame, at the rate `char_info` states for the
+   * fighter's situation.
+   *
+   * `FocusRecoverNM` is 40 on the ground and `NMA` 20 in the air; burnout has
+   * its own faster `IC` at 50, which is what refills the gauge and ends it. The
+   * *period* those rates are quoted over is not in the dump — the extractor says
+   * so — so this reads them as units per frame, which fills an empty gauge in
+   * 1,200 frames of burnout. That is a decode, not a measurement.
+   */
+  private regenerate(): void {
+    const rates = this.geo.fighter?.scales?.focusRecover;
+    if (!rates) return;
+    const air = this.state.stance === "air";
+    const rate = this.burnout ? (air ? rates.burnoutAir : rates.burnout) : air ? rates.normalAir : rates.normal;
+    this.gain("drive", rate);
   }
 
   private satisfied(trigger: Trigger, input: InputFrame, _presses: Button[]): boolean {
@@ -397,6 +483,7 @@ export class Fighter {
     const presses = input.buttons.filter((b) => !this.held.includes(b));
     for (const b of presses) this.pressedAt.set(b, this.clock);
     this.held = [...input.buttons];
+    this.regenerate();
     if (this.stun > 0) {
       // In a reaction. The clock still runs, but nothing is asked of the player.
       this.stun--;

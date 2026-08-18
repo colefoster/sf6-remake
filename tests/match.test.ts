@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 
 import { hold, reactionFor } from "../src/game/match.js";
 import { matchFor } from "../src/game/load.js";
+import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
-import {} from "../src/data/geometry.js";
+import { BAR } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
@@ -294,5 +295,83 @@ describe("the round clock", () => {
     for (let i = 0; i < 40; i++) match.advance();
     expect(match.clock).toBeNull();
     expect(match.over).toBe(false);
+  });
+});
+
+/**
+ * The Drive and super gauges. See ADR-0031.
+ *
+ * The prices are the dump's, on the triggers. The gains are the dump's, on the
+ * hit table. What is asserted here is that the runtime spends and banks the
+ * numbers the grader has already checked against FAT — and that running out of
+ * Drive takes the moves that cost Drive away.
+ */
+describe("the gauges", () => {
+  it("charges an OD special exactly two bars, off the trigger", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 300, seconds: null });
+    const ryu = match.fighters[0];
+    const start = ryu.drive;
+    const script = [hold(2), hold(3), hold(6, ["LP", "MP"])];
+    for (let i = 0; i < 3; i++) match.advance(script[i]!, hold(5));
+    expect(ryu.actionName).toBe("SPA_HADO(3)");
+    expect(start - ryu.drive).toBe(2 * BAR);
+  });
+
+  it("will not sell what the gauge cannot pay for", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 300, seconds: null });
+    const ryu = match.fighters[0];
+    ryu.drive = BAR;
+    const script = [hold(2), hold(3), hold(6, ["LP", "MP"])];
+    for (let i = 0; i < 3; i++) match.advance(script[i]!, hold(5));
+    // The OD version is unaffordable, so the same input reaches the ordinary
+    // Hadoken instead of nothing at all.
+    expect(ryu.actionName).not.toBe("SPA_HADO(3)");
+    expect(ryu.actionName).toMatch(/^SPA_HADO/);
+    expect(ryu.drive).toBeGreaterThanOrEqual(BAR);
+  });
+
+  it("drains the blocker's Drive by what FAT publishes for the move", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 110, seconds: null });
+    const ken = match.fighters[1];
+    ken.drive = DRIVE_MAX;
+    const before = ken.drive;
+    let landed = 0;
+    for (let i = 0; i < 20; i++) {
+      match.advance(i < 3 ? hold(5, ["MP"]) : hold(5), hold(6));
+      if (match.hits.length && !landed) landed = match.frame;
+    }
+    expect(match.hits.map((h) => h.type)).toEqual(["block"]);
+    // FAT's DDoB for Ryu's 5MP is 3000. Regen runs alongside, so the drain is
+    // measured against the gauge's own ceiling rather than frame by frame.
+    expect(before - ken.drive).toBeGreaterThan(2800);
+    expect(before - ken.drive).toBeLessThanOrEqual(3000);
+  });
+
+  it("banks super for the attacker and hands some to the defender", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 110, seconds: null });
+    const [ryu, ken] = match.fighters;
+    for (let i = 0; i < 20; i++) match.advance(i < 3 ? hold(5, ["MP"]) : hold(5), hold(5));
+    expect(match.hits.map((h) => h.type)).toEqual(["hit"]);
+    // The hit row's SelfSoH and OppSoH: 500 to the attacker, 350 to the defender.
+    expect(ryu.superMeter).toBe(500);
+    expect(ken.superMeter).toBe(350);
+    expect(ryu.superMeter).toBeLessThanOrEqual(ryu.superMax);
+  });
+
+  it("goes into burnout at zero and climbs back out at full", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 400, seconds: null });
+    const ryu = match.fighters[0];
+    expect(ryu.burnout).toBe(false);
+    ryu.gain("drive", -DRIVE_MAX);
+    expect(ryu.drive).toBe(0);
+    expect(ryu.burnout).toBe(true);
+    // Nothing that costs Drive is on the menu with an empty gauge.
+    const script = [hold(2), hold(3), hold(6, ["LP", "MP"])];
+    for (let i = 0; i < 3; i++) match.advance(script[i]!, hold(5));
+    expect(ryu.actionName).not.toBe("SPA_HADO(3)");
+    // `FocusRecoverIC` is 50 a frame, so an empty gauge is full again in 1,200.
+    for (let i = 0; i < 1300 && ryu.burnout; i++) match.advance(hold(5), hold(5));
+    expect(ryu.drive).toBe(DRIVE_MAX);
+    expect(ryu.burnout).toBe(false);
   });
 });
