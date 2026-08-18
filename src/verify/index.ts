@@ -72,7 +72,9 @@ export type CheckName =
   | "juggleLimit"
   | "startScaling"
   | "knockdown"
-  | "hardKnockdown";
+  | "hardKnockdown"
+  | "driveRushBlock"
+  | "driveRushHit";
 
 export const CHECKS: Record<CheckName, string> = {
   hitstun: "the hit table's hitstun == FAT's published hitstun",
@@ -91,6 +93,8 @@ export const CHECKS: Record<CheckName, string> = {
   startScaling: "the action's _StartScaling == FAT's dmgScaling \"N% Start\"",
   knockdown: "the hit table's DmgType != 3 == FAT publishing \"KD\" on hit",
   hardKnockdown: "a row with _no_rolling or DownTime 0 == FAT's \"HKD\" on punish counter",
+  driveRushBlock: "the sim's Drive Rush cancel on block == FAT's DRoB",
+  driveRushHit: "the sim's Drive Rush cancel on hit == FAT's DRoH",
 };
 
 export interface Comparison {
@@ -224,6 +228,8 @@ interface FatColumns {
   dmgScaling?: string | number;
   onHit?: string | number;
   onPC?: string | number;
+  DRoB?: string | number;
+  DRoH?: string | number;
 }
 
 let fatCache: Record<string, Record<string, FatColumns>> | undefined;
@@ -295,6 +301,8 @@ function dumpNumbers(
     // `DmgType` 3 is the ordinary hit that leaves the defender standing.
     // Everything else is a knockdown of some kind — a sweep is 6, a launch 11.
     // See ADR-0033.
+    driveRushBlock: simAdvantage(character, move.input, { guard: true, driveRush: true }),
+    driveRushHit: simAdvantage(character, move.input, { guard: false, driveRush: true }),
     knockdown: data?.hit ? (data.hit.dmgType === UPRIGHT ? 0 : 1) : undefined,
     // A hard knockdown is one the defender cannot quick-rise out of. Two fields
     // say so and neither says it alone: `_no_rolling` is set on 31 of the 32
@@ -324,9 +332,13 @@ function movingProjectile(geo: GeometryFile, action: GeometryAction | undefined)
  * That is what makes comparing it to FAT's `onBlock` a two-source check rather
  * than an identity restated. See ADR-0011.
  */
-function simAdvantage(character: string, input: string): number | undefined {
+function simAdvantage(
+  character: string,
+  input: string,
+  options: { guard?: boolean; driveRush?: boolean } = {},
+): number | undefined {
   try {
-    const result = runScenario(character, input, { guard: true });
+    const result = runScenario(character, input, { guard: options.guard ?? true, ...options });
     return result.advantage ?? undefined;
   } catch {
     return undefined;
@@ -408,6 +420,8 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         juggleAdd: plainInt(columns.jugIncr),
         juggleLimit: plainInt(columns.jugLimit),
         startScaling: startPercent(columns.dmgScaling),
+        driveRushBlock: signedInt(columns.DRoB),
+        driveRushHit: signedInt(columns.DRoH),
         knockdown: knocksDown(columns.onHit),
         hardKnockdown: hardPublished(columns.onPC),
       };

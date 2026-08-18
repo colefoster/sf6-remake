@@ -49,6 +49,7 @@ import {
   type Stance,
   knocksDown,
   downRecovery,
+  driveRushFreeze,
 } from "../data/geometry.js";
 import { loadGeometry } from "../data/load-geometry.js";
 import { requireCharacter, requireMove } from "../data/index.js";
@@ -75,6 +76,11 @@ export interface ScenarioOptions {
    * frame — a meaty. Contact simply isn't tested until that frame comes round.
    */
   meaty?: number;
+  /**
+   * Cancel the move into a Drive Rush. The attacker's own recovery is discarded
+   * and replaced by the rush's `freeze`. See ADR-0036.
+   */
+  driveRush?: boolean;
 }
 
 export interface FrameState {
@@ -337,8 +343,16 @@ export function runScenario(
         // has one — the game's number, in the same frame space this loop is
         // already counting in. `active + recovery` is the published fallback,
         // and using it means the advantage is only half-derived. See ADR-0011.
+        // A Drive Rush cancel discards the move's recovery outright: the
+        // attacker waits out the rush's own freeze from contact and nothing
+        // else, which is why the advantage it leaves is nearly the same on a
+        // heavy as on a light. See ADR-0036.
+        const rush = options.driveRush ? driveRushFreeze(attacker.geo) : undefined;
         const free = actionableFrame(attacker.action);
-        if (free) {
+        if (rush !== undefined) {
+          attackerActionable = rush;
+          recoverySource = "drive-rush";
+        } else if (free) {
           attackerActionable = free.frame - frame;
           recoverySource = free.source;
         } else if (attacker.move.recovery > 0) {

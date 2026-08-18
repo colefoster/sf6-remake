@@ -739,7 +739,26 @@ export function touchdownFrame(action: GeometryAction): number | undefined {
 }
 
 /** Where an action's recovery number came from. See docs/adr/0011 and 0012. */
-export type RecoverySource = "action" | "landing" | "published";
+export type RecoverySource = "action" | "landing" | "published" | "drive-rush";
+
+/**
+ * How long after contact a Drive Rush cancel leaves the attacker.
+ *
+ * Cancelling into the rush throws away the move's own recovery: what the
+ * attacker waits out instead is the rush action's `freeze`. Found through the
+ * *trigger* rather than the action name, because which of the two rush actions
+ * is the raw one and which the parry one is swapped on four fighters — the
+ * trigger's own `DriveDash` / `ParryDash` classification is unambiguous, and
+ * costs three bars against half a bar. It is 10 and 11 on all 24. See ADR-0036.
+ */
+export function driveRushFreeze(geo: GeometryFile, kind: "DriveDash" | "ParryDash" = "DriveDash"): number | undefined {
+  for (const trigger of Object.values(geo.triggers ?? {})) {
+    if (!trigger?.kind?.includes(kind)) continue;
+    const action = actionById(geo, trigger.action);
+    if (action?.freeze !== undefined) return action.freeze;
+  }
+  return undefined;
+}
 
 export interface Actionable {
   /** 1-indexed frame of the action on which the attacker is free again. */

@@ -9,6 +9,9 @@ import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 import { verifyThrows } from "../src/verify/throws.js";
+import { verify } from "../src/verify/index.js";
+
+const report = verify();
 
 /**
  * Two fighters, checked against the two things that can check them: the dump
@@ -566,5 +569,50 @@ describe("the throw geometry against the published stats", () => {
     const report = verifyThrows();
     expect(report.reach.checked).toBe(24);
     expect(report.reach.agreeing).toBe(report.reach.checked);
+  });
+});
+
+/**
+ * Drive Rush cancels. See ADR-0036.
+ *
+ * The rush is an action of its own with no hitboxes, reached from a normal's
+ * cancel window at three bars. What it does to the advantage is the finding:
+ * the attacker's own recovery is discarded and replaced by the rush's `freeze`.
+ */
+describe("drive rush", () => {
+  it("cancels a normal into the rush, at three bars", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 200, seconds: null });
+    const ryu = match.fighters[0];
+    const start = ryu.drive;
+    for (let i = 0; i < 20; i++) {
+      match.advance(i < 3 ? hold(2, ["MK"]) : i === 6 || i === 8 ? hold(6) : hold(5), hold(5));
+    }
+    expect(ryu.actionName).toBe("ATK_CTA_DASH");
+    // Three bars, less whatever regenerated over those frames.
+    expect(start - ryu.drive).toBeGreaterThan(3 * BAR - 3000);
+    expect(start - ryu.drive).toBeLessThanOrEqual(3 * BAR);
+  });
+
+  it("replaces the move's recovery with the rush's own freeze", () => {
+    // The whole point of a Drive Rush cancel: a heavy and a light end up
+    // leaving nearly the same advantage, because neither one's recovery is
+    // spent. The freeze is 10 on all 24 fighters and comes off the trigger.
+    const plain = runScenario("Ryu", "2MK", { guard: true });
+    const rushed = runScenario("Ryu", "2MK", { guard: true, driveRush: true });
+    expect(rushed.recoverySource).toBe("drive-rush");
+    expect(rushed.attackerActionable).toBe(10);
+    expect(rushed.advantage!).toBeGreaterThan(plain.advantage!);
+  });
+
+  it("is graded against FAT, and the mechanism is not the whole story", () => {
+    // Kept as a measurement rather than hidden: the model reproduces FAT's
+    // published DRoB on about two thirds of the population, and the residual is
+    // one or two frames. See ADR-0036.
+    const rows = report.comparisons.filter((c) => c.check === "driveRushBlock" && c.clean);
+    expect(rows.length).toBeGreaterThan(150);
+    const agreed = rows.filter((c) => c.agrees).length / rows.length;
+    expect(agreed).toBeGreaterThan(0.6);
+    // A ceiling as well as a floor: this is the number to beat.
+    expect(agreed).toBeLessThan(0.8);
   });
 });
