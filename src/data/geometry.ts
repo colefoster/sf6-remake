@@ -135,7 +135,13 @@ export interface MoveMapping {
   startup: number;
   active: number;
   hits: number;
-  fat: { startup: string | number | null; active: string | number | null };
+  fat: {
+    startup: string | number | null;
+    active: string | number | null;
+    recovery: string | number | null;
+    onBlock: string | number | null;
+    onHit: string | number | null;
+  };
   startupDelta: number | null;
   alternates: number[];
   category: string;

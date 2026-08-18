@@ -522,7 +522,13 @@ function mapping(fatMove, cand, match, scored) {
     startup: cand.sig.startup,
     active: cand.sig.active,
     hits: cand.sig.hits,
-    fat: { startup: fatMove.startup ?? null, active: fatMove.active ?? null },
+    fat: {
+      startup: fatMove.startup ?? null,
+      active: fatMove.active ?? null,
+      recovery: fatMove.recovery ?? null,
+      onBlock: fatMove.onBlock ?? null,
+      onHit: fatMove.onHit ?? null,
+    },
     startupDelta: int(fatMove.startup) === undefined ? null : cand.sig.startup - int(fatMove.startup),
     alternates: scored.slice(1, 4).map((c) => c.action.id),
   };

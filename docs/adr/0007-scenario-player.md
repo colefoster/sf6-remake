@@ -50,6 +50,12 @@ of depth, matching the rule `CONTEXT.md` states.
   acts first, drive gained.
 - Every scenario returns its full `frames` timeline (positions, phase, stun per
   frame), so a viewer can replay it without re-deriving anything.
+- `web/boxes.html` reports the same outcome live as you drag the distance
+  slider, and says whether it matches the published number. It recomputes the
+  advantage in the browser rather than importing `src/sim` — the sim reads its
+  data through `node:fs`, so sharing it would mean a build step. That is ~20
+  duplicated lines, flagged in both files; the Node tests are what pin the
+  numbers down.
 - Spacing is honest in both directions: the fighters can't start closer than
   their pushboxes allow, and a move that walks in shoves the dummy before it hits.
 

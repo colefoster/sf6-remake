@@ -144,6 +144,7 @@
       <label><input type="checkbox" id="t-prox"> proximity</label>
       <label><input type="checkbox" id="t-push" checked> pushboxes</label>
       <label><input type="checkbox" id="t-path" checked> travel path</label>
+      <label>they <select id="guard"><option value="block">block</option><option value="hit">get hit</option></select></label>
       <button id="fit">snap to max range</button>
     </div>
 
@@ -172,6 +173,11 @@
         <h3>On contact</h3>
         <div class="big" id="r-hit">—</div>
         <div class="sub" id="r-hit-sub"></div>
+      </div>
+      <div class="card">
+        <h3>Outcome at this spacing</h3>
+        <div class="big" id="r-adv">—</div>
+        <div class="sub" id="r-adv-sub"></div>
       </div>
     </div>
 
@@ -205,7 +211,7 @@ const COLORS = {
 
 const state = {
   chars: [], data: null, action: null, frame: 1, playing: false, timer: null,
-  distance: 120, stance: "stand",
+  distance: 120, stance: "stand", guard: "block",
   show: { hurt: true, hit: true, prox: false, push: true, path: true },
 };
 
@@ -550,6 +556,7 @@ function updateReadouts() {
     : "—";
   const startup = windows[0]?.start;
   updateHitData(action);
+  updateOutcome(action, opponent);
   $("r-frames-sub").textContent = windows.length
     ? `startup ${startup}, ${windows.reduce((n, w) => n + (w.end - w.start + 1), 0)} active frames` +
       (windows.length > 1 ? ` across ${windows.length} hits` : "")
@@ -582,6 +589,64 @@ function updateHitData(action) {
   $("r-hit-sub").textContent =
     `${stuns.join(" · ")} — knocks back ${round1(hit.knockback.x)}u over ${hit.knockback.frames}f, ` +
     `${hit.hitStop.owner}f hitstop`;
+}
+
+/**
+ * Advantage, played out rather than looked up — the browser's half of what
+ * src/sim does: contact lands on some active frame, the defender owes its stun
+ * (less the four frames of guard release it can act through), and the attacker
+ * owes the rest of its active window plus recovery.
+ *
+ * Keep this in step with `runScenario` in src/sim/index.ts; the Node tests are
+ * what actually pin the numbers down.
+ */
+const GUARD_RELEASE = 4;
+
+function outcomeAt(action, move, opponent, distance) {
+  const data = hitDataFor(action);
+  const guard = state.guard;
+  const outcome = data?.[guard === "block" ? "block" : "hit"];
+  const frames = connectFrames(action, opponent, distance);
+  const first = activeWindows(action)[0];
+  if (!outcome || !frames.length || !first || !move) return null;
+
+  const active = Number(move.fat.active);
+  const recovery = Number(move.fat.recovery);
+  if (!Number.isFinite(active) || !Number.isFinite(recovery)) return null;
+
+  const depth = frames[0] - first.start;
+  const defenderFree = outcome.stun - (guard === "block" ? GUARD_RELEASE : 0);
+  const attackerFree = active - depth + recovery;
+  const published = guard === "block" ? move.fat.onBlock : move.fat.onHit;
+  return {
+    contactFrame: frames[0],
+    depth,
+    advantage: defenderFree - attackerFree,
+    published: Number.isFinite(Number(published)) ? Number(published) : null,
+    outcome,
+  };
+}
+
+function updateOutcome(action, opponent) {
+  const move = state.data.moves.find((m) => m.action === action.id);
+  const result = outcomeAt(action, move, opponent, state.distance);
+  if (!result) {
+    $("r-adv").textContent = "—";
+    $("r-adv").className = "big";
+    $("r-adv-sub").textContent = opponent.length
+      ? "nothing connects at this distance"
+      : "no opponent to connect with";
+    return;
+  }
+  const { advantage, published, depth, contactFrame } = result;
+  $("r-adv").textContent = advantage > 0 ? `+${advantage}` : `${advantage}`;
+  $("r-adv").className = "big " + (advantage > 0 ? "yes" : advantage < 0 ? "no" : "");
+  const agrees = published === null ? "" :
+    advantage === published ? ` — matches the published ${published > 0 ? "+" : ""}${published}`
+      : ` — published says ${published > 0 ? "+" : ""}${published}`;
+  $("r-adv-sub").textContent =
+    `contact on frame ${contactFrame}${depth ? `, ${depth} deep (meaty)` : ""}, ` +
+    `${state.guard === "block" ? "blocked" : "on hit"}${agrees}`;
 }
 
 /** [8,9,10,14] -> "8-10, 14" */
@@ -777,6 +842,10 @@ $("dist").oninput = (e) => {
   state.distance = Number(e.target.value);
   $("distval").textContent = `${state.distance}u`;
   draw();
+  updateReadouts();
+};
+$("guard").onchange = (e) => {
+  state.guard = e.target.value;
   updateReadouts();
 };
 $("stance").onchange = (e) => {
