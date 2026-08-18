@@ -590,6 +590,10 @@ function signature(action, byId) {
   }
   if (!strikes.length) return null;
   const start = spawn ?? Math.min(...strikes.map((h) => h.start));
+  // A fireball's keys split its flight into a spawn flash and the travel proper,
+  // both pointing at one hit-data row. Counting keys would call every fireball
+  // multi-hit and keep it out of the clean population. See docs/adr/0022.
+  const hits = spawn ? new Set(strikes.map((h) => h.attackData)).size : strikes.length;
   // Contiguous keys are one active window; a gap means a multi-hit move.
   const windows = [];
   for (const h of [...strikes].sort((a, b) => a.start - b.start)) {
@@ -601,7 +605,7 @@ function signature(action, byId) {
     startup: start,
     active: windows[0].end - windows[0].start + 1,
     windows,
-    hits: strikes.length,
+    hits,
   };
 }
 

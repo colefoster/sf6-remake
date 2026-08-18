@@ -2,7 +2,14 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 
-import { CHECKS, disagreements, rate, verify, type CheckName } from "../src/verify/index.js";
+import {
+  CHECKS,
+  PROJECTILE_CONTACT,
+  disagreements,
+  rate,
+  verify,
+  type CheckName,
+} from "../src/verify/index.js";
 import { invulnDisagreements, verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
 import { verifyArmor, verifyArmorBreak } from "../src/verify/armor.js";
 import {
@@ -140,6 +147,44 @@ describe("the game's data against the published frame data", () => {
     expect(scores.get(3)!).toBeLessThan(0.1);
     expect(scores.get(5)!).toBeLessThan(0.1);
     expect(scores.get(0)!).toBeLessThan(0.1);
+  });
+
+  it("puts a fireball's published advantage 8 frames after the shot appears", () => {
+    // A fireball's advantage is not one number: it depends on where the fireball
+    // is blocked, and the sim reproduces that honestly. FAT publishes one number
+    // anyway, and it turns out to be a fixed point on that curve.
+    //
+    // Swept the same way as the guard release, because a constant only ever
+    // asserted at its own value is not being checked: if 8 is real it is the
+    // unique best offset and its neighbours collapse rather than scoring nearby.
+    const projectiles = new Set<string>();
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      for (const move of geo.moves) {
+        const action = geo.actions.find((a) => a.id === move.action);
+        if (action?.shots?.length && !action.hit.some((h) => h.kind !== "proximity")) {
+          projectiles.add(`${geo.character} ${move.input}`);
+        }
+      }
+    }
+    const scores = new Map<number, number>();
+    for (let offset = 0; offset <= 16; offset++) {
+      const rows = verify(undefined, { projectileContact: offset }).comparisons.filter(
+        (c) => c.check === "advantage" && c.clean && projectiles.has(`${c.character} ${c.input}`),
+      );
+      expect(rows.length).toBeGreaterThan(30);
+      scores.set(offset, rows.filter((c) => c.agrees).length);
+    }
+    const best = [...scores].sort((a, b) => b[1] - a[1])[0]!;
+    expect(best[0]).toBe(PROJECTILE_CONTACT);
+    expect(best[1]).toBeGreaterThan(20);
+    // A spike, not a trend. Offset 0 picks up a handful and they are the honest
+    // exception: Ryu's Hashogeki and A.K.I.'s Jatoben spawn a "projectile" that
+    // does not travel, so there is nowhere for FAT to measure but on contact.
+    for (const [offset, score] of scores) {
+      if (offset !== PROJECTILE_CONTACT) expect(`${offset}: ${score <= 4}`).toBe(`${offset}: true`);
+    }
   });
 
   it("confirms the cancel window's last frame against the published confirm window", () => {

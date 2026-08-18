@@ -4,6 +4,8 @@
 - Date: 2026-08-18
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md),
   [ADR-0021](./0021-specials-map-through-the-triggers.md)
+- Extended by: [ADR-0023](./0023-the-sim-throws-a-fireball.md) — the sim plays the
+  projectile, and FAT turns out to measure one 8 frames after it appears.
 
 ## Context
 
@@ -99,12 +101,10 @@ Make the `_Y` rebalance preference a sort tie-break rather than a pool filter.
 
 ## Not settled
 
-- **The sim still cannot throw a fireball.** Everything it needs is now
-  extracted — spawn frame, spawn position, the projectile's own action, hitboxes
-  and hit data — and nothing consumes it. This is the same shape as ADR-0014's
-  note about `vulnerableTo`: the read side exists before the sim can use it.
-  Wiring it in is what would let the `projectile` invulnerability decode be
-  exercised rather than only graded.
+- ~~**The sim still cannot throw a fireball.**~~ Closed by
+  [ADR-0023](./0023-the-sim-throws-a-fireball.md): a projectile is a second actor
+  with its own clock, and it turns out FAT publishes a fireball's advantage 8
+  frames after the shot appears — a constant that sweeps as a spike.
 - **329 specials remain unmapped** — follow-ups, charge variants, and air
   versions whose notation carries no strength (`214P (charged)`, `214K (air)`),
   which the family join skips by construction.

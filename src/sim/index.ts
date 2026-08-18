@@ -14,9 +14,14 @@
  *
  * WHAT IT DOES NOT
  *   inputs and buffers, the cancel/trigger state machine, drive and super
- *   systems beyond reporting gain, juggle chains, throws, projectiles as their
- *   own actors, and the corner. The dummy blocks or stands; it does not fight
- *   back. See docs/adr/0007-scenario-player.md.
+ *   systems beyond reporting gain, juggle chains, throws, and the corner. The
+ *   dummy blocks or stands; it does not fight back. See
+ *   docs/adr/0007-scenario-player.md.
+ *
+ *   Projectiles *are* modelled, as of ADR-0023: a fireball is a second actor
+ *   with its own action, spawned by the parent's `ShotKey`, travelling on its own
+ *   origin motion and carrying its own hit data. The dummy still does not throw
+ *   one back, and two projectiles never meet.
  */
 
 import type { Box, Character, Move } from "../domain/types.js";
@@ -25,6 +30,7 @@ import {
   actionableFrame,
   activeWindows,
   hitDataFor,
+  hitboxesAt,
   hurtboxesAt,
   idleHurtboxes,
   loadGeometry,
@@ -34,6 +40,7 @@ import {
   pushHalfWidth,
   pushboxesAt,
   shift,
+  spawnsFrom,
   worldHitboxes,
   type GeometryAction,
   type GeometryFile,
@@ -126,12 +133,22 @@ export interface ScenarioResult {
   note?: string;
 }
 
+/** A fireball in flight: its own action, its own hit data, its own clock. */
+interface Projectile {
+  /** Frame of the parent action it appears on. */
+  frame: number;
+  offset: { x: number; y: number };
+  action: GeometryAction;
+  data: HitData | undefined;
+}
+
 interface Resolved {
   character: Character;
   move: Move;
   geo: GeometryFile;
   action: GeometryAction;
   data: HitData | undefined;
+  projectiles: Projectile[];
 }
 
 function resolve(characterQuery: string, moveQuery: string): Resolved {
@@ -146,7 +163,45 @@ function resolve(characterQuery: string, moveQuery: string): Resolved {
   }
   const found = actionFor(geo, move);
   if (!found) throw new Error(`no action mapped to ${move.input} for ${character.name}`);
-  return { character, move, geo, action: found.action, data: hitDataFor(geo, found.action) };
+  return {
+    character,
+    move,
+    geo,
+    action: found.action,
+    data: hitDataFor(geo, found.action),
+    projectiles: spawnsFrom(geo, found.action).map((s) => ({
+      frame: s.frame,
+      offset: s.offset,
+      action: s.action,
+      data: hitDataFor(geo, s.action),
+    })),
+  };
+}
+
+/**
+ * The fireball's boxes in world space on a given frame of the *parent* action.
+ *
+ * The projectile keeps its own clock: it is on its frame 1 when the parent is on
+ * the frame that spawned it, which is why a fireball's startup is its spawn
+ * frame. Its origin starts where the attacker's origin was plus the shot's
+ * offset, and travels on the projectile action's own motion from there — so it
+ * carries on across the screen while the attacker stands still recovering.
+ * See ADR-0022 and ADR-0023.
+ */
+function projectileBoxes(
+  parent: GeometryAction,
+  shot: Projectile,
+  parentFrame: number,
+): Box[] {
+  const own = parentFrame - shot.frame + 1;
+  if (own < 1) return [];
+  const spawnedAt = originAt(parent, shot.frame);
+  const travelled = originAt(shot.action, own);
+  const origin = {
+    x: spawnedAt.x + shot.offset.x + travelled.x,
+    y: spawnedAt.y + shot.offset.y + travelled.y,
+  };
+  return hitboxesAt(shot.action, own).map((b) => shift(b, origin));
 }
 
 /** Mirror a defender box into world space: it faces the attacker, so it flips. */
@@ -180,8 +235,24 @@ export function runScenario(
   const distance = Math.max(options.distance ?? closest, closest);
 
   const windows = activeWindows(attacker.action);
-  const firstActive = windows[0]?.start ?? null;
-  const meaty = clampMeaty(options.meaty ?? 0, attacker.move.active);
+  // A projectile special has no hitbox of its own: the frame the shot appears on
+  // is its first active frame, and FAT publishes exactly that as the startup.
+  const firstActive =
+    windows[0]?.start ?? (attacker.projectiles.length
+      ? Math.min(...attacker.projectiles.map((p) => p.frame))
+      : null);
+  // A fireball's active window belongs to the projectile, not to the move that
+  // threw it, so FAT's `active` is the wrong bound to clamp a meaty against.
+  const activeFrames = windows.length
+    ? attacker.move.active
+    : Math.max(
+        0,
+        ...attacker.projectiles.map((p) => {
+          const own = activeWindows(p.action);
+          return own.length ? own[own.length - 1]!.end : 0;
+        }),
+      );
+  const meaty = clampMeaty(options.meaty ?? 0, activeFrames);
 
   const events: ScenarioEvent[] = [];
   const frames: FrameState[] = [];
@@ -217,13 +288,27 @@ export function runScenario(
     }
 
     if (!contact && firstActive !== null && frame >= firstActive + meaty) {
-      const landed = worldHitboxes(attacker.action).filter((h) => h.frame === frame);
-      const hits = landed.some((h) =>
-        defenderHurt.some((b) => overlaps(h.box, defenderBox(b, defenderX))),
+      // The attacker's own boxes and every fireball it has in the air, each with
+      // the hit data of whichever action owns it.
+      const attempts: { boxes: Box[]; data: HitData | undefined }[] = [
+        {
+          boxes: worldHitboxes(attacker.action)
+            .filter((h) => h.frame === frame)
+            .map((h) => h.box),
+          data: attacker.data,
+        },
+        ...attacker.projectiles.map((shot) => ({
+          boxes: projectileBoxes(attacker.action, shot, frame),
+          data: shot.data,
+        })),
+      ];
+      const landed = attempts.find((a) =>
+        a.boxes.some((box) => defenderHurt.some((b) => overlaps(box, defenderBox(b, defenderX)))),
       );
-      if (hits) {
+      if (landed) {
+        const data = landed.data;
         const type = contactType(guard);
-        const outcome = attacker.data?.[type] ?? attacker.data?.hit ?? emptyOutcome();
+        const outcome = data?.[type] ?? data?.hit ?? emptyOutcome();
         const depth = frame - firstActive;
         contact = { frame, depth, type, outcome };
         damage = outcome.damage;
@@ -332,7 +417,9 @@ export function runScenario(
     events,
     frames,
   };
-  if (!attacker.data) result.note = "no hit-data entry for this action; outcome fields are empty";
+  if (!attacker.data && !attacker.projectiles.some((p) => p.data)) {
+    result.note = "no hit-data entry for this action; outcome fields are empty";
+  }
   else if (contact && attackerActionable === null) {
     result.note =
       "this action ends in the air and inherits the jump's arc, so when it recovers " +

@@ -62,6 +62,7 @@ This engine reasons about Street Fighter 6 (SF6) interactions **purely from fram
 - **Scenario** — one attacking move played out against a training dummy at a chosen distance and stance, frame by frame. The **scenario player** (`src/sim`) resolves contact from box overlap and outcome from the hit-data table, never from listed advantage — so you can check its answer against the published number rather than assuming the two agree.
 - **Contact frame** — the frame a hitbox first overlaps a hurtbox. **Depth** is how far into the active window that happened; depth 0 is the first active frame, and depth `d` is a meaty `d` frames deep.
 - **Actionable-first** — the sim's version of advantage: `defenderActionable − attackerActionable`, both counted from the contact frame.
+- **Projectile actor** — a fireball the sim plays as a second body: spawned by the parent's `ShotKey`, on its own clock, travelling on its own motion, carrying its own hit data. Its advantage is therefore a **curve, not a number** — every frame it spends in the air is a frame of the thrower's recovery already spent. FAT publishes one number, and that number is the advantage **8 frames after the shot appears** (`PROJECTILE_CONTACT` in `src/verify`). That is a convention of FAT's, not a mechanic, which is why it lives in the grader. See `docs/adr/0023-the-sim-throws-a-fireball.md`.
 
 ## Move taxonomy
 

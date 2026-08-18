@@ -66,8 +66,10 @@ of depth, matching the rule `CONTEXT.md` states.
 ## Not modelled
 
 Inputs and buffers; the cancel and trigger state machine; drive and super
-systems beyond reporting gain; juggle chains; throws; projectiles as their own
-actors; the corner. The dummy blocks or stands — it never fights back, so
+systems beyond reporting gain; juggle chains; throws; ~~projectiles as their own
+actors~~ ([ADR-0023](./0023-the-sim-throws-a-fireball.md) models them, though a
+fireball is never itself hit and multi-hit ones stop at the first hit); the
+corner. The dummy blocks or stands — it never fights back, so
 frame traps and counter hits are still questions for the frame-data engine
 (`sf6 gap`, `sf6 punish`) rather than for the sim. Those need the trigger data
 in `triggers.json` / `tgroups.json`, which remains unread.

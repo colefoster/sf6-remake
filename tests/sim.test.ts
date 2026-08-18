@@ -56,6 +56,30 @@ describe("the scenario player reproduces published frame advantage", () => {
   });
 });
 
+describe("projectiles", () => {
+  it("throws a fireball and lets it carry on without the attacker", () => {
+    // The fireball is a second actor: its own action, its own clock starting on
+    // the frame the shot appears, its own hit data. See ADR-0023.
+    const close = runScenario("Ryu", "236LP", { distance: 70, guard: true });
+    expect(close.action).toBe("SPA_HADO");
+    expect(close.contact?.frame).toBe(16);
+    // Ryu is long since recovering when it lands further out, so it gets better
+    // the further away it is blocked — one frame per frame of travel.
+    const far = runScenario("Ryu", "236LP", { distance: 208, guard: true });
+    expect(far.contact!.frame).toBeGreaterThan(close.contact!.frame);
+    expect(far.advantage! - close.advantage!).toBe(far.contact!.frame - close.contact!.frame);
+  });
+
+  it("takes the fireball's outcome from the projectile's own hit data", () => {
+    // The parent action has no hit-data entry at all — there is no hitbox on it
+    // to point at one — so a fireball that reported the parent's numbers would
+    // report nothing. 23f of blockstun belongs to `SPA_HADO PROJ`.
+    const r = runScenario("Ryu", "236LP", { distance: 70, guard: true });
+    expect(r.contact!.outcome.stun).toBe(23);
+    expect(r.note).toBeUndefined();
+  });
+});
+
 describe("scenarios", () => {
   it("connects at point blank and whiffs well outside the move's reach", () => {
     const close = runScenario("Ryu", "2MK", { distance: 66 });

@@ -28,7 +28,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { inFatFrames, loadGeometry, type GeometryFile, type MoveMapping } from "../data/geometry.js";
+import {
+  inFatFrames,
+  loadGeometry,
+  type GeometryAction,
+  type GeometryFile,
+  type MoveMapping,
+} from "../data/geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 import { runScenario } from "../sim/index.js";
 
@@ -40,6 +46,14 @@ const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
  * The engine derives with the same constant; here it is the thing under test.
  */
 export const GUARD_RELEASE = 4;
+
+/**
+ * A fireball's advantage depends on where it is blocked, and FAT publishes one
+ * number. Measured across the roster, that number is the advantage **8 frames
+ * after the shot appears** — a convention of FAT's rather than a mechanic, which
+ * is why it lives in the grader and not in the sim. See ADR-0023.
+ */
+export const PROJECTILE_CONTACT = 8;
 
 export type CheckName = "hitstun" | "blockstun" | "total" | "cancelEnd" | "advantage";
 
@@ -138,7 +152,12 @@ function fatMoves(character: string): Record<string, FatColumns> {
  * publishes for it: `hcWinSpCa` counts from the move's startup to the last
  * cancellable frame, plus the attacker's hitstop, plus 2.
  */
-function dumpNumbers(geo: GeometryFile, move: MoveMapping, character: string) {
+function dumpNumbers(
+  geo: GeometryFile,
+  move: MoveMapping,
+  character: string,
+  projectileContact: number,
+) {
   const action = geo.actions.find((a) => a.id === move.action);
   const key = action?.hit.find((h) => h.kind !== "proximity");
   const data = key ? geo.hitData?.[String(key.attackData)] : undefined;
@@ -155,8 +174,13 @@ function dumpNumbers(geo: GeometryFile, move: MoveMapping, character: string) {
       move.cancel && data?.hit
         ? move.cancel.end - move.startup + data.hit.hitStop.owner + 2
         : undefined,
-    advantage: simAdvantage(character, move.input),
+    advantage: add(simAdvantage(character, move.input), projectile(action) ? projectileContact : 0),
   };
+}
+
+/** A move that throws rather than hits: no hitbox of its own, only a `ShotKey`. */
+function projectile(action: GeometryAction | undefined): boolean {
+  return !!action?.shots?.length && !action.hit.some((h) => h.kind !== "proximity");
 }
 
 /**
@@ -196,12 +220,19 @@ export interface VerifyOptions {
    * assumed to be is not being checked either.
    */
   confirmColumn?: "hcWinSpCa" | "hcWinTc";
+  /**
+   * How many frames after the shot appears FAT measures a projectile's on-block.
+   * Defaults to the measured 8; the tests sweep it for the same reason they sweep
+   * the guard release. See ADR-0023.
+   */
+  projectileContact?: number;
 }
 
 /** Run every check over the characters that have geometry. */
 export function verify(characters?: string[], options: VerifyOptions = {}): Report {
   const guardRelease = options.guardRelease ?? GUARD_RELEASE;
   const confirmColumn = options.confirmColumn ?? "hcWinSpCa";
+  const projectileContact = options.projectileContact ?? PROJECTILE_CONTACT;
   const names = characters?.length ? characters : listCharacters();
   const comparisons: Comparison[] = [];
   const byCharacter: Report["byCharacter"] = [];
@@ -216,7 +247,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
     for (const move of geo.moves) {
       const columns = fat[move.input];
       if (!columns) continue;
-      const dump = dumpNumbers(geo, move, geo.character);
+      const dump = dumpNumbers(geo, move, geo.character, projectileContact);
       // An exact mapping of a single-hit move whose startup already agrees: the
       // population where a disagreement is a finding rather than a known-soft
       // mapping or a multi-hit move whose numbers describe a different hit.
