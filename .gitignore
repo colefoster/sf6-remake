@@ -9,3 +9,8 @@ web/assets/
 web/*.boxes.json
 data/raw/mmdk/
 .playwright-mcp/
+
+# Local secrets
+.env
+.env.*
+!.env.example

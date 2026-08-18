@@ -16,7 +16,7 @@
     "web": "node scripts/build-site.mjs && python3 -m http.server 8777 --directory web"
   },
   "keywords": ["street-fighter", "sf6", "frame-data", "fgc", "engine"],
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
