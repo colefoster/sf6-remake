@@ -4,6 +4,8 @@
 - Date: 2026-08-18
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md),
   [ADR-0021](./0021-specials-map-through-the-triggers.md)
+- Extended by: [ADR-0024](./0024-a-hit-is-a-hitid-not-a-key.md) — the shot-only
+  hit count below turned out to be a special case of a general rule, and is gone.
 - Extended by: [ADR-0023](./0023-the-sim-throws-a-fireball.md) — the sim plays the
   projectile, and FAT turns out to measure one 8 frames after it appears.
 

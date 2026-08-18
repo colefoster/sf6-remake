@@ -797,6 +797,29 @@ export function connectFrames(action: GeometryAction, opponent: Box[], distance:
   return [...frames].sort((a, b) => a - b);
 }
 
+/**
+ * How many times the action connects: distinct `HitID` per contiguous window, summed.
+ *
+ * Neither half reads on its own. Counting *keys* calls a single blow multi-hit —
+ * the dump routinely splits one active window into three boxes that come and go —
+ * and counting *windows* misses the back-to-back hits FAT writes `1*3`, which
+ * share a window and are separated only by the id. `HitID` is the game's own
+ * statement of what one hit is. See ADR-0024.
+ *
+ * `scripts/extract-geometry.mjs` carries its own copy, as it does for
+ * `activeWindows`: it runs before there is a `GeometryFile` to read.
+ */
+export function hitCount(action: GeometryAction): number {
+  const strikes = action.hit.filter((h) => h.kind !== "proximity");
+  let hits = 0;
+  for (const w of activeWindows(action)) {
+    const ids = new Set<number>();
+    for (const h of strikes) if (h.start >= w.start && h.start <= w.end) ids.add(h.hitId);
+    hits += ids.size;
+  }
+  return hits;
+}
+
 /** Contiguous active spans, the way frame data reads them. */
 export function activeWindows(action: GeometryAction): { start: number; end: number }[] {
   const hits = action.hit

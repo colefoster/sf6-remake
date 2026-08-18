@@ -590,10 +590,6 @@ function signature(action, byId) {
   }
   if (!strikes.length) return null;
   const start = spawn ?? Math.min(...strikes.map((h) => h.start));
-  // A fireball's keys split its flight into a spawn flash and the travel proper,
-  // both pointing at one hit-data row. Counting keys would call every fireball
-  // multi-hit and keep it out of the clean population. See docs/adr/0022.
-  const hits = spawn ? new Set(strikes.map((h) => h.attackData)).size : strikes.length;
   // Contiguous keys are one active window; a gap means a multi-hit move.
   const windows = [];
   for (const h of [...strikes].sort((a, b) => a.start - b.start)) {
@@ -605,8 +601,29 @@ function signature(action, byId) {
     startup: start,
     active: windows[0].end - windows[0].start + 1,
     windows,
-    hits,
+    hits: countHits(strikes, windows),
   };
+}
+
+/**
+ * How many times the move connects: distinct `HitID` per contiguous window, summed.
+ *
+ * Neither half alone reads. Counting *keys* calls a single blow multi-hit —
+ * the dump routinely splits one active window into three boxes that come and go
+ * — and that is what kept 397 single-hit moves out of the clean population.
+ * Counting *windows* misses the back-to-back hits FAT writes `1*3`, which share
+ * a window and are separated only by the id. `HitID` is the game's own statement
+ * of what one hit is: keys carrying the same id can only connect once between
+ * them. See docs/adr/0024.
+ */
+function countHits(strikes, windows) {
+  let hits = 0;
+  for (const w of windows) {
+    const ids = new Set();
+    for (const h of strikes) if (h.start >= w.start && h.start <= w.end) ids.add(h.hitId);
+    hits += ids.size;
+  }
+  return hits;
 }
 
 /**
@@ -1151,7 +1168,9 @@ if (!existsSync(stampPath)) {
 const source = JSON.parse(await readFile(stampPath, "utf8"));
 
 const requested = process.argv.slice(2);
-const wanted = (requested.length ? requested : ["Ryu", "Akuma"]).map((name) => {
+// No arguments means every character that has been dumped. It used to mean Ryu
+// and Akuma, which silently left the other 22 files stale after a rebuild.
+const wanted = (requested.length ? requested : source.characters).map((name) => {
   const dumpDir = source.characters.find((c) => norm(c) === norm(name));
   const fatName = Object.keys(fat).find((k) => norm(k) === norm(name));
   if (!dumpDir) throw new Error(`no dump for "${name}" — run: node scripts/fetch-mmdk.mjs ${name}`);

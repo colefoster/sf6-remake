@@ -14,10 +14,12 @@ import { invulnDisagreements, verifyInvuln, type InvulnKind } from "../src/verif
 import { verifyArmor, verifyArmorBreak } from "../src/verify/armor.js";
 import {
   actionableFrame,
+  activeWindows,
   airOnly,
   armoredAt,
   armorWindows,
   fullyInvulnerableWindows,
+  hitCount,
   spawnsFrom,
   inFatFrames,
   hurtboxesAt,
@@ -36,12 +38,28 @@ import { runScenario } from "../src/sim/index.js";
  */
 const report = verify();
 
+/**
+ * FAT's own count of how many times a move hits, read off its `active` notation:
+ * `2(13)3` is two windows with a gap, `1*3` two hits back to back, a bare `4` one
+ * hit. Null for the notations that carry something else (`until land`, `~`).
+ */
+function fatHits(active: string | number | null): number | null {
+  if (typeof active === "number") return 1;
+  if (typeof active !== "string") return null;
+  const parts = active.trim().split(/\(\d+\)|\*/).map((p) => p.trim()).filter(Boolean);
+  if (!parts.length || !parts.every((p) => /^\d+$/.test(p))) return null;
+  return parts.length;
+}
+
 describe("the game's data against the published frame data", () => {
   it("agrees on every check, on the moves where a disagreement would mean something", () => {
     for (const check of Object.keys(CHECKS) as CheckName[]) {
       const { clean } = report.totals[check];
       expect(`${check} checked`).toBe(`${check} checked`);
-      expect(clean.checked).toBeGreaterThan(100);
+      // The floor was 100 before ADR-0024 fixed the hit count; the clean
+      // population is roughly two thirds larger now, and asserting that keeps a
+      // regression in the count from reading as a quiet loss of coverage.
+      expect(clean.checked).toBeGreaterThan(200);
       // A shared floor; the tighter per-check ones are below. The residue is
       // the pre-Season-3 patch skew that ADR-0004 and ADR-0008 describe, and it
       // is per-character rather than per-check. `advantage` sits lowest of the
@@ -78,12 +96,66 @@ describe("the game's data against the published frame data", () => {
       const rows = of(check);
       return rows.filter((c) => c.agrees).length / rows.length;
     };
-    expect(of("total").length).toBeGreaterThan(30);
-    expect(share("total")).toBeGreaterThan(0.75);
-    expect(share("blockstun")).toBeGreaterThan(0.6);
+    expect(of("total").length).toBeGreaterThan(80);
+    expect(share("total")).toBeGreaterThan(0.85);
+    expect(share("blockstun")).toBeGreaterThan(0.75);
     // Deliberately a ceiling, not a floor: this is the number to beat, and it is
     // recorded so that improving the sim's special handling shows up as a break.
     expect(share("advantage")).toBeLessThan(0.6);
+  });
+
+  it("counts a move's hits by HitID per window, and the rival readings lose", () => {
+    // FAT writes the hit count into its own `active` notation — `2(13)3` is two
+    // windows, `1*3` two hits back to back, a bare `4` one hit — so the dump's
+    // count can be graded against it like any other column. See ADR-0024.
+    const population: { fat: number; keys: number; ids: number; windows: number; ours: number }[] = [];
+    for (const name of listCharacters()) {
+      const geo = loadGeometry(requireCharacter(name).id);
+      if (!geo) continue;
+      for (const move of geo.moves) {
+        if (move.match !== "exact" || move.startupDelta) continue;
+        const action = geo.actions.find((a) => a.id === move.action)!;
+        const strikes = action.hit.filter((h) => h.kind !== "proximity");
+        if (!strikes.length) continue;
+        const fat = fatHits(move.fat.active);
+        if (fat === null) continue;
+        const windows = activeWindows(action);
+        population.push({
+          fat,
+          keys: strikes.length,
+          ids: new Set(strikes.map((h) => h.hitId)).size,
+          windows: windows.length,
+          ours: hitCount(action),
+        });
+      }
+    }
+    expect(population.length).toBeGreaterThan(800);
+    const share = (k: "keys" | "ids" | "windows" | "ours") =>
+      population.filter((p) => p[k] === p.fat).length / population.length;
+    // Counting keys is what the extractor used to do, and it is barely better
+    // than a coin toss: the dump splits one active window into several boxes.
+    expect(share("keys")).toBeLessThan(0.6);
+    // Each half of the rule on its own gets most of the way and is beaten by both
+    // of them together, which is the evidence that the rule is the pair.
+    expect(share("ours")).toBeGreaterThan(share("ids"));
+    expect(share("ours")).toBeGreaterThan(share("windows"));
+    expect(share("ours")).toBeGreaterThan(0.95);
+  });
+
+  it("reads a single blow split across three boxes as one hit", () => {
+    // The three anchors, one per shape the rule has to get right: a normal whose
+    // one window is cut into three keys, a normal FAT writes `1*3` where the two
+    // hits share a window and differ only in id, and a special with a gap.
+    const at = (character: string, input: string) => {
+      const geo = loadGeometry(requireCharacter(character).id)!;
+      const move = geo.moves.find((m) => m.input === input)!;
+      const action = geo.actions.find((a) => a.id === move.action)!;
+      const strikes = action.hit.filter((h) => h.kind !== "proximity");
+      return `${strikes.length} keys, ${activeWindows(action).length} windows, ${hitCount(action)} hits`;
+    };
+    expect(at("A.K.I.", "5HK")).toBe("3 keys, 1 windows, 1 hits");
+    expect(at("Ryu", "6MP")).toBe("3 keys, 1 windows, 2 hits");
+    expect(at("Akuma", "214KK")).toBe("7 keys, 5 windows, 5 hits");
   });
 
   it("finds a second guard-release constant on Drive Reversal, and it is uniform", () => {
@@ -234,7 +306,7 @@ describe("the game's data against the published frame data", () => {
 
   it("confirms MarginFrame is the action's published total", () => {
     const { clean } = report.totals.total;
-    expect(clean.checked).toBeGreaterThan(150);
+    expect(clean.checked).toBeGreaterThan(400);
     expect(rate(clean)).toBeGreaterThan(0.9);
   });
 
@@ -244,7 +316,7 @@ describe("the game's data against the published frame data", () => {
     // to FAT's onBlock is therefore two sources agreeing rather than an
     // identity restated. See ADR-0011.
     const { clean } = report.totals.advantage;
-    expect(clean.checked).toBeGreaterThan(150);
+    expect(clean.checked).toBeGreaterThan(400);
     expect(rate(clean)).toBeGreaterThan(0.8);
   });
 

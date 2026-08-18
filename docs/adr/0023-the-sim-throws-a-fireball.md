@@ -4,6 +4,9 @@
 - Date: 2026-08-18
 - Extends: [ADR-0007](./0007-scenario-player.md),
   [ADR-0022](./0022-a-fireballs-startup-is-the-frame-it-spawns-on.md)
+- Extended by: [ADR-0024](./0024-a-hit-is-a-hitid-not-a-key.md) — the hit count
+  below was counting keys, so most of the population this ADR blamed on the sim
+  was single-hit all along. `HitID` per window replaces the shot special case.
 
 ## Context
 
@@ -124,7 +127,9 @@ keys called every fireball multi-hit and kept it out of the clean population.
 - **OD fireballs hit twice and the sim stops at the first.** They are the whole
   residue of the sweep — nine moves, offsets 10 to 25. A multi-hit projectile
   needs the player to keep going after contact, which is a bigger change than
-  this one and touches every multi-hit move, not only fireballs.
+  this one and touches every multi-hit move, not only fireballs. Still open, but
+  [ADR-0024](./0024-a-hit-is-a-hitid-not-a-key.md) cut the population it touches
+  from a claimed 435 moves to a real 142.
 - **Nothing ever hits the fireball.** Projectiles have hurtboxes in the dump and
   the dummy does not attack, so a fireball cannot be destroyed, clash, or trade.
   Two projectiles never meet.
