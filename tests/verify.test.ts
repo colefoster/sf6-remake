@@ -69,7 +69,41 @@ describe("the game's data against the published frame data", () => {
     // should. `hcWinSpCa` is a number, so it checks the boundary.
     const { clean } = report.totals.cancelEnd;
     expect(clean.checked).toBeGreaterThan(100);
-    expect(rate(clean)).toBeGreaterThan(0.88);
+    expect(rate(clean)).toBeGreaterThan(0.9);
+  });
+
+  it("matches the special-cancel confirm window and not the target-combo one", () => {
+    // FAT publishes two confirm windows and they differ on 13 plain moves. If the
+    // extracted window is the special-cancel list, as ADR-0008 claims, it tracks
+    // `hcWinSpCa` on those and `hcWinTc` on none of them — and it does, 13 to 0.
+    const spca = verify(undefined, { confirmColumn: "hcWinSpCa" });
+    const tc = verify(undefined, { confirmColumn: "hcWinTc" });
+    const rowsOf = (r: typeof spca) =>
+      new Map(
+        r.comparisons
+          .filter((c) => c.check === "cancelEnd" && c.clean && !c.input.includes(">"))
+          .map((c) => [`${c.character} ${c.input}`, c]),
+      );
+    const a = rowsOf(spca);
+    const b = rowsOf(tc);
+    const differ = [...a].filter(([k, c]) => b.has(k) && b.get(k)!.fat !== c.fat);
+    expect(differ.length).toBeGreaterThan(10);
+    expect(differ.filter(([, c]) => c.agrees).length).toBe(differ.length);
+    expect(differ.filter(([k]) => b.get(k)!.agrees).length).toBe(0);
+  });
+
+  it("cannot grade the cancel window of a chained input at all", () => {
+    // The same structural difference ADR-0011 found on `total`: FAT measures a
+    // target combo from the start of the whole string and the dump measures the
+    // action alone. On `total` that left the chained population merely worse; on
+    // `hcWinSpCa` it is total, and pooling the two is what made the headline
+    // read low. Asserted so the two populations are never silently merged again.
+    const rows = report.comparisons.filter((c) => c.check === "cancelEnd" && c.clean);
+    const chained = rows.filter((c) => c.input.includes(">"));
+    const plain = rows.filter((c) => !c.input.includes(">"));
+    expect(chained.length).toBeGreaterThan(4);
+    expect(chained.filter((c) => c.agrees).length).toBe(0);
+    expect(plain.filter((c) => c.agrees).length / plain.length).toBeGreaterThan(0.93);
   });
 
   it("confirms MarginFrame is the action's published total", () => {

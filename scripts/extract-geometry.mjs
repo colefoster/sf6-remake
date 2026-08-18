@@ -712,8 +712,15 @@ function cancelWindow(actions, cancelGroups, triggers, neutralGroups, move) {
   const firstActive = Math.min(...strikes.map((h) => h.start));
 
   const keys = action.cancels.filter((c) => isSpecialList(c.group));
-  const live = keys.filter((c) => !c.buffered && c.end >= firstActive);
-  if (!live.length) return null;
+  const all = keys.filter((c) => !c.buffered && c.end >= firstActive);
+  if (!all.length) return null;
+  // A key whose low nibble is 4 opens *after* the active frames and is the Drive
+  // Rush extension, not a special cancel: FAT's `hcWinSpCa` ends where the
+  // nibble-11 key ends and excludes it, on 4 of 4 moves that carry one. Dropping
+  // it would sometimes leave no window at all, and an empty window is a worse
+  // answer than a long one. See docs/adr/0015.
+  const narrowed = all.filter((c) => (c.cond & 15) !== 4);
+  const live = narrowed.length ? narrowed : all;
   const buffer = keys.filter((c) => c.buffered);
   return {
     start: Math.min(...live.map((c) => c.start)),

@@ -3,6 +3,10 @@
 - Status: accepted
 - Date: 2026-08-18
 - Extends: [ADR-0008](./0008-cancel-windows.md)
+- Extended by: [ADR-0015](./0015-the-cancel-window-boundary.md) — nibble 4's window
+  turns out to be excluded from FAT's special-cancel column, the first external
+  constraint on any part of the low nibble. It still does not settle what bit 2
+  means.
 
 ## Context
 

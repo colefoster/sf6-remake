@@ -95,6 +95,12 @@ interface FatColumns {
   blockstun?: string | number;
   total?: string | number;
   hcWinSpCa?: string | number;
+  /**
+   * The *target-combo* confirm window. Not what the cancel check grades against
+   * — the tests use it as the rival reading of the extracted window, and it
+   * loses outright. See ADR-0015.
+   */
+  hcWinTc?: string | number;
 }
 
 let fatCache: Record<string, Record<string, FatColumns>> | undefined;
@@ -172,11 +178,19 @@ export interface VerifyOptions {
    * not being checked at all.
    */
   guardRelease?: number;
+  /**
+   * Which published confirm window the cancel check grades against. FAT
+   * publishes two, and the extracted window is meant to be the special-cancel
+   * one; the tests run both, because a window compared only to the column it was
+   * assumed to be is not being checked either.
+   */
+  confirmColumn?: "hcWinSpCa" | "hcWinTc";
 }
 
 /** Run every check over the characters that have geometry. */
 export function verify(characters?: string[], options: VerifyOptions = {}): Report {
   const guardRelease = options.guardRelease ?? GUARD_RELEASE;
+  const confirmColumn = options.confirmColumn ?? "hcWinSpCa";
   const names = characters?.length ? characters : listCharacters();
   const comparisons: Comparison[] = [];
   const byCharacter: Report["byCharacter"] = [];
@@ -201,7 +215,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         hitstun: plainInt(columns.hitstun),
         blockstun: add(plainInt(columns.blockstun), guardRelease),
         total: plainInt(columns.total),
-        cancelEnd: plainInt(columns.hcWinSpCa),
+        cancelEnd: plainInt(columns[confirmColumn]),
         advantage: signedInt(move.fat.onBlock),
       };
 

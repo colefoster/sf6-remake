@@ -51,12 +51,14 @@ Four checks at the time of writing, over the 24 characters with geometry. A
 fifth, `advantage`, was added by [ADR-0011](./0011-margin-frame-is-recovery.md),
 and three more — invulnerability, graded against prose rather than a column — by
 [ADR-0014](./0014-per-frame-invulnerability.md).
+[ADR-0015](./0015-the-cancel-window-boundary.md) revisits `cancelEnd`.
 
 > **The rates below were measured over 19 characters, not 24.**
 > [ADR-0014](./0014-per-frame-invulnerability.md) found that `loadGeometry`
 > silently missed the five fighters whose ids carry punctuation. Four of the five
-> rates move by under a point once they are included; `cancelEnd` drops to 88.8%,
-> because those five are worse than the roster on that check specifically.
+> rates move by under a point once they are included; `cancelEnd` drops to 88.8%.
+> [ADR-0015](./0015-the-cancel-window-boundary.md) chases that drop and lands the
+> check at 91.0% pooled, 95.0% on plain inputs.
 
 | check | clean | what it compares |
 |---|---|---|
@@ -83,7 +85,10 @@ and three more — invulnerability, graded against prose rather than a column �
 - **`hcWinSpCa` checks the cancel window's boundary**, which ADR-0008 could not.
   `hcWinSpCa = cancelEnd − startup + hitstop + 2` holds on 91.8% of the clean
   population. ADR-0008 validated only that a window *exists* where FAT says one
-  should; this validates where it ends.
+  should; this validates where it ends. FAT publishes a second confirm window,
+  `hcWinTc`, and [ADR-0015](./0015-the-cancel-window-boundary.md) establishes that
+  the extracted window tracks `hcWinSpCa` and not that one — 13 to 0 where they
+  differ.
 - **`MarginFrame` is FAT's `total`** on 93.3% of the clean population. It has
   been extracted and typed since ADR-0004 and read by nothing.
 - **The disagreements cluster by move, not by check** — a move that disagrees

@@ -146,7 +146,7 @@ Distances are measured from where the attacker stood when the move began, so a m
 
 The stun, damage, and knockback numbers are the game's own, from its hit-data table — which is also how we found that **blockstun runs 4 frames longer than on-block advantage implies** ([ADR-0006: hit data](./docs/adr/0006-hit-data.md)). Counter hit is exactly +2 frames and punish counter +4, on every move checked.
 
-Cancel windows come from the same dumps: which frames of a move a special can be canceled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008: cancel windows](./docs/adr/0008-cancel-windows.md)).
+Cancel windows come from the same dumps: which frames of a move a special can be canceled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008: cancel windows](./docs/adr/0008-cancel-windows.md)). FAT publishes two confirm windows, and the extracted window tracks the special-cancel one rather than the target-combo one on every move where they differ ([ADR-0015: the cancel window boundary](./docs/adr/0015-the-cancel-window-boundary.md)).
 
 Air-only options are marked: `_State` carries an airborne gate that reads cleanly, though the rest of `ConditionFlag` does not ([ADR-0013: ConditionFlag](./docs/adr/0013-conditionflag.md)). Each option carries its price, and the prices are the game's own — EX two bars of Drive, Drive Impact one, a Drive Rush cancel three, Super Arts (SA) 1, 2, and 3 one, two, and three bars of super, and a 4-frame input buffer on nearly everything ([ADR-0009: what a cancel costs](./docs/adr/0009-what-a-cancel-costs.md)).
 
@@ -228,7 +228,7 @@ web/
   boxes.html             per-frame box viewer with spacing readouts
 data/raw/SF6FrameData.json   vendored real frame data (30 characters)
 data/geometry/<char>.json    per-frame boxes, origin motion, hit outcomes
-tests/                   116 tests, including assertions against the real data
+tests/                   118 tests, including assertions against the real data
 ```
 
 ## Known limitations
@@ -244,7 +244,7 @@ tests/                   116 tests, including assertions against the real data
 To run the test suite and the type checker, run the following commands:
 
 ```bash
-npm test          # 116 tests
+npm test          # 118 tests
 npm run typecheck
 ```
 
@@ -264,7 +264,7 @@ the game's dumped data vs the published frame data
   hitstun    269/292 92.1%      the hit table's hitstun == FAT's published hitstun
   blockstun  304/326 93.3%      the hit table's blockstun == FAT's published blockstun + 4
   total      209/224 93.3%      the action's MarginFrame == FAT's published total
-  cancelEnd  119/134 88.8%      the cancel window's last frame == FAT's published hit-confirm window
+  cancelEnd  122/134 91.0%      the cancel window's last frame == FAT's published hit-confirm window
   advantage  226/257 87.9%      the sim played out from the dump alone == FAT's published on-block
 
 per-frame invulnerability vs the published notes
