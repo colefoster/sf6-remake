@@ -17,6 +17,9 @@ import {
   overlaps,
   reach,
   cancelTargets,
+  cancelOptions,
+  affordable,
+  BAR,
 } from "../src/data/geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -340,5 +343,97 @@ describe("cancel window timing across the roster", () => {
     expect(Math.min(...offsets)).toBe(0);
     // Multi-hit moves open later; a single-hit normal's window tracks its hitbox.
     expect(offsets.filter((o) => o <= 3).length / offsets.length).toBeGreaterThan(0.9);
+  });
+});
+
+describe("what a cancel costs", () => {
+  const rosterTriggers = () =>
+    listCharacters().flatMap((name) => {
+      const g = loadGeometry(requireCharacter(name).id);
+      return g ? Object.values(g.triggers) : [];
+    });
+
+  /**
+   * The costs are denominated in gauge units and check themselves against the
+   * game: Drive is six bars of 10000 and super three, so these are the numbers
+   * every SF6 player already knows. See docs/adr/0009.
+   */
+  it("prices supers at exactly one bar per level", () => {
+    // Filtered to the triggers that charge at all: a super's later parts are
+    // free, because the first one already took the meter. Same for EX below.
+    const byLevel = new Map<string, number[]>();
+    for (const t of rosterTriggers()) {
+      const level = t.kind?.find((k) => /^Lv[1-4]$/.test(k));
+      if (!level || !t.super) continue;
+      if (!byLevel.has(level)) byLevel.set(level, []);
+      byLevel.get(level)!.push(t.super);
+    }
+    const only = (level: string, bars: number) => {
+      const costs = byLevel.get(level)!;
+      expect(costs.filter((c) => c === bars * BAR).length / costs.length).toBeGreaterThan(0.95);
+    };
+    only("Lv1", 1);
+    // Terry's SAA_2_3 is the one exception: a later part of a level 2 that
+    // charges another bar of its own.
+    only("Lv2", 2);
+    only("Lv3", 3);
+    // Lv4 is the level 3 again at low health — the Critical Art — same price.
+    only("Lv4", 3);
+  });
+
+  it("prices every EX special at two bars of Drive", () => {
+    const ex = rosterTriggers().filter((t) => t.kind?.includes("Extra"));
+    expect(ex.length).toBeGreaterThan(150);
+    const priced = ex.filter((t) => t.drive);
+    expect(priced.filter((t) => t.drive === 2 * BAR).length / priced.length).toBeGreaterThan(0.85);
+    // The one-bar exceptions are the stock-spending moves — Juri's Fuha
+    // releases, Guile's and Luke's charged variants — and there is nothing else.
+    expect([...new Set(priced.map((t) => t.drive))].sort()).toEqual([1 * BAR, 2 * BAR]);
+    // The free ones are the follow-up halves of a rekka whose first part paid.
+    expect(ex.filter((t) => !t.drive).length / ex.length).toBeLessThan(0.5);
+  });
+
+  it("prices the Drive system the way the game does", () => {
+    const cost = (flag: string) => {
+      const found = rosterTriggers().filter((t) => t.kind?.includes(flag) && t.drive);
+      return [...new Set(found.map((t) => t.drive))];
+    };
+    expect(cost("DImpact")).toEqual([1 * BAR]);
+    expect(cost("DReversal")).toEqual([2 * BAR]);
+    expect(cost("DriveDash")).toEqual([3 * BAR]);
+    // Drive Parry and the parry-into-rush are the half-bar options.
+    expect(cost("Parry")).toEqual([BAR / 2]);
+  });
+
+  it("buffers most inputs for 4 frames", () => {
+    const buffers = rosterTriggers().map((t) => t.buffer);
+    const four = buffers.filter((b) => b === 4).length;
+    expect(four / buffers.length).toBeGreaterThan(0.7);
+    expect(Math.max(...buffers)).toBeLessThanOrEqual(10);
+  });
+
+  it("resolves every cancel-list entry to a trigger", () => {
+    let entries = 0;
+    let unresolved = 0;
+    for (const name of listCharacters()) {
+      const g = loadGeometry(requireCharacter(name).id);
+      if (!g) continue;
+      for (const indices of Object.values(g.cancelGroups)) {
+        for (const index of indices) {
+          entries++;
+          if (!g.triggers[String(index)]) unresolved++;
+        }
+      }
+    }
+    expect(entries).toBeGreaterThan(2000);
+    expect(unresolved).toBe(0);
+  });
+
+  it("only offers what the gauges can pay for", () => {
+    const move = geo.moves.find((m) => m.input === "2MK")!;
+    const options = cancelOptions(geo, move);
+    expect(affordable(options, {}).every((o) => !o.trigger.drive && !o.trigger.super)).toBe(true);
+    expect(affordable(options, { drive: 2 * BAR }).length).toBeGreaterThan(affordable(options, {}).length);
+    expect(affordable(options, { drive: 6 * BAR, super: 3 * BAR }).length).toBe(options.length);
   });
 });

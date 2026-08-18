@@ -698,6 +698,31 @@ function setFrame(f) {
   drawStrip();
 }
 
+/**
+ * What the cancel menu costs, in bars. Drive is six bars of 10000 and super
+ * three, which is what makes an EX special read as 2 and a level 3 as SA3.
+ */
+const BAR = 10000;
+
+function cancelCosts(move) {
+  const free = new Set(), drive = new Map(), supers = new Set();
+  for (const group of move.cancel.groups) {
+    for (const index of state.data.cancelGroups[group] ?? []) {
+      const trigger = state.data.triggers[index];
+      const target = trigger && actionById(trigger.action);
+      if (!trigger || !target || target.name.startsWith("ATK_")) continue;
+      if (trigger.super) supers.add(trigger.super / BAR);
+      else if (trigger.drive) drive.set(trigger.drive / BAR, (drive.get(trigger.drive / BAR) ?? new Set()).add(target.id));
+      else free.add(target.id);
+    }
+  }
+  return [
+    free.size ? `${free.size} free` : null,
+    ...[...drive].sort((a, b) => a[0] - b[0]).map(([bars, ids]) => `${ids.size} at ${bars} drive`),
+    ...[...supers].sort().map((level) => `SA${level}`),
+  ].filter(Boolean).join(" · ");
+}
+
 function badge(text, warn) {
   const el = document.createElement("span");
   el.className = "badge" + (warn ? " warn" : "");
@@ -744,6 +769,7 @@ function selectAction(action, move) {
         `special-cancel f${start}-${end}` + (buffer !== null && buffer < start ? ` (buffered from f${buffer})` : ""),
       ),
     );
+    badges.append(badge(cancelCosts(move)));
   }
   if (move) {
     badges.append(badge(`FAT: startup ${move.fat.startup}, active ${move.fat.active}`));

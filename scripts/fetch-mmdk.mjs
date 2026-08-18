@@ -25,12 +25,12 @@ const OUT = path.join(root, "data/raw/mmdk");
 const REPO = "alphazolam/MMDK";
 const DUMP_DIR = "MMDK/reframework/data/MMDK/PlayerData";
 /**
- * Only the files we actually parse. `tgroups` is the cancel lists and is tiny
- * (16 KB); `triggers` (845 KB) and `commands` (445 KB) hold the input side —
- * buffer lengths, meter costs, motion inputs — and stay unfetched until
- * something needs them. See docs/adr/0008.
+ * Only the files we actually parse. `tgroups` is the cancel lists, `triggers`
+ * is what each cancel costs and buffers. `commands` (445 KB per fighter) is the
+ * motion inputs — what to press rather than what happens — and stays unfetched.
+ * See docs/adr/0008 and 0009.
  */
-const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT", "tgroups"];
+const FILES = ["rects", "moves_dict", "char_info", "Names", "HIT_DT", "tgroups", "triggers"];
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 

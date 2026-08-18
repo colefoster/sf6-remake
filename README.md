@@ -92,6 +92,8 @@ The stun, damage and knockback numbers are the game's own, from its hit-data tab
 
 Cancel windows come from the same dumps: which frames of a move a special can be cancelled in on, when the input starts buffering, and what the cancel opens into. They agree with FAT's published cancel column on 505 of 511 normals ([ADR-0008](./docs/adr/0008-cancel-windows.md)).
 
+Each option carries its price, and the prices are the game's own — EX two bars of Drive, Drive Impact one, a Drive Rush cancel three, SA1/SA2/SA3 one/two/three bars of super, and a 4-frame input buffer on nearly everything ([ADR-0009](./docs/adr/0009-what-a-cancel-costs.md)).
+
 Add a character:
 
 ```bash
@@ -169,7 +171,7 @@ tests/                   78 tests, incl. assertions against the real data
 - **Geometry covers the 24 characters MMDK dumps**, and those dumps are a late-2024 snapshot of the game — so pre-Season-3 balance. FAT's six newer characters (Alex, C.Viper, Elena, Ingrid, Mai, Sagat) have no geometry and fall back to its coarse `reach` scalar. See [ADR-0004](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md).
 - **Motion is per action, not composed across actions.** A jump attack is its own action and doesn't inherit the arc of the jump it came from, so air normals show at ground level. See [ADR-0005](./docs/adr/0005-origin-motion-from-place-and-steer-keys.md).
 - **Multi-hit / conditional frame values** (e.g. `"-13(-28)(-43)"`) are parsed to their first value for engine math; the full string is preserved on `move.raw`.
-- **The dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`). Cancel windows are extracted now ([ADR-0008](./docs/adr/0008-cancel-windows.md)) — what's still missing is the input side: buffer lengths, Drive and super costs.
+- **The dummy doesn't fight back.** The scenario player runs one move against a blocking or standing opponent; frame traps and counter hits stay with the frame-data engine (`sf6 gap`, `sf6 punish`). Cancel windows, costs and buffers are extracted now ([ADR-0008](./docs/adr/0008-cancel-windows.md), [ADR-0009](./docs/adr/0009-what-a-cancel-costs.md)) — what's missing is a policy for choosing among them, and a sim that spends the meter it can read.
 - **Cancel-advantage** uses the first-order model (ending = the cancelled-into move's own advantage). Exact per-cancel numbers can be supplied via `move.comboAdvantage` overrides.
 
 ## Test

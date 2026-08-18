@@ -21,7 +21,8 @@ import {
   activeWindows,
   connectFrames,
   idleHurtboxes,
-  cancelTargets,
+  BAR,
+  cancelOptions,
   hitDataFor,
   loadGeometry,
   minDistance,
@@ -376,13 +377,33 @@ function printBoxes(character: Character, move: Move, args: Args): void {
 
   if (mapping?.cancel) {
     const { start, end, buffer } = mapping.cancel;
-    const targets = cancelTargets(geo, mapping);
-    const specials = targets.filter((t) => !t.name.startsWith("ATK_"));
+    const options = cancelOptions(geo, mapping).filter((o) => !o.action.name.startsWith("ATK_"));
+    const distinct = new Set(options.map((o) => o.action.id)).size;
     console.log(
       `  cancel       f${start}-${end}` +
         (buffer !== null && buffer < start ? ` (buffered from f${buffer})` : "") +
-        ` into ${specials.length} specials/supers`,
+        ` into ${distinct} specials/supers`,
     );
+    // Grouped by price, because "what can I afford from here" is the question.
+    const free = new Set<number>();
+    const drive = new Map<number, Set<number>>();
+    const supers = new Set<number>();
+    for (const { trigger, action } of options) {
+      if (trigger.super) supers.add(trigger.super / BAR);
+      else if (trigger.drive) {
+        const bars = trigger.drive / BAR;
+        if (!drive.has(bars)) drive.set(bars, new Set());
+        drive.get(bars)!.add(action.id);
+      } else free.add(action.id);
+    }
+    const costs = [
+      free.size ? `${free.size} free` : null,
+      ...[...drive].sort((a, b) => a[0] - b[0]).map(([bars, ids]) => `${ids.size} at ${bars} drive`),
+      ...[...supers].sort().map((level) => `SA${level}`),
+    ].filter(Boolean);
+    console.log(`  costs        ${costs.join(", ")}`);
+    const buffered = options[0]?.trigger.buffer;
+    if (buffered) console.log(`  buffer       ${buffered}f of input buffer`);
   }
 
   const data = hitDataFor(geo, action);

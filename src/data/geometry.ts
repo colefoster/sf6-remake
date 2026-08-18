@@ -171,6 +171,28 @@ export interface MoveMapping {
  * own first active frame — on it for a single-hit normal, later for a multi-hit
  * one — and `buffer` is where an input starts being held.
  */
+/**
+ * One way into an action: what it costs, how long the input buffers, and the
+ * game's own classification of it.
+ *
+ * Costs are gauge units. Drive is 60000 across six bars and super 30000 across
+ * three, so `drive: 20000` is an EX special's two bars and `super: 30000` is a
+ * level 3. See docs/adr/0009.
+ */
+export interface Trigger {
+  action: number;
+  /** Input buffer in frames — 4 nearly everywhere, 6 on air specials. */
+  buffer: number;
+  drive?: number;
+  /** Super meter. Absent on everything that isn't a super. */
+  super?: number;
+  /** The game's own flags, `_Is` stripped: `Extra` is EX, `Lv1`..`Lv4` supers. */
+  kind?: string[];
+}
+
+/** One bar of Drive or super gauge, in the units the triggers are denominated in. */
+export const BAR = 10000;
+
 export interface CancelWindow {
   start: number;
   end: number;
@@ -196,8 +218,10 @@ export interface GeometryFile {
   actions: GeometryAction[];
   /** Outcome table, keyed by the `attackData` index a hit key carries. */
   hitData: Record<string, HitData>;
-  /** Cancel lists: group id -> the action ids that group makes available. */
+  /** Cancel lists: group id -> the trigger indices that group makes available. */
   cancelGroups: Record<string, number[]>;
+  /** What each cancel option costs and buffers, by trigger index. */
+  triggers: Record<string, Trigger>;
   /** The groups the idle actions open — everything available from neutral. */
   neutralGroups: number[];
 }
@@ -320,15 +344,48 @@ export function hitDataSequence(geo: GeometryFile, action: GeometryAction): HitD
   return out;
 }
 
+/** A cancel option: the trigger that opens it and the action it leads to. */
+export interface CancelOption {
+  trigger: Trigger;
+  action: GeometryAction;
+}
+
 /**
- * The actions a move can be cancelled into, resolved through its cancel groups.
- * Only actions the extractor kept are returned: a group can name an action with
- * no collision data of its own (a stance handoff, a system action), and those
- * are dropped rather than surfaced as a nameless id.
+ * What a move can be cancelled into, resolved group -> trigger -> action.
+ *
+ * A cancel list holds one trigger per strength, so the same action appears
+ * several times over; each is kept, because they are separate options with
+ * separate costs (an EX special is its own trigger, not a modifier on one).
+ * Options whose action has no collision data of its own — a stance handoff, a
+ * system action — are dropped rather than surfaced as a nameless id.
  */
+export function cancelOptions(geo: GeometryFile, move: MoveMapping): CancelOption[] {
+  const out: CancelOption[] = [];
+  for (const group of move.cancel?.groups ?? []) {
+    for (const index of geo.cancelGroups?.[String(group)] ?? []) {
+      const trigger = geo.triggers?.[String(index)];
+      const action = trigger && actionById(geo, trigger.action);
+      if (trigger && action) out.push({ trigger, action });
+    }
+  }
+  return out;
+}
+
+/** The distinct actions a move can be cancelled into. */
 export function cancelTargets(geo: GeometryFile, move: MoveMapping): GeometryAction[] {
-  const ids = new Set((move.cancel?.groups ?? []).flatMap((g) => geo.cancelGroups?.[String(g)] ?? []));
-  return [...ids].map((id) => actionById(geo, id)).filter((a): a is GeometryAction => a !== undefined);
+  const seen = new Map<number, GeometryAction>();
+  for (const { action } of cancelOptions(geo, move)) seen.set(action.id, action);
+  return [...seen.values()];
+}
+
+/** The options a fighter can actually pay for, given what's in the gauges. */
+export function affordable(
+  options: CancelOption[],
+  meter: { drive?: number; super?: number },
+): CancelOption[] {
+  const drive = meter.drive ?? 0;
+  const superMeter = meter.super ?? 0;
+  return options.filter((o) => (o.trigger.drive ?? 0) <= drive && (o.trigger.super ?? 0) <= superMeter);
 }
 
 /** Whether a special can be cancelled in on this frame of the move (not buffered). */

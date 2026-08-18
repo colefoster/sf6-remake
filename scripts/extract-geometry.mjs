@@ -310,26 +310,64 @@ function extractHitData(file) {
 
 /**
  * The cancel lists. `tgroups.json` is one entry per trigger group, and each is a
- * bit array whose set bits are trigger indices — MMDK dumps them already
- * resolved to `"<actionId> <ACTION_NAME>"`, which is all we need, so the 845 KB
- * `triggers.json` stays unfetched. MMDK's own UI calls these CancelLists.
+ * bit array whose set bits are **trigger indices**. MMDK dumps them annotated
+ * with the action each leads to, but we keep the indices: a group lists the same
+ * action once per strength, and it is the trigger, not the action, that carries
+ * what the option costs. MMDK's own UI calls these CancelLists.
  *
- * Only groups an action actually references are kept; a fighter's file
- * typically declares a few more than it uses.
+ * Only groups an action actually references are kept; a fighter's file typically
+ * declares a few more than it uses.
  */
 function extractCancelGroups(file, referenced) {
   const out = {};
   for (const [gid, group] of Object.entries(file ?? {})) {
     const id = Number(gid);
     if (!referenced.has(id) || !group || typeof group !== "object") continue;
-    const ids = [];
-    for (const entry of Object.values(group)) {
-      const actionId = Number.parseInt(String(entry), 10);
-      if (Number.isFinite(actionId) && !ids.includes(actionId)) ids.push(actionId);
+    const triggers = Object.keys(group)
+      .filter((k) => /^\d+$/.test(k))
+      .map(Number)
+      .sort((a, b) => a - b);
+    if (triggers.length) out[id] = triggers;
+  }
+  return out;
+}
+
+/**
+ * What it takes to actually get the cancel out. `triggers.json` is keyed by the
+ * action a trigger leads to, and within that by the trigger's own index — the
+ * same index the cancel lists hold.
+ *
+ * The costs are in gauge units, and they check themselves against the game:
+ * Drive is 60000 over six bars and super 30000 over three, so an EX special
+ * reads 20000 (two bars), Drive Impact 10000, Drive Parry 5000, a Drive Rush
+ * cancel 30000, and SA1/2/3 come out at exactly 10000/20000/30000.
+ *
+ * `focus_need` is a flag rather than an amount (0 or 1 on all but one trigger
+ * in the roster); `focus_consume` is the number that matters.
+ */
+function extractTriggers(file, used) {
+  const out = {};
+  for (const slots of Object.values(file ?? {})) {
+    if (!slots || typeof slots !== "object") continue;
+    for (const [index, trigger] of Object.entries(slots)) {
+      const id = Number(index);
+      if (!used.has(id) || !trigger || typeof trigger !== "object") continue;
+      // Classic is the style that has a command on all but 32 triggers; the
+      // others are Modern and the assist styles, which reuse the same trigger.
+      const style = ["norm", "sprt", "easy", "supr"].find((s) => (trigger[s]?.command_index ?? -1) > -1);
+      const record = {
+        action: trigger.action_id,
+        /** Input buffer in frames: 4 almost everywhere, 6 on air specials. */
+        buffer: trigger[style ?? "norm"]?.preceding_time ?? 0,
+      };
+      if (trigger.focus_consume) record.drive = trigger.focus_consume;
+      if (trigger.gauge_consume) record.super = trigger.gauge_consume;
+      const kinds = Object.entries(trigger)
+        .filter(([k, v]) => k.startsWith("_Is") && v === true)
+        .map(([k]) => k.slice(3));
+      if (kinds.length) record.kind = kinds;
+      out[id] = record;
     }
-    // A group listing the same action under several triggers (one per strength)
-    // is the normal case, hence the dedupe.
-    if (ids.length) out[id] = ids.sort((a, b) => a - b);
   }
   return out;
 }
@@ -618,7 +656,7 @@ const isPlainInt = (v) => typeof v === "number" || (typeof v === "string" && /^\
  * input buffer. Validated against FAT's `xx` column, which says independently
  * which normals are special-cancellable at all.
  */
-function cancelWindow(actions, cancelGroups, neutralGroups, move) {
+function cancelWindow(actions, cancelGroups, triggers, neutralGroups, move) {
   const action = actions.find((a) => a.id === move.action);
   if (!action?.cancels?.length) return null;
   const neutral = new Set(neutralGroups);
@@ -627,8 +665,8 @@ function cancelWindow(actions, cancelGroups, neutralGroups, move) {
   // (Chun-Li's stance handoff), which would otherwise read as a special cancel.
   const isSpecialList = (gid) =>
     !neutral.has(gid) &&
-    (cancelGroups[gid] ?? []).some((id) => {
-      const name = actions.find((a) => a.id === id)?.name;
+    (cancelGroups[gid] ?? []).some((index) => {
+      const name = actions.find((a) => a.id === triggers[index]?.action)?.name;
       return name && !name.startsWith("ATK_");
     });
 
@@ -673,11 +711,12 @@ function calibrate(actions) {
 
 async function buildCharacter(fatName, dumpDir, fat, source) {
   const dir = path.join(RAW, dumpDir);
-  const [rectsFile, movesFile, hitFile, groupFile] = await Promise.all([
+  const [rectsFile, movesFile, hitFile, groupFile, triggerFile] = await Promise.all([
     readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
     readFile(path.join(dir, "HIT_DT.json"), "utf8").then(JSON.parse).catch(() => null),
     readFile(path.join(dir, "tgroups.json"), "utf8").then(JSON.parse).catch(() => null),
+    readFile(path.join(dir, "triggers.json"), "utf8").then(JSON.parse).catch(() => null),
   ]);
   const rect = makeRects(rectsFile);
 
@@ -707,6 +746,10 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
 
   const referenced = new Set(actions.flatMap((a) => (a.cancels ?? []).map((c) => c.group)));
   const cancelGroups = extractCancelGroups(groupFile, referenced);
+  const triggers = extractTriggers(triggerFile, new Set(Object.values(cancelGroups).flat()));
+  const unresolvedTriggers = Object.values(cancelGroups)
+    .flat()
+    .filter((index) => !triggers[index]).length;
   // The idle actions' own groups are the neutral list — everything the fighter
   // can do from standing. Any other group an attack opens is a cancel list.
   const idle = actions.filter((a) => /^BAS_(STD|CRH)_Loop$/.test(a.name));
@@ -717,7 +760,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   // check on the windows: `sp`/`su` there should mean a window here.
   const cancelMismatches = [];
   for (const move of moves) {
-    const window = cancelWindow(actions, cancelGroups, neutralGroups, move);
+    const window = cancelWindow(actions, cancelGroups, triggers, neutralGroups, move);
     if (window) move.cancel = window;
     if (move.category !== "normal" || move.input.includes(">")) continue;
     const fatMove = fatMoves.find((m) => m.numCmd === move.input);
@@ -739,6 +782,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     calibration: calibrate(actions),
     hitData: extractHitData(hitFile),
     cancelGroups,
+    triggers,
     neutralGroups,
     counts: {
       actions: actions.length,
@@ -750,6 +794,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
       exact: moves.filter((m) => m.match === "exact").length,
       weak: moves.filter((m) => m.match === "weak").length,
       cancelGroups: Object.keys(cancelGroups).length,
+      triggers: Object.keys(triggers).length,
       withCancels: actions.filter((a) => a.cancels).length,
       cancellable: moves.filter((m) => m.cancel).length,
       cancelMismatches: cancelMismatches.length,
