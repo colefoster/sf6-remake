@@ -511,22 +511,35 @@ describe("knockdowns", () => {
  * two are built never to intersect and the test is horizontal.
  */
 describe("throws", () => {
-  const throwAt = (distance: number, p2: (i: number) => ReturnType<typeof hold>) => {
+  const throwAt = (distance: number, p2: (i: number) => ReturnType<typeof hold>, frames = 80) => {
     const match = matchFor("Ryu", "Ken", { distance, seconds: null });
-    for (let i = 0; i < 40; i++) match.advance(i < 3 ? hold(5, ["LP", "LK"]) : hold(5), p2(i));
+    for (let i = 0; i < frames; i++) match.advance(i < 3 ? hold(5, ["LP", "LK"]) : hold(5), p2(i));
     return match;
   };
 
   it("comes out from the two-button trigger", () => {
+    // Three frames in it is still the catch; by frame four it has taken the
+    // type-36 branch into the animation that carries the opponent.
+    const caught = throwAt(90, () => hold(5), 2);
+    expect(caught.fighters[0].actionName).toMatch(/^NGS/);
+    const carried = throwAt(90, () => hold(5), 10);
+    expect(carried.fighters[0].actionName).toBe("NGA_6");
+    expect(carried.fighters[1].actionName).toBe("NGD_6");
+  });
+
+  it("does its damage off the LockKey, not off a hitbox", () => {
+    // `NGA_6` has no hit keys at all. The 1200 FAT publishes rides a `LockKey`
+    // naming hit-data row 116, which no hit key anywhere references.
     const match = throwAt(90, () => hold(5));
-    expect(match.fighters[0].actionName).toMatch(/^NGS/);
+    expect(match.hits.map((h) => `${h.action} ${h.damage}`)).toEqual(["NGA_6 1200"]);
+    expect(match.health[1]).toBe(10000 - 1200);
   });
 
   it("connects in range and whiffs past it", () => {
-    // Ryu's throw box reaches 80 and Ken's throwable box extends 30, so the two
-    // meet up to 110 units apart and not beyond. Both numbers are the dump's.
+    // Ryu's throw box reaches 80 and Ken's throwable box extends 33, so the two
+    // meet up to 113 units apart and not beyond. Both numbers are the dump's.
     expect(throwAt(105, () => hold(5)).hits).toHaveLength(1);
-    expect(throwAt(110, () => hold(5)).hits).toHaveLength(0);
+    expect(throwAt(120, () => hold(5)).hits).toHaveLength(0);
   });
 
   it("cannot be blocked", () => {
@@ -542,7 +555,7 @@ describe("throws", () => {
   it("does not connect against ordinary hurtboxes", () => {
     // The throwable box is a separate array the dump keeps apart from
     // head/body/leg. A throw that tested the ordinary ones would reach much
-    // further than 110 — Ken's hurtboxes are wider than his throwable box.
+    // further — Ken's hurtboxes are wider than his throwable box.
     const far = throwAt(140, () => hold(5));
     expect(far.hits).toHaveLength(0);
   });

@@ -157,6 +157,12 @@ export interface GeometryAction {
    */
   scaling?: { start?: number; combo?: number; immediate?: number };
   /**
+   * Hit-data rows named by a `LockKey` rather than by a hit key — how a throw's
+   * damage reaches the table. `frame` is 1-indexed in the owning action.
+   * See ADR-0035.
+   */
+  locks?: { frame: number; attackData: number }[];
+  /**
    * A Super Art's cinematic freeze, in frames, from the action's `WorldKey` timer.
    * Everything after it sits `freeze - 1` frames later in the action's own timeline
    * than in FAT's numbers, so a comparison between the two has to net it out.

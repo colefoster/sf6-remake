@@ -467,7 +467,7 @@ function printThrows(report: ReturnType<typeof verifyThrows>): void {
     );
   console.log("\n\nthrows vs the published stats\n");
   line("range", report.reach, "the NGS throw box's reach == FAT's throwRange x 100");
-  line("throwable", report.hurt, "the throwable hurtbox == FAT's throwHurt x 100, less 3");
+  line("throwable", report.hurt, "the throwable hurtbox == FAT's throwHurt x 100");
   const bad = report.rows.filter((r) => !r.reachAgrees && r.publishedReach !== undefined && r.reach !== undefined);
   for (const r of bad.slice(0, 5)) {
     console.log(`    ${r.character.padEnd(10)} dump ${r.reach} vs published ${r.publishedReach}`);

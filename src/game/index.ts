@@ -531,6 +531,16 @@ export class Fighter {
     this.floor = floor ?? 0;
   }
 
+  /**
+   * Enter an action outright, the way a branch the runtime chooses would.
+   *
+   * `react` is for being hit; this is for the thrower taking their own catch
+   * branch, which is neither an input nor a hit. See ADR-0035.
+   */
+  play(action: GeometryAction): void {
+    this.enter(action, this.state.stance === "air" ? "air" : "stand");
+  }
+
   /** Is this fighter on the floor rather than merely in hitstun. */
   get down(): boolean {
     return this.state.action.name.startsWith("BAS_DN_");

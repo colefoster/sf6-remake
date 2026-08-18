@@ -59,6 +59,9 @@ import { Fighter, NEUTRAL, type Button, type Direction, type InputFrame } from "
  */
 const GUARD_RELEASE = 4;
 
+/** The branch a connecting throw takes, into the animation that carries the opponent. */
+const BRANCH_CATCH = 36;
+
 /**
  * Half the stage, in the same game units everything else here is in.
  *
@@ -244,6 +247,8 @@ export class Match {
     this.throwShots(1);
     this.resolve(0, b);
     this.resolve(1, a);
+    this.resolveLocks(0);
+    this.resolveLocks(1);
     this.flyProjectiles(a, b);
   }
 
@@ -428,12 +433,11 @@ export class Match {
       // head/body/leg, and which `hurtboxesAt` excludes by default — and it
       // cannot touch someone off the ground. Before this it went through the
       // ordinary path and connected like a normal. See ADR-0034.
-      if (key.kind === "throw") {
-        if (them.state.stance === "air") continue;
-        if (!reaches(boxes, worldThrowboxes(them))) continue;
-      } else if (!theirs.some((h) => boxes.some((box) => overlaps(box, h)))) {
-        continue;
-      }
+      // A throw tests the defender's *throwable* box — its own array on each
+      // hurt key, which `hurtboxesAt` leaves out — and only on the ground.
+      const target = key.kind === "throw" ? worldThrowboxes(them) : theirs;
+      if (key.kind === "throw" && them.state.stance === "air") continue;
+      if (!target.some((h) => boxes.some((box) => overlaps(box, h)))) continue;
       // Marked only if it actually landed: a hit the juggle rules refuse has
       // not been spent, and the hitbox is still out.
       if (
@@ -502,6 +506,12 @@ export class Match {
     this.gauges(attacker, them, data, outcome, type);
     const reaction = reactionFor(them.geo, outcome, type === "block", them.state.stance);
     const stun = outcome.stun - (type === "block" ? GUARD_RELEASE : 0);
+    // A throw that connects is not "a hit that did nothing". The catch row is
+    // 0 damage and 10 stun by design; what follows is a branch of type 36
+    // (`CATCH`) into the animation that carries the opponent, and the damage
+    // rides a `LockKey` on *that* action. See ADR-0035.
+    if (thrown && this.grab(attacker, them, type)) return true;
+
     // `DownTime` is the floor time. The counter-hit sweep is the evidence: Ryu's
     // 2HK states 10 on hit and 25 on counter with the hitstun and the knockback
     // identical, so the only thing a counter changes on a sweep is how long the
@@ -561,6 +571,53 @@ export class Match {
     them.gain("super", outcome.super.target);
     const drain = type === "block" ? data.driveHit?.drive.target : data.punishCounter?.drive.target;
     if (drain) them.gain("drive", -Math.abs(drain));
+  }
+
+  /**
+   * Take the catch branch: both fighters enter the throw animation.
+   *
+   * The thrower's `NGS` carries two type-36 branches, the `(1)` variant being
+   * the punish-counter throw — 2040 damage against 1200, and a hard knockdown.
+   * The defender's paired action is the thrower's id plus one, which is the
+   * dump's own naming convention (`NGA_6` 720, `NGD_6` 721).
+   */
+  private grab(attacker: 0 | 1, them: Fighter, type: Contact): boolean {
+    const me = this.fighters[attacker]!;
+    const branches = (me.state.action.branches ?? []).filter((b) => b.type === BRANCH_CATCH);
+    if (!branches.length) return false;
+    const punish = type === "punishCounter";
+    const targets = branches
+      .map((b) => ({ branch: b, action: me.geo.actions.find((a) => a.id === b.action) }))
+      .filter((t): t is { branch: (typeof branches)[number]; action: GeometryAction } => Boolean(t.action));
+    const chosen =
+      targets.find((t) => (punish ? /\(1\)$/.test(t.action.name) : !/\(1\)$/.test(t.action.name))) ?? targets[0];
+    if (!chosen) return false;
+    const held = me.geo.actions.find((a) => a.id === chosen.action.id + 1);
+    me.play(chosen.action);
+    // The thrown fighter is locked for the whole animation; the outcome arrives
+    // when the thrower reaches the lock frame.
+    if (held) them.react(held, held.frames ?? 0);
+    return true;
+  }
+
+  /**
+   * Apply any hit row a `LockKey` names on this frame.
+   *
+   * This is the only path by which a throw does damage: the row is referenced by
+   * no hit key anywhere, which is why it reads as an orphan in the table.
+   */
+  private resolveLocks(side: 0 | 1): void {
+    const me = this.fighters[side]!;
+    const them = this.fighters[side === 0 ? 1 : 0]!;
+    for (const lock of me.state.action.locks ?? []) {
+      if (lock.frame !== me.state.frame) continue;
+      const id = `lock:${side}:${me.instance}:${lock.attackData}`;
+      if (this.connected.has(id)) continue;
+      const data = me.geo.hitData?.[String(lock.attackData)];
+      if (!data?.hit) continue;
+      this.connected.add(id);
+      this.land(side, them, data, me.state.action, NEUTRAL, me.state.facing);
+    }
   }
 
   /**
@@ -637,28 +694,15 @@ function placeAll(boxes: Box[], f: Fighter): Box[] {
 }
 
 /**
- * Does the throw reach — **horizontally**.
- *
- * The two boxes are built never to intersect: a throw hitbox spans y 0 to 130
- * and the throwable box sits at y 132 to 166, two units above it, on every
- * fighter. So a throw is not an intersection test at all, it is a range check,
- * and the range is the two x-extents meeting. That is also why FAT publishes
- * both of them as separate stats — 0.8 and 0.33 for Ryu, against the dump's 80
- * and 30. See ADR-0034.
- */
-function reaches(attack: Box[], throwable: Box[]): boolean {
-  return attack.some((a) =>
-    throwable.some((t) => a.x < t.x + t.width && t.x < a.x + a.width),
-  );
-}
-
-/**
  * The defender's throwable boxes, in world space.
  *
  * The dump keeps `throw` as its own array on each hurt key, beside head, body
  * and leg, and `hurtboxesAt` leaves it out unless asked. An action with no throw
  * box is throw-invulnerable by absence — the same shape ADR-0020 found for full
  * invulnerability — which is why this reads the keys directly.
+ *
+ * These resolve against the *pushbox* rect tables, not the hurtbox one, which is
+ * what makes them overlap a throw hitbox at all. See ADR-0035.
  */
 function worldThrowboxes(f: Fighter): Box[] {
   const { action, frame } = f.state;

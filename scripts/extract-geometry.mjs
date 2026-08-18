@@ -15,7 +15,8 @@
  *
  *   AttackCollisionKey, AttackDataListIndex > -1  -> rects[CollisionType]  (hitbox)
  *   AttackCollisionKey, AttackDataListIndex = -1, CollisionType 3 -> rects[3] (proximity)
- *   DamageCollisionKey  Head/Body/Leg/ThrowList   -> rects[8]              (hurtbox)
+ *   DamageCollisionKey  Head/Body/Leg               -> rects[8]              (hurtbox)
+ *   DamageCollisionKey  ThrowList                   -> rects[5] then rects[7] (throwable)
  *
  * A rect is a CENTRE plus HALF-EXTENTS (`OffsetX/Y`, `SizeX/Y`), which is why
  * Ryu's standing head/body/leg hurtboxes tile exactly 0-54, 54-138, 138-166
@@ -185,7 +186,16 @@ function extractAction(action, rect, unresolvedPush) {
       head: boxesFrom(rect, RECT_HURT, key.HeadList, key.RootOffset),
       body: boxesFrom(rect, RECT_HURT, key.BodyList, key.RootOffset),
       leg: boxesFrom(rect, RECT_HURT, key.LegList, key.RootOffset),
-      throw: boxesFrom(rect, RECT_HURT, key.ThrowList, key.RootOffset),
+      // `ThrowList` does NOT resolve against the hurtbox table, despite sitting
+      // beside Head/Body/Leg on the same key. Its ids are 1,2,3,10,34 — the
+      // *pushbox* namespace — where the hurt table's are 100+. Read against
+      // `rects[8]` it silently returned the head box, which sits at y 132-166
+      // and cannot overlap a throw hitbox spanning y 0-130.
+      //
+      // The **base** table only, not the override the pushbox itself uses:
+      // base-only reproduces FAT's published `throwHurt` on 23 of 24 fighters,
+      // override-first on 19. See ADR-0035.
+      throw: boxesFrom(rect, RECT_PUSH_BASE, key.ThrowList, key.RootOffset),
     };
     if (!Object.values(parts).some((b) => b.length)) continue;
     const entry = { start, end, ...parts };
@@ -260,6 +270,7 @@ function extractAction(action, rect, unresolvedPush) {
     // with FAT's `dmgScaling` "20% Start" exactly. `ComboScaling`/`InstScaling`
     // are its mid-combo and immediate siblings, kept on the same terms.
     ...scaling(fab.Combo),
+    ...locks(action.LockKey),
     flags: {
       high: !!cat._IsHigh,
       low: !!cat._IsLow,
@@ -319,6 +330,26 @@ function extractShots(action) {
 const HIT_CONDITIONS = ["hit", "block", "counter", "punishCounter", "driveHit"];
 
 /** The three combo-scaling percentages, dropping the −1 that means "unset". */
+/**
+ * A throw's damage, which is on none of its hit keys.
+ *
+ * `NGS` catches for zero damage; the animation that carries the opponent
+ * (`NGA_6`, `NGA_4`) has no `AttackCollisionKey` at all. The hit-data row is
+ * named by a `LockKey` entry flagged `_IsAttackDataHash02`, whose `Param02` is
+ * the `AttackDataListIndex` — which is why those rows are referenced by nothing
+ * else in the file. See ADR-0035.
+ */
+function locks(lockKey) {
+  const out = [];
+  for (const key of Object.values(lockKey ?? {})) {
+    if (!key?._IsAttackDataHash02) continue;
+    const attackData = key.Param02;
+    if (typeof attackData !== "number" || attackData < 0) continue;
+    out.push({ frame: (key._StartFrame ?? 0) + 1, attackData });
+  }
+  return out.length ? { locks: out } : {};
+}
+
 function scaling(combo) {
   if (!combo) return {};
   const out = {};

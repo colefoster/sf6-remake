@@ -27,11 +27,11 @@ const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
 export const UNITS_PER_METRE = 100;
 
 /**
- * FAT's `throwHurt` sits three units outside the throwable box the dump draws,
- * on 20 of the 24 characters. Measured, and a convention of FAT's rather than a
- * mechanic — the same standing as ADR-0023's eight-frame projectile contact.
+ * No offset. An earlier reading needed three units of fudge here; that was the
+ * throwable box being resolved against the wrong rect table, not a convention
+ * of FAT's. See ADR-0035.
  */
-export const THROW_HURT_OFFSET = 3;
+export const THROW_HURT_OFFSET = 0;
 
 export interface ThrowRow {
   character: string;
