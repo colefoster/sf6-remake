@@ -70,7 +70,9 @@ export type CheckName =
   | "juggleStart"
   | "juggleAdd"
   | "juggleLimit"
-  | "startScaling";
+  | "startScaling"
+  | "knockdown"
+  | "hardKnockdown";
 
 export const CHECKS: Record<CheckName, string> = {
   hitstun: "the hit table's hitstun == FAT's published hitstun",
@@ -87,6 +89,8 @@ export const CHECKS: Record<CheckName, string> = {
   juggleAdd: "the hit table's JuggleAdd == FAT's jugIncr",
   juggleLimit: "the hit table's JuggleLimit == FAT's jugLimit",
   startScaling: "the action's _StartScaling == FAT's dmgScaling \"N% Start\"",
+  knockdown: "the hit table's DmgType != 3 == FAT publishing \"KD\" on hit",
+  hardKnockdown: "a row with _no_rolling or DownTime 0 == FAT's \"HKD\" on punish counter",
 };
 
 export interface Comparison {
@@ -141,6 +145,40 @@ function startPercent(value: unknown): number | undefined {
   return m ? Number.parseInt(m[1]!, 10) : undefined;
 }
 
+/**
+ * The `DmgType` of a hit that leaves the defender on their feet.
+ *
+ * Measured, not assumed: of the roster's clean single-hit moves, 499 of the 511
+ * carrying type 3 are moves FAT publishes an ordinary frame advantage for, and
+ * 170 of the 190 carrying anything else are moves FAT marks "KD".
+ */
+const UPRIGHT = 3;
+
+/**
+ * Does FAT say this move knocks down. `undefined` for notations saying something
+ * else. `HKD` counts — a hard knockdown is still a knockdown, and leaving it out
+ * silently dropped 185 moves.
+ */
+function knocksDown(onHit: unknown): number | undefined {
+  if (typeof onHit === "number") return 0;
+  if (typeof onHit !== "string") return undefined;
+  const text = onHit.trim();
+  if (/^H?KD/.test(text)) return 1;
+  return /^[+-]?\d+$/.test(text) ? 0 : undefined;
+}
+
+/** The dump's reading of "cannot be quick-risen out of". */
+function hardDown(outcome: { downTime: number; flags?: string[] }): boolean {
+  return (outcome.flags ?? []).includes("noQuickRise") || outcome.downTime === 0;
+}
+
+/** FAT's, from the punish-counter column, where it publishes most of its hard knockdowns. */
+function hardPublished(onPC: unknown): number | undefined {
+  if (typeof onPC !== "string") return undefined;
+  const text = onPC.trim();
+  return /^H?KD/.test(text) ? (/^HKD/.test(text) ? 1 : 0) : undefined;
+}
+
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
@@ -184,6 +222,8 @@ interface FatColumns {
   jugIncr?: string | number;
   jugLimit?: string | number;
   dmgScaling?: string | number;
+  onHit?: string | number;
+  onPC?: string | number;
 }
 
 let fatCache: Record<string, Record<string, FatColumns>> | undefined;
@@ -252,6 +292,15 @@ function dumpNumbers(
     juggleAdd: data?.hit?.juggle.add,
     juggleLimit: data?.hit?.juggle.limit,
     startScaling: action?.scaling?.start,
+    // `DmgType` 3 is the ordinary hit that leaves the defender standing.
+    // Everything else is a knockdown of some kind — a sweep is 6, a launch 11.
+    // See ADR-0033.
+    knockdown: data?.hit ? (data.hit.dmgType === UPRIGHT ? 0 : 1) : undefined,
+    // A hard knockdown is one the defender cannot quick-rise out of. Two fields
+    // say so and neither says it alone: `_no_rolling` is set on 31 of the 32
+    // rows FAT calls HKD but misses half of them, and `DownTime` 0 covers most
+    // of the rest and appears on no soft knockdown at all. See ADR-0033.
+    hardKnockdown: data?.punishCounter ? (hardDown(data.punishCounter) ? 1 : 0) : undefined,
   };
 }
 
@@ -359,6 +408,8 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         juggleAdd: plainInt(columns.jugIncr),
         juggleLimit: plainInt(columns.jugLimit),
         startScaling: startPercent(columns.dmgScaling),
+        knockdown: knocksDown(columns.onHit),
+        hardKnockdown: hardPublished(columns.onPC),
       };
 
       for (const check of Object.keys(CHECKS) as CheckName[]) {

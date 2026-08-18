@@ -47,6 +47,8 @@ import {
   type HitOutcome,
   type RecoverySource,
   type Stance,
+  knocksDown,
+  downRecovery,
 } from "../data/geometry.js";
 import { loadGeometry } from "../data/load-geometry.js";
 import { requireCharacter, requireMove } from "../data/index.js";
@@ -116,6 +118,11 @@ export interface ScenarioResult {
   /** Frames at which each side can act again, measured from contact. */
   attackerActionable: number | null;
   defenderActionable: number | null;
+  /**
+   * The hit knocked the defender down, so `defenderActionable` is null: how long
+   * they stay on the floor is not reconstructible from this data. See ADR-0033.
+   */
+  knockedDown: boolean;
   /**
    * Where the attacker's recovery came from: the action's own MarginFrame, the
    * landing action it hands off to, or the published active + recovery when the
@@ -265,6 +272,8 @@ export function runScenario(
   let damage = 0;
   let attackerActionable: number | null = null;
   let defenderActionable: number | null = null;
+  /** Set when the hit put the defender on the floor, where the sim cannot time them. */
+  let knockedDown = false;
   let recoverySource: ScenarioResult["recoverySource"] = null;
 
   const total = attacker.action.frames ?? 0;
@@ -343,7 +352,19 @@ export function runScenario(
           attackerActionable = null;
           recoverySource = null;
         }
-        defenderActionable = stun;
+        // A knockdown does not end when the hitstun does — the defender is on
+        // the floor — and how long they stay there could not be reconstructed
+        // from this data (ADR-0033 records the readings tried; the best
+        // reproduced FAT's published number on 13% of moves). Reporting no
+        // advantage is the honest answer, the same one this function already
+        // gives for an air normal: a number here would be invented, and the
+        // whole point of the sim is that nothing in it is.
+        if (type !== "block" && knocksDown(outcome)) {
+          defenderActionable = null;
+          knockedDown = true;
+        } else {
+          defenderActionable = stun;
+        }
         events.push({
           frame,
           kind: "contact",
@@ -407,6 +428,7 @@ export function runScenario(
     contact,
     attackerActionable,
     defenderActionable,
+    knockedDown,
     recoverySource,
     advantage:
       attackerActionable === null || defenderActionable === null

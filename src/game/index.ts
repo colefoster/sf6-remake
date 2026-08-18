@@ -21,6 +21,7 @@
 import {
   actionById,
   actionByName,
+  actionableFrame,
   originAt,
   type Command,
   type CommandStep,
@@ -488,7 +489,25 @@ export class Fighter {
       // In a reaction. The clock still runs, but nothing is asked of the player.
       this.stun--;
       this.state.frame++;
-      if (this.stun === 0) this.enter(this.require(stanceIdle(this.state.stance)), this.state.stance);
+      if (this.stun === 0) {
+        // The reaction is over. A knocked-down fighter does not stand up into
+        // idle — they lie in `BAS_DN_STD_AO` for the hit row's `DownTime` and
+        // then for that action's own recovery, and are actionable on its
+        // `MarginFrame + 1`. The chain carries no branches at all, so it is
+        // walked by name like the jump chain. See ADR-0033.
+        if (this.floor > 0) {
+          const down = actionByName(this.geo, "BAS_DN_STD_AO");
+          const up = down ? actionableFrame(down) : undefined;
+          if (down && up) {
+            this.enter(down, "stand");
+            this.stun = this.floor + up.frame - 1;
+            this.floor = 0;
+            return;
+          }
+        }
+        this.floor = 0;
+        this.enter(this.require(stanceIdle(this.state.stance)), this.state.stance);
+      }
       return;
     }
     this.takeBranch();
@@ -506,9 +525,15 @@ export class Fighter {
    * reaction's own `MarginFrame` is a generic 17 or 25 and agrees with the
    * table's stun on barely a hundred of 3,167 rows. The table wins. See ADR-0027.
    */
-  react(action: GeometryAction, frames: number): void {
+  react(action: GeometryAction, frames: number, floor?: number): void {
     this.enter(action, this.state.stance === "air" ? "air" : this.state.stance);
     this.stun = frames;
+    this.floor = floor ?? 0;
+  }
+
+  /** Is this fighter on the floor rather than merely in hitstun. */
+  get down(): boolean {
+    return this.state.action.name.startsWith("BAS_DN_");
   }
 
   /** Frames of hitstun or blockstun still owed. */
@@ -524,6 +549,8 @@ export class Fighter {
   instance = 0;
 
   private stun = 0;
+  /** Frames still owed on the floor once the knockdown reaction ends. */
+  private floor = 0;
   private held: Button[] = [];
   private clock = 0;
   /** When each button last went down, for the trigger's own input buffer. */

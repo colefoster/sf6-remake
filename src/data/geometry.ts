@@ -757,6 +757,32 @@ export interface Actionable {
  * Undefined where neither is recorded, which is where the caller falls back on
  * the published `active + recovery`.
  */
+/**
+ * The `DmgType` of a hit that leaves the defender standing. Anything else puts
+ * them on the floor — measured against FAT's own "KD" at 92.8%. See ADR-0033.
+ */
+export const UPRIGHT_DMG_TYPE = 3;
+
+export const knocksDown = (outcome: HitOutcome): boolean => outcome.dmgType !== UPRIGHT_DMG_TYPE;
+
+/**
+ * How long the defender spends on the floor after the hitstun runs out.
+ *
+ * The knockdown chain is **not wired in the dump**: `DMG_*_DN`, `BAS_DN_STD_*`
+ * and the `BAS_TECH_*` quick-rises all carry zero branches, exactly like the
+ * jump chain ADR-0026 had to walk by name. So this is the seam, asserted: the
+ * defender lies in `BAS_DN_STD_AO` until its own `MarginFrame` lets them up.
+ *
+ * `undefined` when the fighter has no down action, which is the honest answer
+ * rather than a zero that would read as "gets up instantly".
+ */
+export function downRecovery(geo: GeometryFile): number | undefined {
+  const down = actionByName(geo, "BAS_DN_STD_AO");
+  if (!down) return undefined;
+  const up = actionableFrame(down);
+  return up ? up.frame - 1 : undefined;
+}
+
 export function actionableFrame(action: GeometryAction): Actionable | undefined {
   if (action.marginFrame && action.marginFrame > 0) {
     return { frame: action.marginFrame + 1, source: "action" };

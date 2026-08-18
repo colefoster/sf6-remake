@@ -412,6 +412,10 @@ function hitOutcome(entry) {
   if (entry._no_death) flags.push("noDeath");
   if (entry._no_kezu_death) flags.push("noChipDeath");
   if (entry._no_esc) flags.push("noEscape");
+  // Whether the knockdown can be quick-risen out of. True on 11,131 of the
+  // roster's 79,175 condition rows and the only thing in the row that speaks to
+  // wakeup timing at all. See ADR-0033.
+  if (entry._no_rolling) flags.push("noQuickRise");
   if (entry._weak_attack) flags.push("weak");
   if (entry._chara_forward) flags.push("turnForward");
   if (entry._chara_reverse) flags.push("turnReverse");

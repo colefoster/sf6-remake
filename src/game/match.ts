@@ -18,9 +18,13 @@
  *   And as of ADR-0030 the match happens somewhere: a stage with two walls, a
  *   corner that transfers pushback to whoever is not in it, and a round clock.
  *
+ *   The gauges as of ADR-0031 — every trigger's price enforced, Drive and super
+ *   banked off the hit table, burnout at zero — and combos as of ADR-0032: one
+ *   contact per HitID, a juggle counter, and the starter's scaling.
+ *
  * WHAT IT DOES NOT
- *   juggles and combo scaling, throws as a state, and the Drive and super
- *   gauges. See docs/adr/0027, 0029 and 0030.
+ *   knockdowns and wakeup, throws as a state, and the Drive mechanics
+ *   themselves — Impact's armor, Parry, Rush. See docs/adr/0031 and 0032.
  */
 
 import {
@@ -28,6 +32,7 @@ import {
   activeWindows,
   hitDataFor,
   hitKeysAt,
+  knocksDown,
   hitboxesAt,
   hurtboxesAt,
   overlaps,
@@ -478,7 +483,12 @@ export class Match {
     this.gauges(attacker, them, data, outcome, type);
     const reaction = reactionFor(them.geo, outcome, type === "block", them.state.stance);
     const stun = outcome.stun - (type === "block" ? GUARD_RELEASE : 0);
-    if (reaction) them.react(reaction, Math.max(0, stun));
+    // `DownTime` is the floor time. The counter-hit sweep is the evidence: Ryu's
+    // 2HK states 10 on hit and 25 on counter with the hitstun and the knockback
+    // identical, so the only thing a counter changes on a sweep is how long the
+    // defender lies there. See ADR-0033.
+    const floor = type !== "block" && knocksDown(outcome) ? outcome.downTime : 0;
+    if (reaction) them.react(reaction, Math.max(0, stun), floor);
     const raw = type === "block" ? 0 : outcome.damage;
     // The starter is unscaled; everything the combo adds after it is not.
     const damage = running ? Math.floor((raw * combo.scaling) / 100) : raw;
@@ -636,6 +646,21 @@ export function reactionFor(
   stance: "stand" | "crouch" | "air",
 ): GeometryAction | undefined {
   const prefix = blocked ? "GRD" : "DMG";
+  // A knockdown plays a `_DN` reaction instead. Only `H` and `C` exist in that
+  // family across the whole roster — there is no `DMG_LM_DN` — so a low hit
+  // that knocks down still uses the standing letter. See ADR-0033.
+  if (!blocked && knocksDown(outcome)) {
+    const letter = stance === "crouch" ? "C" : "H";
+    const strength = outcome.reaction.strength === "H" || outcome.reaction.strength === "S" ? "H" : "M";
+    for (const suffix of [strength, "M"]) {
+      // The `_DN` family is the one place the dump keeps its numeric prefix in
+      // the action name — `1050_DMG_HM_DN`, not `DMG_HM` — so this matches on
+      // the tail rather than the whole name.
+      const want = `DMG_${letter}${suffix}_DN`;
+      const found = geo.actions.find((a) => a.name.endsWith(want));
+      if (found) return found;
+    }
+  }
   const strength = outcome.reaction.strength === "H" || outcome.reaction.strength === "S" ? "H" : "M";
   const standing = ["H", "M", "L", "L"][outcome.reaction.part] ?? "M";
   const crouching = outcome.reaction.part >= 2 ? "D" : "C";

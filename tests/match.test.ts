@@ -200,7 +200,10 @@ describe("the reaction decode", () => {
           for (const stance of ["stand", "crouch"] as const) {
             const found = reactionFor(geo, outcome, condition === "block", stance);
             expect(`${geo.character} ${condition} ${stance}: ${found?.name ?? "MISSING"}`).toMatch(
-              /: (DMG|GRD)_[HMLCD][MH]$/,
+              // A knockdown names the `_DN` family instead, and those are the
+              // one place the dump keeps the numeric prefix on the action name.
+              // Every row still has to name something that exists. See ADR-0033.
+              /: (\d+_)?(DMG|GRD)_[HMLCD][MH](_DN)?$/,
             );
           }
         }
@@ -434,5 +437,65 @@ describe("combos", () => {
     // Grounded, so the counter is the move's own starting value rather than an
     // accumulation — the same `Juggle1st` the grader checks against FAT.
     expect(match.combo[1].juggle).toBe(row!.hit!.juggle.start);
+  });
+});
+
+/**
+ * Knockdowns. See ADR-0033.
+ *
+ * `DmgType` is what says a hit knocks down, and it grades against FAT's own
+ * "KD" at 92.8%. The chain the defender then walks is *not* wired in the dump —
+ * `DMG_*_DN`, `BAS_DN_STD_*` and the `BAS_TECH_*` quick-rises carry no branches
+ * at all — so the seam is asserted, and how long they lie there could not be
+ * reconciled with FAT's published number. These check the parts that are read.
+ */
+describe("knockdowns", () => {
+  it("plays the _DN reaction for a sweep and the ordinary one for a poke", () => {
+    const swept = matchFor("Ryu", "Ken", { distance: 150, seconds: null });
+    for (let i = 0; i < 20; i++) swept.advance(i < 3 ? hold(2, ["HK"]) : hold(5), hold(5));
+    expect(swept.hits[0]?.reaction).toMatch(/_DN$/);
+
+    const poked = matchFor("Ryu", "Ken", { distance: 110, seconds: null });
+    for (let i = 0; i < 20; i++) poked.advance(i < 3 ? hold(5, ["MP"]) : hold(5), hold(5));
+    expect(poked.hits[0]?.reaction).not.toMatch(/_DN$/);
+  });
+
+  it("leaves the defender on the floor and stands them back up", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 150, seconds: null });
+    const ken = match.fighters[1];
+    let down = 0;
+    let up = 0;
+    for (let i = 0; i < 200; i++) {
+      match.advance(i < 3 ? hold(2, ["HK"]) : hold(5), hold(5));
+      if (ken.down) { if (!down) down = match.frame; up = 0; }
+      else if (down && !up) up = match.frame;
+    }
+    expect(down).toBeGreaterThan(0);
+    expect(up).toBeGreaterThan(down);
+    // `DownTime` 10 for Ryu's 2HK plus the down action's own recovery — it is
+    // actionable on `MarginFrame + 1`, which is 31 on every fighter.
+    expect(up - down).toBe(10 + 30);
+    expect(ken.down).toBe(false);
+    expect(ken.actionable()).toBe(true);
+  });
+
+  it("does not knock down on block", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 150, seconds: null });
+    for (let i = 0; i < 60; i++) match.advance(i < 3 ? hold(2, ["HK"]) : hold(5), hold(3));
+    expect(match.hits[0]?.type).toBe("block");
+    expect(match.fighters[1].down).toBe(false);
+  });
+
+  it("reports no advantage rather than inventing one, when the sim knocks down", () => {
+    // The honest answer, and the same one the sim already gives for an air
+    // normal: how long the defender is on the floor is not reconstructible.
+    const swept = runScenario("Ryu", "2HK", { guard: false });
+    expect(swept.knockedDown).toBe(true);
+    expect(swept.defenderActionable).toBeNull();
+    expect(swept.advantage).toBeNull();
+
+    const poke = runScenario("Ryu", "5MP", { guard: false });
+    expect(poke.knockedDown).toBe(false);
+    expect(poke.advantage).not.toBeNull();
   });
 });
