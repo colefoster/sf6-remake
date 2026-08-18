@@ -16,6 +16,23 @@ npm install
 
 If npm gates the `esbuild` install script, then run `npm approve-scripts esbuild && npm rebuild esbuild`.
 
+## Set up the geometry data
+
+Per-frame hitbox and hurtbox geometry is **not committed to this repository**. It is
+extracted from the game's own `CharacterAsset` data via the Modding Dev Kit, so it is
+Capcom's data rather than mine to redistribute. Generate it locally:
+
+```
+npm run geometry
+```
+
+That fetches the MMDK dumps into `data/raw/mmdk/` and extracts `data/geometry/<char>.json`
+for all 24 dumped fighters. Both directories are gitignored.
+
+Everything that does not need per-frame boxes works without this step — frame data comes
+from FAT and is committed. Commands that need geometry report the character as having none
+until you run it.
+
 ## Use
 
 Run a command through npm, or call the CLI entry point directly:

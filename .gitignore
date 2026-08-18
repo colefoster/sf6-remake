@@ -8,6 +8,9 @@ web/assets/
 # The viewer is served straight out of web/, so it needs them there; the repo does not.
 web/*.boxes.json
 data/raw/mmdk/
+# Extracted from the game's own CharacterAsset data via MMDK. Regenerate with
+# `npm run geometry` — it is not redistributed here. See ATTRIBUTION.md.
+data/geometry/
 .playwright-mcp/
 
 # Local secrets

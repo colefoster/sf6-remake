@@ -22,12 +22,14 @@ If you want a permissively licensed fork, remove `data/raw/SF6FrameData.json` fr
 | [MMDK](https://github.com/WistfulHopes/MMDK) | Tooling used to produce `data/geometry/` from Capcom's `CharacterAsset` data | See upstream |
 | [Supercombo Wiki](https://wiki.supercombo.gg/) | Move stills and hitbox images downloaded by `scripts/build-site.mjs` | Wiki terms; images are **not** committed to this repository |
 
-## A note on `data/geometry/`
+## `data/geometry/` is not redistributed
 
-These files are derived from dumps of Capcom's own in-game character asset data, extracted
+These files are derived from dumps of Capcom's own in-game `CharacterAsset` data, extracted
 with MMDK. That is a step further than published frame data, which is closer to fact than to
-creative work. They are committed here for reproducibility. If that posture ever needs to
-change, move them behind a fetch script the way `data/raw/mmdk/` already is.
+creative work — so it is not committed to this repository and not in its history.
+
+Generate it locally with `npm run geometry`, which fetches the MMDK dumps and extracts the
+per-frame geometry. Both `data/raw/mmdk/` and `data/geometry/` are gitignored.
 
 ## Frame data and facts
 
