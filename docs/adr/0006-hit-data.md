@@ -3,6 +3,11 @@
 - Status: accepted
 - Date: 2026-08-17
 - Extends: [ADR-0004](./0004-hitbox-geometry-from-mmdk-dumps.md)
+- Amended by: [ADR-0010](./0010-the-grader.md) — the guard release is now
+  confirmed against FAT's own published `blockstun` column, which this ADR did
+  not use: sweeping the constant scores 93.4% at +4 and under 3% at every other
+  offset. The claim below was measured against the hit table and the engine's
+  own identity; it now has an outside witness.
 
 ## Context
 

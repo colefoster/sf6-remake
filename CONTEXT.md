@@ -10,7 +10,7 @@ This engine reasons about Street Fighter 6 interactions **purely from frame data
 - **Startup** — frames from the move beginning until the **first active frame**. A move with startup `S` has its first active frame on frame `S` (1-indexed): frames `1 .. S-1` are pre-hit.
 - **Active** — the number of frames during which the move's hitbox can make contact.
 - **Recovery** — frames after the last active frame before the attacker is **actionable** again (can block/move/attack).
-- **Total** — `startup + active + recovery`. The full duration if the move whiffs.
+- **Total** — `startup + active + recovery - 1`. The full duration if the move whiffs. The `- 1` is because startup already counts the first active frame: a 4-startup, 3-active, 7-recovery normal occupies frames 1-13, not 1-14. This is what FAT publishes as `total` and what the game stores as an action's `MarginFrame`.
 - **Actionable** — able to act. The frame-advantage sign is defined by who becomes actionable first.
 
 ## Advantage

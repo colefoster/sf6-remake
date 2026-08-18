@@ -1,0 +1,227 @@
+/**
+ * The grader: the game's dumped data checked against the published frame data.
+ *
+ * This project has two independent descriptions of the same fighter — MMDK's
+ * dump of the game's own `CharacterAsset` tables (`data/geometry/`) and the
+ * community FAT set (`data/raw/SF6FrameData.json`) — and every finding so far
+ * has landed because one could be graded against the other. That grading has
+ * been done ad hoc, once per ADR, and then written down as prose. This module
+ * makes it a standing measurement.
+ *
+ * It belongs to neither derivation. `src/engine` answers frame questions from
+ * FAT alone and `src/sim` plays them out from the dump alone; both are only
+ * worth anything while they stay ignorant of each other, so **nothing under
+ * `engine/` or `sim/` may import this**, and this must never become a source
+ * either side reads. It reads `SF6FrameData.json` directly rather than through
+ * the domain model, for the same reason: columns like `blockstun` are graders,
+ * and putting them on `Move` would let them leak into `stunFrom` and quietly
+ * couple the two sides together.
+ *
+ * Four of FAT's columns had never been read (`hitstun`, `blockstun`, `total`,
+ * `hcWinSpCa`). They turn out to check the three claims the project rests on.
+ */
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import { loadGeometry, type GeometryFile, type MoveMapping } from "../data/geometry.js";
+import { listCharacters, requireCharacter } from "../data/index.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FAT_PATH = join(HERE, "..", "..", "data", "raw", "SF6FrameData.json");
+
+/**
+ * Blocking holds the defender four frames past what advantage implies (ADR-0006).
+ * The engine derives with the same constant; here it is the thing under test.
+ */
+export const GUARD_RELEASE = 4;
+
+export type CheckName = "hitstun" | "blockstun" | "total" | "cancelEnd";
+
+export const CHECKS: Record<CheckName, string> = {
+  hitstun: "the hit table's hitstun == FAT's published hitstun",
+  blockstun: `the hit table's blockstun == FAT's published blockstun + ${GUARD_RELEASE}`,
+  total: "the action's MarginFrame == FAT's published total",
+  cancelEnd: "the cancel window's last frame == FAT's published hit-confirm window",
+};
+
+export interface Comparison {
+  character: string;
+  input: string;
+  actionName: string;
+  check: CheckName;
+  /** What the dump says, and what FAT says the same number should be. */
+  dump: number;
+  fat: number;
+  agrees: boolean;
+  /** `clean` is an exact name-and-frame mapping of a single-hit move — the
+   *  population where a disagreement means something rather than reflecting a
+   *  mapping we already flagged. */
+  clean: boolean;
+}
+
+export interface Tally {
+  checked: number;
+  agreeing: number;
+}
+
+export interface Report {
+  /** Per check, split into the clean population and everything else. */
+  totals: Record<CheckName, { clean: Tally; other: Tally }>;
+  /** Per character, over the clean population only. */
+  byCharacter: { character: string; clean: Tally }[];
+  comparisons: Comparison[];
+}
+
+/** A FAT value we can compare against: a plain integer, not "11(13)" or "until land". */
+function plainInt(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number.parseInt(value, 10);
+  return undefined;
+}
+
+const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** The raw FAT columns this module grades with — none of them reach the domain model. */
+interface FatColumns {
+  numCmd?: string;
+  hitstun?: string | number;
+  blockstun?: string | number;
+  total?: string | number;
+  hcWinSpCa?: string | number;
+}
+
+let fatCache: Record<string, Record<string, FatColumns>> | undefined;
+
+/** FAT's normals, by character, keyed on notation. */
+function fatMoves(character: string): Record<string, FatColumns> {
+  if (!fatCache) {
+    const file = JSON.parse(readFileSync(FAT_PATH, "utf8")) as Record<
+      string,
+      { moves: { normal: Record<string, FatColumns> } }
+    >;
+    fatCache = {};
+    for (const [name, entry] of Object.entries(file)) {
+      const byInput: Record<string, FatColumns> = {};
+      for (const move of Object.values(entry.moves.normal)) {
+        if (move.numCmd) byInput[move.numCmd] = move;
+      }
+      fatCache[norm(name)] = byInput;
+    }
+  }
+  return fatCache[norm(character)] ?? {};
+}
+
+/**
+ * The dump's numbers for one move, or undefined where it has none.
+ *
+ * `MarginFrame` is the action's own last frame, which FAT publishes as `total`.
+ * The cancel window's end is compared through the hit-confirm window FAT
+ * publishes for it: `hcWinSpCa` counts from the move's startup to the last
+ * cancellable frame, plus the attacker's hitstop, plus 2.
+ */
+function dumpNumbers(geo: GeometryFile, move: MoveMapping) {
+  const action = geo.actions.find((a) => a.id === move.action);
+  const key = action?.hit.find((h) => h.kind !== "proximity");
+  const data = key ? geo.hitData?.[String(key.attackData)] : undefined;
+  return {
+    hitstun: data?.hit?.stun,
+    blockstun: data?.block?.stun,
+    total: action && action.marginFrame && action.marginFrame > 0 ? action.marginFrame : undefined,
+    cancelEnd:
+      move.cancel && data?.hit
+        ? move.cancel.end - move.startup + data.hit.hitStop.owner + 2
+        : undefined,
+  };
+}
+
+export interface VerifyOptions {
+  characters?: string[];
+  /**
+   * The blockstun constant to test with. Defaults to the measured 4; the tests
+   * sweep it, because a constant that is only ever asserted at its own value is
+   * not being checked at all.
+   */
+  guardRelease?: number;
+}
+
+/** Run every check over the characters that have geometry. */
+export function verify(characters?: string[], options: VerifyOptions = {}): Report {
+  const guardRelease = options.guardRelease ?? GUARD_RELEASE;
+  const names = characters?.length ? characters : listCharacters();
+  const comparisons: Comparison[] = [];
+  const byCharacter: Report["byCharacter"] = [];
+
+  for (const name of names) {
+    const character = requireCharacter(name);
+    const geo = loadGeometry(character.id);
+    if (!geo) continue;
+    const fat = fatMoves(geo.character);
+    const tally: Tally = { checked: 0, agreeing: 0 };
+
+    for (const move of geo.moves) {
+      const columns = fat[move.input];
+      if (!columns) continue;
+      const dump = dumpNumbers(geo, move);
+      // An exact mapping of a single-hit move whose startup already agrees: the
+      // population where a disagreement is a finding rather than a known-soft
+      // mapping or a multi-hit move whose numbers describe a different hit.
+      const clean = move.match === "exact" && move.hits === 1 && !move.startupDelta;
+
+      const expected: Record<CheckName, number | undefined> = {
+        hitstun: plainInt(columns.hitstun),
+        blockstun: add(plainInt(columns.blockstun), guardRelease),
+        total: plainInt(columns.total),
+        cancelEnd: plainInt(columns.hcWinSpCa),
+      };
+
+      for (const check of Object.keys(CHECKS) as CheckName[]) {
+        const mine = dump[check];
+        const theirs = expected[check];
+        if (mine === undefined || theirs === undefined) continue;
+        const agrees = mine === theirs;
+        comparisons.push({
+          character: geo.character,
+          input: move.input,
+          actionName: move.actionName,
+          check,
+          dump: mine,
+          fat: theirs,
+          agrees,
+          clean,
+        });
+        if (clean) {
+          tally.checked++;
+          if (agrees) tally.agreeing++;
+        }
+      }
+    }
+    if (tally.checked) byCharacter.push({ character: geo.character, clean: tally });
+  }
+
+  const totals = {} as Report["totals"];
+  for (const check of Object.keys(CHECKS) as CheckName[]) {
+    totals[check] = { clean: { checked: 0, agreeing: 0 }, other: { checked: 0, agreeing: 0 } };
+  }
+  for (const c of comparisons) {
+    const bucket = totals[c.check][c.clean ? "clean" : "other"];
+    bucket.checked++;
+    if (c.agrees) bucket.agreeing++;
+  }
+
+  byCharacter.sort((a, b) => rate(a.clean) - rate(b.clean));
+  return { totals, byCharacter, comparisons };
+}
+
+const add = (n: number | undefined, k: number): number | undefined => (n === undefined ? undefined : n + k);
+
+/** Agreement as a fraction, 1 for an empty tally so it sorts last. */
+export function rate(tally: Tally): number {
+  return tally.checked ? tally.agreeing / tally.checked : 1;
+}
+
+/** Just the disagreements, worst check first — what a human wants to look at. */
+export function disagreements(report: Report, options: { cleanOnly?: boolean } = {}): Comparison[] {
+  return report.comparisons.filter((c) => !c.agrees && (!options.cleanOnly || c.clean));
+}

@@ -31,6 +31,7 @@ import {
   type GeometryAction,
 } from "../data/geometry.js";
 import { runScenario, type ScenarioResult } from "../sim/index.js";
+import { CHECKS, disagreements, verify } from "../verify/index.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -114,6 +115,8 @@ COMMANDS
   punish <char> <blockedMove>      Fastest punish. --by <defenderChar> [move]
   boxes <char> <move>              Hitbox/hurtbox geometry: reach, and which
                                    frames connect.  --at <units> --vs <char> --crouch
+  verify [char ...]                Grade the game's dumped data against the
+                                   published frame data. No args = whole roster.
   play <char> <move>               Run the move against a dummy frame by frame:
                                    contact, stun, knockback, who acts first.
                                    --at <units> --vs <char> --on hit --crouch --meaty N
@@ -297,6 +300,11 @@ function main(): void {
         const c = requireCharacter(p[0] ?? fail("boxes <char> <move> [--at N] [--vs <char>] [--crouch]"));
         const m = requireCharacterMove(c, p[1]);
         printBoxes(c, m, args);
+        return;
+      }
+
+      case "verify": {
+        printVerification(verify(p.length ? p.map((q) => requireCharacter(q).name) : undefined));
         return;
       }
 
@@ -516,3 +524,41 @@ function printPunish(r: PunishResult | FastestPunish, defender: string): void {
 }
 
 main();
+
+/**
+ * The grader's report: the game's own numbers against the published ones.
+ *
+ * Split into the clean population — an exact mapping of a single-hit move whose
+ * startup already agrees — and everything else, because a disagreement only
+ * means something in the first. The rest is patch skew and soft mappings that
+ * ADR-0004 and ADR-0008 already report.
+ */
+function printVerification(report: ReturnType<typeof verify>): void {
+  const pct = (t: { checked: number; agreeing: number }) =>
+    t.checked ? `${t.agreeing}/${t.checked} ${((t.agreeing / t.checked) * 100).toFixed(1)}%` : "—";
+
+  console.log("the game's dumped data vs the published frame data\n");
+  for (const [check, describes] of Object.entries(CHECKS)) {
+    const t = report.totals[check as keyof typeof report.totals];
+    console.log(`  ${check.padEnd(10)} ${pct(t.clean).padEnd(18)} ${describes}`);
+    console.log(`  ${"".padEnd(10)} ${pct(t.other).padEnd(18)} (multi-hit and soft mappings)`);
+  }
+
+  const worst = report.byCharacter.slice(0, 5);
+  if (worst.length) {
+    console.log("\n  worst agreement, clean population only:");
+    for (const row of worst) console.log(`    ${row.character.padEnd(10)} ${pct(row.clean)}`);
+  }
+
+  const bad = disagreements(report, { cleanOnly: true });
+  if (bad.length) {
+    console.log(`\n  ${bad.length} disagreements in the clean population:`);
+    for (const c of bad.slice(0, 40)) {
+      console.log(
+        `    ${c.character.padEnd(9)} ${c.input.padEnd(16)} ${c.check.padEnd(10)} ` +
+          `dump ${String(c.dump).padStart(3)} vs published ${String(c.fat).padStart(3)}  (${c.actionName})`,
+      );
+    }
+    if (bad.length > 40) console.log(`    ... and ${bad.length - 40} more`);
+  }
+}

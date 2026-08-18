@@ -16,8 +16,11 @@ const ryu5mp: Move = {
 };
 
 describe("totalFrames", () => {
-  it("sums startup + active + recovery", () => {
-    expect(totalFrames(ryu5mp)).toBe(21);
+  it("does not count the first active frame twice", () => {
+    // 6 + 4 + 11 is 21, but startup already counts frame 6, so 5MP occupies 20.
+    // Both outside sources agree: FAT publishes total 20 and the game stores
+    // MarginFrame 20. The old assertion here was 21 — see ADR-0010.
+    expect(totalFrames(ryu5mp)).toBe(20);
   });
 });
 

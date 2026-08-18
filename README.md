@@ -35,6 +35,7 @@ npx tsx src/cli/index.ts <command> ...
 | `moves <char> [filter]` | List a character's moves. |
 | `boxes <char> <move> [--at <units>] [--vs <char>] [--crouch]` | **Does it reach? Which frames connect at this spacing?** |
 | `play <char> <move> [--at N] [--vs <char>] [--on hit] [--meaty N]` | **Play the move out frame by frame: does it connect here, and what happens?** |
+| `verify [char ...]` | **Do the game's own numbers agree with the published frame data?** |
 | `characters` | List the roster. |
 
 Moves accept **notation** (`2mk`, `236lp`), **ids**, or **name fragments** (`hadoken`, `sweep`). Characters are fuzzy too (`chun`, `honda`).
@@ -111,7 +112,7 @@ Pick a move, scrub the timeline, and see every box per frame with the opponent p
 
 ### The scenario player
 
-Two fighters on a shared 60 fps clock. It never reads on-block or on-hit — it advances the action, finds contact by box overlap at your chosen spacing, and takes stun and knockback from the game's hit-data table.
+Two fighters on a shared 60 fps clock. It never reads on-block or on-hit — it advances the action, finds contact by box overlap at your chosen spacing, and takes stun and knockback from the game's hit-data table. It does still read FAT's `active` and `recovery` to know when the attacker recovers, so what it proves is "the game's stun agrees with the published advantage, *given* the published active and recovery" rather than a fully independent derivation ([ADR-0010](./docs/adr/0010-the-grader.md)).
 
 ```bash
 $ npm run sf6 -- play ryu 2mk --at 150
@@ -127,7 +128,7 @@ pushed to 205u (from 150u)
 drive +1000 you, +2000 them
 ```
 
-That −6 is derived, not looked up — and it's what the published frame data says. Across every mapped normal the sim reproduces on-block advantage on **13 of 13** of Akuma's moves and 8 of Ryu's 12, where the misses are exactly the moves whose two sources are already known to disagree ([ADR-0007](./docs/adr/0007-scenario-player.md)).
+That −6 is derived, not looked up (with the caveat above) — and it's what the published frame data says. Across every mapped normal the sim reproduces on-block advantage on **13 of 13** of Akuma's moves and 8 of Ryu's 12, where the misses are exactly the moves whose two sources are already known to disagree ([ADR-0007](./docs/adr/0007-scenario-player.md)).
 
 ## How it works
 
@@ -152,6 +153,7 @@ src/
     frames.ts            pure frame math (advantage, meaty, stun)
     interactions.ts      punish, gap, cancel, sequence
     index.ts             public API (the deep module)
+  verify/index.ts        the grader: dumped data vs published, imported by neither
   sim/index.ts           the scenario player: two fighters, shared clock
   cli/index.ts           the `sf6` command
 scripts/
@@ -180,3 +182,19 @@ tests/                   78 tests, incl. assertions against the real data
 npm test          # 78 tests
 npm run typecheck
 ```
+
+### The grader
+
+The project has two independent descriptions of every fighter — the game's own dumped tables and the community frame data — and every finding here landed because one could be checked against the other. `sf6 verify` makes that a standing measurement rather than a claim in a document.
+
+```bash
+$ npm run sf6 -- verify
+the game's dumped data vs the published frame data
+
+  hitstun    210/230 91.3%      the hit table's hitstun == FAT's published hitstun
+  blockstun  239/256 93.4%      the hit table's blockstun == FAT's published blockstun + 4
+  total      167/179 93.3%      the action's MarginFrame == FAT's published total
+  cancelEnd  101/110 91.8%      the cancel window's last frame == FAT's published hit-confirm window
+```
+
+The percentages are over cleanly mapped single-hit moves; the residue is the pre-Season-3 patch skew. The most useful thing it does is let a constant be **swept** instead of asserted: the +4 guard release of [ADR-0006](./docs/adr/0006-hit-data.md) scores 93.4% at exactly +4 and under 3% at every other offset, which is a spike rather than a trend. See [ADR-0010](./docs/adr/0010-the-grader.md).

@@ -10,9 +10,17 @@ import type { Move } from "../domain/types.js";
 
 export type Guard = "block" | "hit";
 
-/** Total duration of a move if it whiffs. */
+/**
+ * Total duration of a move if it whiffs.
+ *
+ * The `- 1` is not a fudge: startup counts up to and including the first active
+ * frame, so adding `active` to it counts that frame twice. Ryu 5LP is 4 startup,
+ * 3 active, 7 recovery and occupies 13 frames — which is what FAT publishes as
+ * its `total` and what the game stores as the action's `MarginFrame`. Two
+ * independent sources, one number; the prose in `CONTEXT.md` said 14.
+ */
 export function totalFrames(move: Pick<Move, "startup" | "active" | "recovery">): number {
-  return move.startup + move.active + move.recovery;
+  return move.startup + move.active + move.recovery - 1;
 }
 
 /**
