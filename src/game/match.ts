@@ -44,6 +44,9 @@ import {
   armorAt,
   armorHits,
   breaksArmor,
+  flightEnds,
+  flightHitboxes,
+  flightOrigin,
   hitboxesAt,
   hurtboxesAt,
   overlaps,
@@ -302,7 +305,10 @@ export class Match {
   private flyProjectiles(a: InputFrame, b: InputFrame): void {
     for (const shot of this.projectiles) {
       shot.frame++;
-      if (shot.frame > (shot.action.frames ?? 0)) shot.spent = true;
+      // Only a shot that has stopped dies with its action. A travelling one
+      // carries on past the authored frames — every shot action in the roster is
+      // shorter than its flight, and Ken's Hadoken is six frames. See ADR-0040.
+      if (shot.frame > (shot.action.frames ?? 0) && flightEnds(shot.action)) shot.spent = true;
       // A fireball dies at the wall rather than sailing off into nothing, which
       // is ADR-0029's last open item and the reason the stage had to come first.
       const boxes = projectileBoxes(shot);
@@ -743,8 +749,8 @@ function place(box: Box, x: number, y: number, facing: 1 | -1): Box {
  * projectile's advantage is a curve rather than a number (ADR-0023).
  */
 export function projectileBoxes(shot: Projectile): Box[] {
-  const origin = originAt(shot.action, shot.frame);
-  return hitboxesAt(shot.action, shot.frame).map((b) =>
+  const origin = flightOrigin(shot.action, shot.frame);
+  return flightHitboxes(shot.action, shot.frame).map((b) =>
     place(shift(b, { x: 0, y: origin.y + shot.y }), shot.x + origin.x * shot.facing, 0, shot.facing),
   );
 }

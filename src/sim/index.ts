@@ -50,6 +50,9 @@ import {
   knocksDown,
   downRecovery,
   driveRushCancelFrame,
+  flightEnds,
+  flightHitboxes,
+  flightOrigin,
   driveRushFreeze,
 } from "../data/geometry.js";
 import { loadGeometry } from "../data/load-geometry.js";
@@ -209,13 +212,16 @@ function projectileBoxes(
 ): Box[] {
   const own = parentFrame - shot.frame + 1;
   if (own < 1) return [];
+  // Past the shot action's own frames the box is held and the speed carries on:
+  // no shot action in the roster is as long as its flight. See ADR-0040.
+  if (own > (shot.action.frames ?? 1) && flightEnds(shot.action)) return [];
   const spawnedAt = originAt(parent, shot.frame);
-  const travelled = originAt(shot.action, own);
+  const travelled = flightOrigin(shot.action, own);
   const origin = {
     x: spawnedAt.x + shot.offset.x + travelled.x,
     y: spawnedAt.y + shot.offset.y + travelled.y,
   };
-  return hitboxesAt(shot.action, own).map((b) => shift(b, origin));
+  return flightHitboxes(shot.action, own).map((b) => shift(b, origin));
 }
 
 /** Mirror a defender box into world space: it faces the attacker, so it flips. */

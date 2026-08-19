@@ -765,6 +765,16 @@ function extractMotion(action, frames) {
   const moves = (list) => list.some((v) => v !== 0);
   if (!moves(x) && !moves(y)) return null;
   const motion = { travel: { x: x[x.length - 1] ?? 0, maxX: extreme(x), maxY: Math.max(...y) } };
+  // The speed the action is still carrying when its curve runs out, and the one
+  // it set off at. A projectile outlives its own action — every shot action in
+  // the roster is shorter than the flight it describes — so the flight past the
+  // end continues at `velocity`, and `launch` is what FAT publishes as
+  // "Projectile Speed" x 100. See ADR-0040.
+  motion.velocity = { x: round2(vel.x), y: round2(vel.y) };
+  const first = ordered(action.SteerKey).find(
+    (k) => STEER[k.ValueType] === "vx" && STEER_OPS.has(k.OperationType) && (k.FixValue ?? 0) > 0,
+  );
+  if (first) motion.launch = round2(first.FixValue);
   if (moves(x)) motion.x = x;
   if (moves(y)) motion.y = y;
   return motion;

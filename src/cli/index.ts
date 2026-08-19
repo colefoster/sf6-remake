@@ -41,6 +41,7 @@ import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
 import { verifyThrows } from "../verify/throws.js";
+import { verifyProjectiles } from "../verify/projectiles.js";
 import type { Character, Move } from "../domain/types.js";
 import type { Guard } from "../engine/frames.js";
 
@@ -335,6 +336,7 @@ function main(): void {
         printInvulnerability(verifyInvuln(only));
         printArmor(verifyArmor(only));
         printThrows(verifyThrows(only));
+        printProjectiles(verifyProjectiles(only));
         return;
       }
 
@@ -455,6 +457,32 @@ function printFight(left: string, right: string, script: string, opponent?: stri
       (corner.length ? `, ${corner.join(" and ")} in the corner` : "") +
       (end ? `  (${end.by}: ${end.winner === null ? "draw" : end.winner === 0 ? left : right})` : ""),
   );
+}
+
+/** Projectile launch speed against FAT's published fraction. See ADR-0040. */
+function printProjectiles(report: ReturnType<typeof verifyProjectiles>): void {
+  const { checked, agreeing } = report.speed;
+  console.log("\n\nprojectiles vs the published notes\n");
+  console.log(
+    `  speed        ${(String(agreeing) + "/" + checked).padEnd(9)} ` +
+      `${checked ? ((100 * agreeing) / checked).toFixed(1) : "0.0"}%`.padStart(7) +
+      `        the shot's launch velocity == FAT's Projectile Speed x 100`,
+  );
+  const hc = report.hitCount;
+  console.log(
+    `  hit count    ${(String(hc.agreeing) + "/" + hc.checked).padEnd(9)} ` +
+      `${hc.checked ? ((100 * hc.agreeing) / hc.checked).toFixed(1) : "0.0"}%`.padStart(7) +
+      `        a special's bodies (shot + type-45 branch) == FAT's "N-hit projectile"`,
+  );
+  const bad = report.rows.filter((r) => !r.agrees);
+  if (!bad.length) return;
+  console.log(`\n  ${bad.length} the dump does not reproduce:`);
+  for (const r of bad) {
+    console.log(
+      `    ${r.character.padEnd(10)} ${r.input.padEnd(14)} published ${String(r.published).padStart(6)}` +
+        ` vs dump ${String(r.launch ?? "absent").padStart(6)}  (${r.shot})`,
+    );
+  }
 }
 
 /** The throw geometry against FAT's per-character stats. See ADR-0034. */

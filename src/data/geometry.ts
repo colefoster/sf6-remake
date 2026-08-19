@@ -107,6 +107,14 @@ export interface Motion {
   x?: number[];
   y?: number[];
   travel: { x: number; maxX: number; maxY: number };
+  /**
+   * The speed still being carried when the curve runs out. A projectile's action
+   * is always shorter than its flight, so this is what it keeps travelling at
+   * once the authored frames are spent. See ADR-0040.
+   */
+  velocity?: { x: number; y: number };
+  /** The speed it set off at, which FAT publishes as "Projectile Speed" x 100. */
+  launch?: number;
 }
 
 /**
@@ -455,10 +463,24 @@ export function spawnsFrom(geo: GeometryFile, action: GeometryAction): Spawn[] {
   const out: Spawn[] = [];
   for (const shot of action.shots ?? []) {
     const spawned = actionById(geo, shot.action);
-    if (spawned) out.push({ frame: shot.frame, offset: shot.offset, action: spawned });
+    if (!spawned) continue;
+    out.push({ frame: shot.frame, offset: shot.offset, action: spawned });
+    // A multi-hit projectile is a second *body*, not a second HitID: the shot
+    // action carries a type-45 branch on its own frame 1 into another action
+    // with its own hit row and its own speed. Ryu's OD Hadoken is two bodies
+    // travelling together, which is why FAT calls it a 2-hit projectile and why
+    // ADR-0032 found the HitID rule did nothing here. See ADR-0040.
+    for (const branch of spawned.branches ?? []) {
+      if (branch.type !== BRANCH_SECOND_BODY) continue;
+      const extra = actionById(geo, branch.action);
+      if (extra) out.push({ frame: shot.frame + branch.frame - 1, offset: shot.offset, action: extra });
+    }
   }
   return out;
 }
+
+/** The branch a shot action takes into the second body of a multi-hit projectile. */
+const BRANCH_SECOND_BODY = 45;
 
 /** Attack boxes live this frame, proximity boxes excluded. */
 export function hitboxesAt(action: GeometryAction, frame: number): Box[] {
@@ -552,6 +574,38 @@ export function invulnerableWindows(
     else out.push({ start: frame, end: frame });
   }
   return out;
+}
+
+/**
+ * A projectile outlives its own action.
+ *
+ * No shot action in the roster is as long as the flight it describes: Ryu's
+ * Hadoken is 70 frames at 5.5 units, which is 385 of the 1530 the stage is
+ * wide, and Ken's is *six* frames at 6 — the "six-frame stub" ADR-0029 could
+ * not explain. The action is the authored part of the flight; the rest is the
+ * same box carried on at the same speed until a wall or a body stops it.
+ *
+ * `frame` is the shot's own 1-indexed clock and may run past the action's end.
+ * Everything past it holds the last authored frame and integrates `velocity`.
+ * A shot with no velocity left has nowhere to go and ends with its animation,
+ * which is what `flightEnds` says. See ADR-0040.
+ */
+export function flightOrigin(action: GeometryAction, frame: number): { x: number; y: number } {
+  const last = action.frames ?? 1;
+  const held = originAt(action, Math.min(frame, last));
+  if (frame <= last) return held;
+  const v = action.motion?.velocity ?? { x: 0, y: 0 };
+  return { x: held.x + v.x * (frame - last), y: held.y + v.y * (frame - last) };
+}
+
+/** The shot's hitboxes on a frame that may be past its action's end. */
+export function flightHitboxes(action: GeometryAction, frame: number): Box[] {
+  return hitboxesAt(action, Math.min(frame, action.frames ?? 1));
+}
+
+/** Does this shot simply stop when its action does, having nowhere to go. */
+export function flightEnds(action: GeometryAction): boolean {
+  return !(action.motion?.velocity?.x ?? 0);
 }
 
 /**

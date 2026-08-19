@@ -4,12 +4,13 @@ import { hold, reactionFor } from "../src/game/match.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
-import { BAR, actionFor, breaksArmor, driveRushCancelFrame } from "../src/data/geometry.js";
+import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHitboxes, flightOrigin } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 import { verifyThrows } from "../src/verify/throws.js";
 import { verifyArmor } from "../src/verify/armor.js";
+import { verifyProjectiles } from "../src/verify/projectiles.js";
 import { verify } from "../src/verify/index.js";
 
 const report = verify();
@@ -126,6 +127,43 @@ describe("two fighters", () => {
 });
 
 describe("fireballs", () => {
+  it("outlives its own action, which is why Ken's six-frame stub flies", () => {
+    // ADR-0029 could not explain Ken's Hadoken: a six-frame shot action against
+    // Ryu's seventy. Neither is as long as the flight it describes — Ryu's is
+    // 385 units of a 1530-unit stage — so the action is the authored part and
+    // the rest carries on at the launch speed. See ADR-0040.
+    const ken = loadGeometry(requireCharacter("Ken").id)!;
+    const shot = ken.actions.find((a) => a.name === "SPA_HADO PROJ")!;
+    expect(shot.frames).toBe(6);
+    expect(shot.motion?.launch).toBe(6);
+    expect(flightEnds(shot)).toBe(false);
+    // Frame 30 is far past the action; the box is still there and has travelled.
+    expect(flightHitboxes(shot, 30)).not.toHaveLength(0);
+    expect(flightOrigin(shot, 30).x).toBeGreaterThan(flightOrigin(shot, 6).x + 100);
+    // And it now reaches a target no six-frame shot could.
+    expect(runScenario("Ken", "236HP", { guard: true, distance: 500 }).contact).not.toBeNull();
+  });
+
+  it("stops with its action when it has nowhere to go", () => {
+    // Ryu's Hashogeki is a shot that stays where it is put (ADR-0023). Letting
+    // every projectile outlive its action would have left those on screen for ever.
+    const ryu = loadGeometry(requireCharacter("Ryu").id)!;
+    expect(flightEnds(ryu.actions.find((a) => a.name === "SPA_HADOSHO_L PROJ")!)).toBe(true);
+    expect(flightEnds(ryu.actions.find((a) => a.name === "SPA_HADO PROJ")!)).toBe(false);
+  });
+
+  it("launches at the speed FAT publishes", () => {
+    // A fraction times 100, the same conversion ADR-0034 found for throw range —
+    // and the only check in the project that grades the special-move mapping
+    // without going through frames. See ADR-0040.
+    const { speed, rows } = verifyProjectiles();
+    expect(speed.checked).toBeGreaterThan(30);
+    expect(speed.agreeing / speed.checked).toBeGreaterThan(0.7);
+    const ryuLp = rows.find((r) => r.character === "Ryu" && r.input === "236LP")!;
+    expect(ryuLp.launch).toBe(5.5);
+    expect(ryuLp.published).toBe(0.055);
+  });
+
   /** A quarter-circle-forward and a punch, in world directions for the left side. */
   const hadoken = (button: Button): [Direction, Button[], number][] => [
     [2, [], 2],
