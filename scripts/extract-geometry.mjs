@@ -51,8 +51,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const RAW = path.join(root, "data/raw/mmdk");
-const OUT = path.join(root, "data/geometry");
+// Overridable so a *second* dump can be extracted beside the pinned one and the
+// two compared — which is how `diff-geometry.mjs` answers "did the game change
+// under us, or did we read it wrong". See docs/agents/refresh-the-dump.md.
+const RAW = process.env.MMDK_RAW ? path.resolve(process.env.MMDK_RAW) : path.join(root, "data/raw/mmdk");
+const OUT = process.env.GEOMETRY_OUT ? path.resolve(process.env.GEOMETRY_OUT) : path.join(root, "data/geometry");
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");

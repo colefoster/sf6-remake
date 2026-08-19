@@ -13,6 +13,9 @@ data/raw/mmdk/
 # Extracted from the game's own CharacterAsset data via MMDK. Regenerate with
 # `npm run geometry` — it is not redistributed here. See ATTRIBUTION.md.
 data/geometry/
+# A second, *live* dump pulled off the game itself, kept beside the pinned one
+# so the two readings can be compared. See docs/agents/refresh-the-dump.md.
+data/raw/mmdk-fresh/
 .playwright-mcp/
 
 # Local secrets
