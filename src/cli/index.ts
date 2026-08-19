@@ -798,6 +798,9 @@ function printArmor(report: ReturnType<typeof verifyArmor>): void {
   console.log(
     `  low does not ${pct(totals.holdsLow.coversLeg, totals.holdsLow.total).padEnd(18)} FAT says nothing == the window covers the leg box`,
   );
+  console.log(
+    `  hit count    ${pct(totals.hitCount.agreeing, totals.hitCount.total).padEnd(18)} the atemi index == FAT's published number of absorbed hits`,
+  );
   // Armor Break has no field at all: it is what supers and Drive Reversals do.
   const brk = verifyArmorBreak();
   console.log(

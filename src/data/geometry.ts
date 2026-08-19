@@ -612,7 +612,36 @@ export function breaksArmor(geo: GeometryFile, action: GeometryAction): boolean 
 }
 
 export function armoredAt(action: GeometryAction, frame: number, part: keyof ArmorWindow["covers"]): boolean {
-  return armorWindows(action).some((w) => frame >= w.start && frame <= w.end && w.covers[part]);
+  return armorAt(action, frame, part) !== undefined;
+}
+
+/** The armor window covering this part on this frame, if any. */
+export function armorAt(
+  action: GeometryAction,
+  frame: number,
+  part: keyof ArmorWindow["covers"],
+): ArmorWindow | undefined {
+  return armorWindows(action).find((w) => frame >= w.start && frame <= w.end && w.covers[part]);
+}
+
+/**
+ * How many hits an armor absorbs before it stops, by atemi index.
+ *
+ * The atemi table itself is not in the dump (ADR-0016), so the index is a
+ * discriminator with no payload here. FAT supplies the payload: it publishes a
+ * hit count in `extraInfo` for every armored move in the roster, and across all
+ * 29 published claims the index determines it — 1 is Drive Impact on all 24
+ * fighters and is two hits, 3 is E.Honda's OD Headbutt and 7 is Marisa's
+ * Gladius family, both one. No index is credited with two different counts.
+ *
+ * Three of the table's rows, not the table. An index outside this map is armor
+ * the roster never uses and the count is unknown. See ADR-0039.
+ */
+const ARMOR_HITS: Record<number, number> = { 1: 2, 3: 1, 7: 1 };
+
+/** What an armor window absorbs before breaking, or undefined if unpublished. */
+export function armorHits(window: ArmorWindow): number | undefined {
+  return ARMOR_HITS[window.index];
 }
 
 /**

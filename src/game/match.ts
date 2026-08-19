@@ -27,11 +27,12 @@
  *   check against the throwable box.
  *
    *   Armor as of ADR-0037: an armored hurtbox absorbs the hit, fireballs
- *   included, and a super or a Drive Reversal breaks through.
+ *   included, and a super or a Drive Reversal breaks through. As of ADR-0039 it
+ *   runs out — two hits on a Drive Impact — and absorbing costs Drive.
  *
  * WHAT IT DOES NOT
- *   throw teching, quick rise, Drive Parry, and the armor *count* — the dump
- *   states no number of absorbed hits, so armor here never runs out.
+ *   throw teching, quick rise, Drive Parry, and grey health: armor damage is
+ *   recoverable in SF6 and here it is simply gone.
  */
 
 import {
@@ -40,7 +41,8 @@ import {
   hitDataFor,
   hitKeysAt,
   knocksDown,
-  armoredAt,
+  armorAt,
+  armorHits,
   breaksArmor,
   hitboxesAt,
   hurtboxesAt,
@@ -175,6 +177,8 @@ export class Match {
   readonly projectiles: Projectile[] = [];
   /** `<fighter>:<action instance>:<shot index>` for shots already spawned. */
   private thrown = new Set<string>();
+  /** `<fighter>:<action instance>:<atemi index>` -> hits that armor has eaten. */
+  private armorSpent = new Map<string, number>();
   /**
    * The combo each fighter is currently *taking*, if any.
    *
@@ -606,9 +610,24 @@ export class Match {
     const me = this.fighters[attacker]!;
     const part = partHit(them, boxes);
     if (!part) return false;
-    if (!armoredAt(them.state.action, them.state.frame, part)) return false;
+    const window = armorAt(them.state.action, them.state.frame, part);
+    if (!window) return false;
     if (breaksArmor(me.geo, attack)) return false;
+    // Armor runs out. How many hits it takes is not in the dump — the atemi
+    // table is not shipped — but the index into that table is, and FAT publishes
+    // the count for every index the roster uses. Drive Impact's is two. Spent
+    // per window per playthrough of the action, which is what the instance
+    // counter is for. See ADR-0039.
+    const allowed = armorHits(window);
+    const key = `${attacker === 0 ? 1 : 0}:${them.instance}:${window.index}`;
+    const spent = (this.armorSpent.get(key) ?? 0) + 1;
+    if (allowed !== undefined && spent > allowed) return false;
+    this.armorSpent.set(key, spent);
     this.health[attacker === 0 ? 1 : 0] -= outcome.damage;
+    // Absorbing costs the defender Drive: `DriveNorm` on the row that landed,
+    // the same field a block reads. ADR-0037 left this unapplied.
+    const drain = outcome.driveDamage?.normal;
+    if (drain) them.gain("drive", -Math.abs(drain));
     this.freeze = outcome.hitStop.owner;
     this.hits.push({
       frame: this.frame,

@@ -9,6 +9,7 @@ import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 import { verifyThrows } from "../src/verify/throws.js";
+import { verifyArmor } from "../src/verify/armor.js";
 import { verify } from "../src/verify/index.js";
 
 const report = verify();
@@ -671,6 +672,32 @@ describe("armor", () => {
     for (let i = 0; i < 60; i++) match.advance(script[i] ?? hold(5), i < 3 ? hold(5, ["HP", "HK"]) : hold(5));
     expect(match.hits[0]?.action).toMatch(/PROJ$/);
     expect(match.hits[0]?.reaction).toBe("ARMOR");
+  });
+
+  it("runs out: Drive Impact absorbs two hits and no more", () => {
+    // The count is FAT's, reached through the atemi index — the table itself is
+    // not in the dump. Mash a light into the window and the third one lands for
+    // real. See ADR-0039.
+    const mashed = versusDriveImpact((i) => (i % 4 < 2 ? hold(5, ["LP"]) : hold(5)));
+    const mine = mashed.hits.filter((h) => h.attacker === 0);
+    expect(mine.filter((h) => h.reaction === "ARMOR")).toHaveLength(2);
+    expect(mine.length).toBeGreaterThan(2);
+    expect(mine[2]!.reaction).not.toBe("ARMOR");
+  });
+
+  it("costs the absorbing side Drive", () => {
+    // `DriveNorm` on the row that landed, the field a block already reads.
+    const match = matchFor("Ryu", "Ken", { distance: 130, seconds: null });
+    const before = match.fighters[1].drive;
+    for (let i = 0; i < 12; i++) match.advance(i > 3 && i < 7 ? hold(5, ["MP"]) : hold(5), i < 3 ? hold(5, ["HP", "HK"]) : hold(5));
+    expect(match.hits[0]?.reaction).toBe("ARMOR");
+    expect(match.fighters[1].drive).toBeLessThan(before);
+  });
+
+  it("has its hit count named by the atemi index, on every published claim", () => {
+    const { totals } = verifyArmor();
+    expect(totals.hitCount.total).toBe(29);
+    expect(totals.hitCount.agreeing).toBe(29);
   });
 
   it("is broken by a Super Art and a Drive Reversal, and by nothing else", () => {

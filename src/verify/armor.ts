@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { armorWindows} from "../data/geometry.js";
+import { armorHits, armorWindows } from "../data/geometry.js";
 import { loadGeometry } from "../data/load-geometry.js";
 import { listCharacters, requireCharacter } from "../data/index.js";
 
@@ -57,6 +57,8 @@ export interface ArmorReport {
     losesToLow: { total: number; bodyOnly: number };
     /** Claims where FAT says no such thing. */
     holdsLow: { total: number; coversLeg: number };
+    /** Does the atemi index predict FAT's published hit count? See ADR-0039. */
+    hitCount: { total: number; agreeing: number };
   };
 }
 
@@ -163,7 +165,19 @@ export function verifyArmor(characters?: string[]): ArmorReport {
     absent: 0,
     losesToLow: { total: 0, bodyOnly: 0 },
     holdsLow: { total: 0, coversLeg: 0 },
+    hitCount: { total: 0, agreeing: 0 },
   };
+  // Does the atemi index determine the hit count? The table it indexes is not
+  // shipped, so this is the only way to find out whether the index is the
+  // payload's name: every claim on the same index should publish the same
+  // count. See ADR-0039.
+  for (const c of claims) {
+    if (c.index.length !== 1) continue;
+    totals.hitCount.total++;
+    if (armorHits({ start: 0, end: 0, index: c.index[0]!, covers: { head: false, body: false, leg: false } }) === c.hits) {
+      totals.hitCount.agreeing++;
+    }
+  }
   for (const c of claims) {
     if (!c.dump) totals.absent++;
     else {
