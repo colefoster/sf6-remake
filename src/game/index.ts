@@ -144,6 +144,17 @@ function satisfies(step: CommandStep, dir: Direction, facing: 1 | -1): boolean {
 
 export type Stance = "stand" | "crouch" | "air";
 
+/**
+ * The quick-rise input, asserted rather than read.
+ *
+ * SF6 takes down or any two buttons; the dump states neither, because there is
+ * no second down action for a quick rise to play. Down alone is what this
+ * models. See ADR-0041.
+ */
+function holdingDown(dir: Direction): boolean {
+  return dir === 1 || dir === 2 || dir === 3;
+}
+
 export interface FighterState {
   character: string;
   /** The action being played, and the 1-indexed frame of it. */
@@ -499,9 +510,18 @@ export class Fighter {
           const down = actionByName(this.geo, "BAS_DN_STD_AO");
           const up = down ? actionableFrame(down) : undefined;
           if (down && up) {
+            // Quick rise: the `DownTime` is the part of the floor the defender
+            // can refuse. What is left is the get-up itself, which is the down
+            // action's own recovery and is not optional. Whether it can be
+            // refused at all is `hardKnockdown`, the rule the grader uses; the
+            // *input* is asserted, because the dump has no down action for it —
+            // there is one `BAS_DN_STD_AO` and it does not come in two lengths.
+            // See ADR-0041.
+            const rising = this.quickRisable && holdingDown(input.dir);
             this.enter(down, "stand");
-            this.stun = this.floor + up.frame - 1;
+            this.stun = (rising ? 0 : this.floor) + up.frame - 1;
             this.floor = 0;
+            this.quickRisable = false;
             return;
           }
         }
@@ -525,10 +545,11 @@ export class Fighter {
    * reaction's own `MarginFrame` is a generic 17 or 25 and agrees with the
    * table's stun on barely a hundred of 3,167 rows. The table wins. See ADR-0027.
    */
-  react(action: GeometryAction, frames: number, floor?: number): void {
+  react(action: GeometryAction, frames: number, floor?: number, quickRisable = false): void {
     this.enter(action, this.state.stance === "air" ? "air" : this.state.stance);
     this.stun = frames;
     this.floor = floor ?? 0;
+    this.quickRisable = quickRisable;
   }
 
   /**
@@ -561,6 +582,8 @@ export class Fighter {
   private stun = 0;
   /** Frames still owed on the floor once the knockdown reaction ends. */
   private floor = 0;
+  /** Is the floor time this knockdown owes refusable. See ADR-0041. */
+  private quickRisable = false;
   private held: Button[] = [];
   private clock = 0;
   /** When each button last went down, for the trigger's own input buffer. */

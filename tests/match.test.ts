@@ -4,7 +4,7 @@ import { hold, reactionFor } from "../src/game/match.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
-import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHitboxes, flightOrigin } from "../src/data/geometry.js";
+import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHitboxes, flightOrigin, hardKnockdown, hitDataFor } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
@@ -738,6 +738,15 @@ describe("armor", () => {
     expect(totals.hitCount.agreeing).toBe(29);
   });
 
+  it("deals a Drive Reversal's recoverable damage, which is all it has", () => {
+    // `DmgValue` is 0 and `DmgRecover` is 500; FAT publishes 500. Reading only
+    // the first made a Drive Reversal a free hit. See ADR-0041.
+    const geo = loadGeometry(requireCharacter("Ryu").id)!;
+    const data = hitDataFor(geo, geo.actions.find((a) => a.name === "ATK_CTA_4")!)!;
+    expect(data.hit?.damage).toBe(0);
+    expect(data.hit?.recoverable).toBe(500);
+  });
+
   it("is broken by a Super Art and a Drive Reversal, and by nothing else", () => {
     // ADR-0017's rule, asserted directly rather than through an input: what
     // breaks armor is what a move *is*, read off the triggers that reach it.
@@ -748,5 +757,67 @@ describe("armor", () => {
     expect(breaksArmor(geo, named("ATK_5MP"))).toBe(false);
     expect(breaksArmor(geo, named("SPA_HADO"))).toBe(false);
     expect(breaksArmor(geo, named("ATK_CTA"))).toBe(false);
+  });
+});
+
+/**
+ * Wake-up and throw teching. See ADR-0041.
+ *
+ * Both are cases where the dump holds one half of the mechanic and the input is
+ * asserted: there is one down action and it does not come in two lengths, and
+ * `NGE`/`NGF` are two equal-length actions with nothing routing into them.
+ */
+describe("wake-up and teching", () => {
+  /** Drive Impact knocks down soft: `DownTime` 12 and no `_no_rolling`. */
+  const impact = (p2: (i: number) => ReturnType<typeof hold>) => {
+    const match = matchFor("Ryu", "Ken", { distance: 120, seconds: null });
+    let up: number | null = null;
+    for (let i = 0; i < 240; i++) {
+      match.advance(i < 3 ? hold(5, ["HP", "HK"]) : hold(5), p2(i));
+      if (!match.hits.length) continue;
+      if (up === null && match.fighters[1].actionable() && match.fighters[1].stunned === 0) up = match.frame;
+    }
+    return { match, up };
+  };
+
+  it("lets a soft knockdown be quick-risen out of, and it is faster", () => {
+    const lying = impact(() => hold(5));
+    const rising = impact(() => hold(2));
+    expect(lying.up).not.toBeNull();
+    expect(rising.up).not.toBeNull();
+    // The `DownTime` is the refusable part; the get-up itself is not.
+    expect(rising.up!).toBe(lying.up! - 12);
+  });
+
+  it("refuses a hard knockdown", () => {
+    // The rule, asserted directly: `_no_rolling` or a `DownTime` of 0. Ryu's
+    // sweep carries `_no_rolling` on every condition, so it is never soft.
+    const geo = loadGeometry(requireCharacter("Ryu").id)!;
+    const sweepData = hitDataFor(geo, geo.actions.find((a) => a.name === "ATK_2HK")!)!;
+    expect(hardKnockdown(sweepData.hit!)).toBe(true);
+    const impactData = hitDataFor(geo, geo.actions.find((a) => a.name === "ATK_CTA")!)!;
+    expect(hardKnockdown(impactData.hit!)).toBe(false);
+  });
+
+  it("techs a throw when the defender is going for one too", () => {
+    // `NGE` and `NGF` have existed in every fighter's list since the geometry was
+    // first extracted with nothing routing into them.
+    const teched = matchFor("Ryu", "Ken", { distance: 90, seconds: null });
+    for (let i = 0; i < 40; i++) {
+      const press = i < 3 ? (["LP", "LK"] as Button[]) : [];
+      teched.advance(hold(5, press), hold(5, press));
+    }
+    expect(teched.hits[0]?.reaction).toBe("TECH");
+    expect(teched.health).toEqual([10000, 10000]);
+    expect(teched.fighters[0].actionName).toBe("NGE");
+    expect(teched.fighters[1].actionName).toBe("NGF");
+  });
+
+  it("does not tech when only the thrower presses", () => {
+    const thrown = matchFor("Ryu", "Ken", { distance: 90, seconds: null });
+    for (let i = 0; i < 40; i++) {
+      thrown.advance(hold(5, i < 3 ? (["LP", "LK"] as Button[]) : []), hold(5));
+    }
+    expect(thrown.hits[0]?.reaction).not.toBe("TECH");
   });
 });

@@ -30,9 +30,13 @@
  *   included, and a super or a Drive Reversal breaks through. As of ADR-0039 it
  *   runs out — two hits on a Drive Impact — and absorbing costs Drive.
  *
+ *   Wake-up and teching as of ADR-0041: a soft knockdown's `DownTime` can be
+ *   quick-risen out of, two throws at once tech into `NGE`/`NGF`, and a Drive
+ *   Reversal's damage is its `DmgRecover`.
+ *
  * WHAT IT DOES NOT
- *   throw teching, quick rise, Drive Parry, and grey health: armor damage is
- *   recoverable in SF6 and here it is simply gone.
+ *   Drive Parry, back rise, and grey health growing back — nothing in either
+ *   dump states a health regeneration rate.
  */
 
 import {
@@ -45,6 +49,7 @@ import {
   armorHits,
   breaksArmor,
   flightEnds,
+  hardKnockdown,
   flightHitboxes,
   flightOrigin,
   hitboxesAt,
@@ -182,6 +187,12 @@ export class Match {
   private thrown = new Set<string>();
   /** `<fighter>:<action instance>:<atemi index>` -> hits that armor has eaten. */
   private armorSpent = new Map<string, number>();
+  /**
+   * The grey part of the health each side has lost — `DmgRecover` on the rows
+   * that carry it, which in this roster is the Drive Reversal and nothing else.
+   * It never comes back: no dump states a regeneration rate. See ADR-0041.
+   */
+  readonly recoverable: [number, number] = [0, 0];
   /**
    * The combo each fighter is currently *taking*, if any.
    *
@@ -544,10 +555,18 @@ export class Match {
     // identical, so the only thing a counter changes on a sweep is how long the
     // defender lies there. See ADR-0033.
     const floor = type !== "block" && knocksDown(outcome) ? outcome.downTime : 0;
-    if (reaction) them.react(reaction, Math.max(0, stun), floor);
-    const raw = type === "block" ? 0 : outcome.damage;
+    // A soft knockdown's floor time can be refused; a hard one's cannot. Same
+    // rule the grader checks against FAT's `onPC`. See ADR-0041.
+    if (reaction) them.react(reaction, Math.max(0, stun), floor, floor > 0 && !hardKnockdown(outcome));
+    // A Drive Reversal's `DmgValue` is zero and its `DmgRecover` is 500, which
+    // is the number FAT publishes as its damage. Recoverable damage is damage —
+    // it just comes off a pool that would grow back. Nothing grows back here,
+    // because no regeneration rate is in either dump. See ADR-0041.
+    const grey = outcome.recoverable;
+    const raw = (type === "block" ? 0 : outcome.damage) + grey;
     // The starter is unscaled; everything the combo adds after it is not.
     const damage = running ? Math.floor((raw * combo.scaling) / 100) : raw;
+    this.recoverable[victim] += grey;
     if (type !== "block") {
       combo.hits++;
       combo.damage += damage;
@@ -659,6 +678,7 @@ export class Match {
     const me = this.fighters[attacker]!;
     const branches = (me.state.action.branches ?? []).filter((b) => b.type === BRANCH_CATCH);
     if (!branches.length) return false;
+    if (this.teched(attacker, them)) return true;
     const punish = type === "punishCounter";
     const targets = branches
       .map((b) => ({ branch: b, action: me.geo.actions.find((a) => a.id === b.action) }))
@@ -671,6 +691,41 @@ export class Match {
     // The thrown fighter is locked for the whole animation; the outcome arrives
     // when the thrower reaches the lock frame.
     if (held) them.react(held, held.frames ?? 0);
+    return true;
+  }
+
+  /**
+   * Did the defender tech the throw.
+   *
+   * `NGE` and `NGF` have sat in every fighter's action list since the geometry
+   * was first extracted with nothing routing into them: 43 frames each, no
+   * hitbox, no motion, and a `MarginFrame` of −1. That pair is the tech, and
+   * their being the *same length* is the mechanic — a teched throw leaves both
+   * sides at neutral, which is what two equal-length actions with no recovery
+   * of their own produce.
+   *
+   * The condition is that the defender is *themselves in `NGS`* — they went for
+   * a throw too. That needs no invented window: the window is the throw's own
+   * start-up, five frames of it before the catch branch, and it is in the dump.
+   * See ADR-0041.
+   */
+  private teched(attacker: 0 | 1, them: Fighter): boolean {
+    const me = this.fighters[attacker]!;
+    const escape = actionByName(me.geo, "NGE");
+    const theirs = actionByName(them.geo, "NGF");
+    if (!escape || !theirs) return false;
+    if (!/^NGS/.test(them.state.action.name)) return false;
+    me.play(escape);
+    them.react(theirs, theirs.frames ?? 0);
+    this.hits.push({
+      frame: this.frame,
+      attacker,
+      type: "hit",
+      damage: 0,
+      stun: 0,
+      action: me.state.action.name,
+      reaction: "TECH",
+    });
     return true;
   }
 

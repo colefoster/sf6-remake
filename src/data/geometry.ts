@@ -939,6 +939,20 @@ export const knocksDown = (outcome: HitOutcome): boolean => outcome.dmgType !== 
  * `undefined` when the fighter has no down action, which is the honest answer
  * rather than a zero that would read as "gets up instantly".
  */
+/**
+ * Can the defender quick-rise out of this knockdown.
+ *
+ * Two fields say so and neither says it alone: `_no_rolling` is set on 31 of the
+ * 32 rows FAT calls a hard knockdown but misses half of them, and a `DownTime`
+ * of 0 covers most of the rest and appears on no soft knockdown at all. The
+ * union grades at 96.4% against FAT's `onPC` column. Shared with the grader
+ * rather than kept in it, so the runtime and `sf6 verify` read one rule — the
+ * same move ADR-0037 made for `breaksArmor`. See ADR-0033 and ADR-0041.
+ */
+export function hardKnockdown(outcome: { downTime: number; flags?: string[] }): boolean {
+  return (outcome.flags ?? []).includes("noQuickRise") || outcome.downTime === 0;
+}
+
 export function downRecovery(geo: GeometryFile): number | undefined {
   const down = actionByName(geo, "BAS_DN_STD_AO");
   if (!down) return undefined;

@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import {
+  hardKnockdown,
   inFatFrames,
   spawnsFrom,
   type GeometryAction,
@@ -62,6 +63,7 @@ export type CheckName =
   | "total"
   | "cancelEnd"
   | "advantage"
+  | "damage"
   | "driveGain"
   | "driveOnHit"
   | "driveOnBlock"
@@ -82,6 +84,7 @@ export const CHECKS: Record<CheckName, string> = {
   total: "the action's MarginFrame == FAT's published total",
   cancelEnd: "the cancel window's last frame == FAT's published hit-confirm window",
   advantage: "the sim played out from the dump alone == FAT's published on-block",
+  damage: "the hit table's DmgValue + DmgRecover == FAT's published damage",
   driveGain: "the hit table's Drive gain for the attacker == FAT's DGain",
   driveOnHit: "the hit table's Drive damage on hit == FAT's DDoH",
   driveOnBlock: "the hit table's Drive damage on block == FAT's DDoB",
@@ -171,10 +174,11 @@ function knocksDown(onHit: unknown): number | undefined {
   return /^[+-]?\d+$/.test(text) ? 0 : undefined;
 }
 
-/** The dump's reading of "cannot be quick-risen out of". */
-function hardDown(outcome: { downTime: number; flags?: string[] }): boolean {
-  return (outcome.flags ?? []).includes("noQuickRise") || outcome.downTime === 0;
-}
+/**
+ * The dump's reading of "cannot be quick-risen out of". Lives in the geometry
+ * module now, because the runtime acts on the same rule. See ADR-0041.
+ */
+const hardDown = hardKnockdown;
 
 /** FAT's, from the punish-counter column, where it publishes most of its hard knockdowns. */
 function hardPublished(onPC: unknown): number | undefined {
@@ -225,6 +229,7 @@ interface FatColumns {
   jugStart?: string | number;
   jugIncr?: string | number;
   jugLimit?: string | number;
+  dmg?: string | number;
   dmgScaling?: string | number;
   onHit?: string | number;
   onPC?: string | number;
@@ -289,6 +294,9 @@ function dumpNumbers(
     // there. The hit row's `FocusTgt` is 0 and the block row's is a positive
     // amount the defender gains; the drain FAT publishes is authored on the
     // punish-counter and driveHit rows instead, and matches there. See ADR-0031.
+    // A Drive Reversal states 0 damage and 500 *recoverable*, and 500 is what
+    // FAT publishes. Recoverable damage is damage. See ADR-0041.
+    damage: data?.hit ? data.hit.damage + data.hit.recoverable : undefined,
     driveGain: data?.hit?.drive.own,
     driveOnHit: magnitude(data?.punishCounter?.drive.target),
     driveOnBlock: magnitude(data?.driveHit?.drive.target),
@@ -411,6 +419,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
         total: plainInt(columns.total),
         cancelEnd: plainInt(columns[confirmColumn]),
         advantage: signedInt(move.fat.onBlock),
+        damage: plainInt(columns.dmg),
         driveGain: plainInt(columns.DGain),
         driveOnHit: plainInt(columns.DDoH),
         driveOnBlock: plainInt(columns.DDoB),
