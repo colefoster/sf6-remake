@@ -49,6 +49,7 @@ import {
   type Stance,
   knocksDown,
   downRecovery,
+  driveRushCancelFrame,
   driveRushFreeze,
 } from "../data/geometry.js";
 import { loadGeometry } from "../data/load-geometry.js";
@@ -347,10 +348,16 @@ export function runScenario(
         // attacker waits out the rush's own freeze from contact and nothing
         // else, which is why the advantage it leaves is nearly the same on a
         // heavy as on a light. See ADR-0036.
+        // The cancel is not free to happen on the contact frame: the rush
+        // window opens where the ungated key opens, and the wait runs from
+        // there. On most moves that is the first active frame and the two are
+        // the same; where it is later, that lateness is the one-and-two-frame
+        // residual ADR-0036 could not place. See ADR-0038.
         const rush = options.driveRush ? driveRushFreeze(attacker.geo) : undefined;
+        const opens = options.driveRush ? driveRushCancelFrame(attacker.geo, attacker.action) : undefined;
         const free = actionableFrame(attacker.action);
         if (rush !== undefined) {
-          attackerActionable = rush;
+          attackerActionable = Math.max(0, (opens ?? frame) - frame) + rush;
           recoverySource = "drive-rush";
         } else if (free) {
           attackerActionable = free.frame - frame;

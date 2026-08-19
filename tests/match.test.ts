@@ -4,9 +4,9 @@ import { hold, reactionFor } from "../src/game/match.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
-import { BAR, breaksArmor } from "../src/data/geometry.js";
+import { BAR, actionFor, breaksArmor, driveRushCancelFrame } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
-import { listCharacters, requireCharacter } from "../src/data/index.js";
+import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 import { verifyThrows } from "../src/verify/throws.js";
 import { verify } from "../src/verify/index.js";
@@ -600,20 +600,30 @@ describe("drive rush", () => {
     const plain = runScenario("Ryu", "2MK", { guard: true });
     const rushed = runScenario("Ryu", "2MK", { guard: true, driveRush: true });
     expect(rushed.recoverySource).toBe("drive-rush");
-    expect(rushed.attackerActionable).toBe(10);
     expect(rushed.advantage!).toBeGreaterThan(plain.advantage!);
+    // 2MK's ungated rush key opens two frames after contact, so the wait is the
+    // freeze plus those two. A move whose window opens on the contact frame
+    // waits the freeze alone. See ADR-0038.
+    expect(rushed.attackerActionable).toBe(12);
+    expect(runScenario("Ryu", "5MP", { guard: true, driveRush: true }).attackerActionable).toBe(10);
   });
 
-  it("is graded against FAT, and the mechanism is not the whole story", () => {
-    // Kept as a measurement rather than hidden: the model reproduces FAT's
-    // published DRoB on about two thirds of the population, and the residual is
-    // one or two frames. See ADR-0036.
+  it("opens where the ungated cancel key opens, not on the contact frame", () => {
+    // The gate is the finding: taking the earlier, `_Other`-gated twin of the
+    // window is what put a third of the roster one or two frames too plus.
+    const geo = loadGeometry(requireCharacter("Ryu").id)!;
+    const action = actionFor(geo, requireMove(requireCharacter("Ryu"), "2MK"))!.action;
+    expect(driveRushCancelFrame(geo, action)).toBe(10);
+    expect((action.cancels ?? []).some((k) => ((k.other ?? 0) & (1 << 17)) !== 0 && k.start === 8)).toBe(true);
+  });
+
+  it("is graded against FAT, and the residual is small", () => {
+    // Kept as a measurement rather than hidden. ADR-0036 left this at 64%;
+    // reading the window's own opening frame takes it to 95%. See ADR-0038.
     const rows = report.comparisons.filter((c) => c.check === "driveRushBlock" && c.clean);
     expect(rows.length).toBeGreaterThan(150);
     const agreed = rows.filter((c) => c.agrees).length / rows.length;
-    expect(agreed).toBeGreaterThan(0.6);
-    // A ceiling as well as a floor: this is the number to beat.
-    expect(agreed).toBeLessThan(0.8);
+    expect(agreed).toBeGreaterThan(0.9);
   });
 });
 

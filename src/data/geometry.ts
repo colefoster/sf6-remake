@@ -778,6 +778,43 @@ export function driveRushFreeze(geo: GeometryFile, kind: "DriveDash" | "ParryDas
   return undefined;
 }
 
+/**
+ * `_Other` bit 17, the second and last bit that field ever carries — bit 6 is
+ * the buffer marker, and no key in the roster sets any other. It gates an
+ * *earlier* twin of a live cancel window: 387 keys carry it, none of them
+ * buffered, and 130 abut an ungated key starting on the very next frame.
+ *
+ * What it gates is not read here. What is measured is that the window it opens
+ * is not the one FAT times a Drive Rush cancel from. See ADR-0038.
+ */
+const OTHER_GATED = 1 << 17;
+
+/**
+ * The first frame a Drive Rush cancel actually comes out, 1-indexed in the
+ * move's own action, or undefined where the move has no rush window.
+ *
+ * A cancellable normal carries the rush window as *two* consecutive live keys:
+ * an earlier one gated by `OTHER_GATED` that covers the active frames, and an
+ * ungated one immediately after it. Taking the earlier one puts the sim one or
+ * two frames too plus on a third of the roster; taking the ungated one is what
+ * FAT's `DRoB` and `DRoH` are measured from. See ADR-0038.
+ */
+export function driveRushCancelFrame(geo: GeometryFile, action: GeometryAction): number | undefined {
+  const groups = new Set<number>();
+  for (const [group, indices] of Object.entries(geo.cancelGroups ?? {})) {
+    for (const index of indices) {
+      if (geo.triggers?.[String(index)]?.kind?.includes("DriveDash")) groups.add(Number(group));
+    }
+  }
+  const starts = (action.cancels ?? [])
+    // The nibble-4 key opens after the active frames and is the rush
+    // *extension*, not the cancel — the same key ADR-0015 excludes.
+    .filter((k) => !k.buffered && groups.has(k.group) && (k.cond & 15) !== 4)
+    .filter((k) => ((k.other ?? 0) & OTHER_GATED) === 0)
+    .map((k) => k.start);
+  return starts.length ? Math.min(...starts) : undefined;
+}
+
 export interface Actionable {
   /** 1-indexed frame of the action on which the attacker is free again. */
   frame: number;
