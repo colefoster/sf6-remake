@@ -924,11 +924,19 @@ function extractLanding(action, byId, depth = 0, seen = new Set()) {
 }
 
 /** 5HK branches to the same action on four consecutive frames; keep the first. */
+/**
+ * One branch per target *and type*.
+ *
+ * Keyed on the target alone this dropped the type: A.K.I.'s 5MP carries a SWING
+ * and a GUARD branch to the same twin, and only the first survived, so nothing
+ * downstream could tell "it whiffed" from "it was blocked". See ADR-0055.
+ */
 function dedupeBranches(branches) {
   const seen = new Set();
   return branches.filter((b) => {
-    if (seen.has(b.action)) return false;
-    seen.add(b.action);
+    const key = `${b.action}:${b.type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }

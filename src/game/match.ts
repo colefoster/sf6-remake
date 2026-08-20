@@ -597,6 +597,9 @@ export class Match {
         left: outcome.knockback.frames,
       };
     }
+    // The attack has met something: the action may hand over to the twin the
+    // dump keeps for that case, which is where its real recovery is. ADR-0055.
+    this.fighters[attacker]!.contacted = type === "block" ? "GUARD" : "TOUCH";
     this.hits.push({
       frame: this.frame,
       attacker,

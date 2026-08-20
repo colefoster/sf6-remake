@@ -695,7 +695,9 @@ describe("armor", () => {
     // interrupted — Drive Impact carries on and lands.
     expect(absorbed.damage).toBeGreaterThan(0);
     expect(absorbed.stun).toBe(0);
-    expect(match.fighters[1].actionName).toBe("ATK_CTA");
+    // And having landed, it hands over to the twin the dump keeps for a Drive
+    // Impact that connected — `ATK_CTA(3)` — which is ADR-0055's TOUCH branch.
+    expect(match.fighters[1].actionName).toBe("ATK_CTA(3)");
     expect(match.hits.some((h) => h.action === "ATK_CTA")).toBe(true);
   });
 

@@ -29,6 +29,7 @@ import {
   type GeometryFile,
   type Trigger,
   driveTickAt,
+  BRANCH,
 } from "../data/geometry.js";
 
 /** Numpad directions. 5 is neutral. */
@@ -479,6 +480,7 @@ export class Fighter {
     this.state.action = action;
     this.state.frame = 1;
     this.state.stance = stance;
+    this.contacted = null;
     this.instance++;
   }
 
@@ -664,7 +666,36 @@ export class Fighter {
   private readonly pressedAt = new Map<Button, number>();
 
   /** A type-0 branch on this frame is the game handing one action to the next. */
+  /**
+   * What this fighter's swing has done, if anything: the match sets it on
+   * contact so the action can take the branch the dump keeps for that case.
+   * See ADR-0055.
+   */
+  contacted: "GUARD" | "TOUCH" | null = null;
+
+  /**
+   * A move that connected does not always play out the action it started.
+   *
+   * The dump branches it a frame or two past its last active frame into a twin
+   * with its own `MarginFrame` — GUARD when it was blocked, TOUCH when it
+   * connected, SWING when it hit nothing — which is the pair FAT publishes as
+   * `14(16)`. The branch keeps the frame (`_InheritFrameX`), so the twin picks
+   * up where the base left off rather than restarting. See ADR-0055.
+   */
+  private handOver(): void {
+    if (!this.contacted) return;
+    const { action, frame } = this.state;
+    const branch = (action.branches ?? []).find(
+      (b) => b.frame === frame && b.type === BRANCH[this.contacted!] && b.action !== action.id,
+    );
+    const next = branch && actionById(this.geo, branch.action);
+    if (!next) return;
+    this.state.action = next;
+    this.contacted = null;
+  }
+
   private takeBranch(): void {
+    this.handOver();
     const { action, frame } = this.state;
     const branch = action.branches?.find((b) => b.frame === frame && b.type === BRANCH_SEQUENTIAL);
     const next = branch && actionById(this.geo, branch.action);

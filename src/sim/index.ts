@@ -28,6 +28,7 @@ import type { Box, Character, Move } from "../domain/types.js";
 import {
   actionFor,
   actionableFrame,
+  contactAction,
   activeWindows,
   hitDataFor,
   hitboxesAt,
@@ -361,7 +362,12 @@ export function runScenario(
         // residual ADR-0036 could not place. See ADR-0038.
         const rush = options.driveRush ? driveRushFreeze(attacker.geo) : undefined;
         const opens = options.driveRush ? driveRushCancelFrame(attacker.geo, attacker.action) : undefined;
-        const free = actionableFrame(attacker.action);
+        // A blocked move does not always play out the action it started: the
+        // dump branches it into a twin whose `MarginFrame` is the recovery FAT
+        // publishes in brackets. GUARD names the blocked case and TOUCH the
+        // connecting one; SWING, the whiff, is not this. See ADR-0055.
+        const handover = contactAction(attacker.geo, attacker.action, type === "block" ? ["GUARD", "TOUCH"] : ["TOUCH", "GUARD"]);
+        const free = actionableFrame(handover ?? attacker.action);
         if (rush !== undefined) {
           attackerActionable = Math.max(0, (opens ?? frame) - frame) + rush;
           recoverySource = "drive-rush";

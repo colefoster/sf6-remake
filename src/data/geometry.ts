@@ -1064,6 +1064,35 @@ export function actionableFrame(action: GeometryAction): Actionable | undefined 
 
 export type Stance = "stand" | "crouch";
 
+/**
+ * Branch types, as the dump's own `_TypesName` spells them.
+ *
+ * A move does not always play out the action it started. A `BranchKey` a frame
+ * or two past the last active frame hands it to a twin, and the type says what
+ * decided: **SWING** it hit nothing, **GUARD** it was blocked, **TOUCH** it
+ * connected. The twins differ in `MarginFrame`, which is why FAT publishes two
+ * recovery numbers for these moves — `14(16)` is the pair. See ADR-0055.
+ */
+export const BRANCH = { SEQUENTIAL: 0, GUARD: 4, SWING: 5, CATCH: 36, TOUCH: 54 } as const;
+
+/**
+ * The action this one hands over to when the attack is guarded, touches, or
+ * swings at nothing — whichever of those the caller is asking about, in order of
+ * preference. Undefined when the move plays itself out.
+ */
+export function contactAction(
+  geo: GeometryFile,
+  action: GeometryAction,
+  kinds: (keyof typeof BRANCH)[],
+): GeometryAction | undefined {
+  for (const kind of kinds) {
+    const branch = (action.branches ?? []).find((b) => b.type === BRANCH[kind] && b.action !== action.id);
+    const next = branch && actionById(geo, branch.action);
+    if (next) return next;
+  }
+  return undefined;
+}
+
 /** The Drive gauge's index in an action's `gauge` events. */
 export const DRIVE_GAUGE = 4;
 
