@@ -708,11 +708,16 @@ export interface AtemiRow {
  *
  * ADR-0039 derived this from FAT, three rows of it: across 29 published claims
  * the index determines the count, 1 being Drive Impact on all 24 fighters at two
- * hits and 3 and 7 at one. ADR-0042 has the table itself, which agrees on 1 and
- * 7 and says **2** where FAT says 1 for row 3. Kept because the pinned dump
- * predates the atemi dump and still resolves through here.
+ * hits and 3 and 7 at one. ADR-0042 has the table itself and agrees on 1 and 7.
+ *
+ * Row 3 is **2**, not the 1 ADR-0039 inferred: its only claim is Honda's OD
+ * Headbutt, whose sentence names two stages — *"1 hit of armor on frames 1-8 and
+ * then another on 9-32"* — and the old parser read the first clause only. Both
+ * sources say two. See ADR-0044.
+ *
+ * Kept because the pinned dump predates the atemi dump and still resolves here.
  */
-const ARMOR_HITS: Record<number, number> = { 1: 2, 3: 1, 7: 1 };
+const ARMOR_HITS: Record<number, number> = { 1: 2, 3: 2, 7: 1 };
 
 /**
  * The atemi row an armor window resolves to, if the dump shipped the table.

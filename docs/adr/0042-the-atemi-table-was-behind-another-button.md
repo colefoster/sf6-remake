@@ -7,6 +7,9 @@
   [ADR-0037](./0037-armor-absorbs-and-the-boxes-that-connected-are-the-ones-that-matter.md),
   [ADR-0039](./0039-the-atemi-index-is-the-armors-name-and-fat-holds-the-payload.md)
 - Corrects: [ADR-0040](./0040-a-fireball-outlives-its-action-and-a-second-hit-is-a-second-body.md)
+- Corrected by: [ADR-0044](./0044-one-and-then-another-is-two.md) — row 3 does not
+  contradict FAT. The sentence says "1 hit ... **and then another**" and the
+  parser read the first clause only; both sources say two.
 
 ## Context
 
@@ -141,7 +144,9 @@ circular, and the report says so.
   think that is the one.
 - **`ConvertRatio` versus `RecoverRatio`** as the home of the grey conversion,
   above. Both readings produce identical numbers on every row in this dump.
-- **Row 3's two hits against FAT's one**, above.
+- ~~**Row 3's two hits against FAT's one**~~ — not a disagreement at all. Closed
+  by [ADR-0044](./0044-one-and-then-another-is-two.md), which reads the whole
+  sentence and takes the hit-count check to 26/26.
 - **The pinned tree gets none of this.** The live dump is missing Ed, M.Bison and
   Terry, which the pinned one has, plus the six that have never been dumped, so
   re-pinning would trade three playable fighters for the table. Neither tree is

@@ -34,6 +34,8 @@ export interface ArmorClaim {
   /** FAT's published window, and the dump's. */
   fat: [number, number];
   dump: [number, number] | undefined;
+  /** The published window split as FAT writes it — two stages on one move. */
+  stages: [number, number][];
   /** How many hits of armor FAT credits the move with. */
   hits: number;
   /** How many the dump says: the atemi row's `ResistLimit`. See ADR-0042. */
@@ -99,16 +101,30 @@ function fatMoves(character: string): Record<string, FatMove> {
 }
 
 /** `2 hits of armor on frames 1-27` — hits, window, and whether a low beats it. */
-function parseArmor(line: string): { hits: number; range: [number, number]; losesToLow: boolean } | undefined {
+function parseArmor(
+  line: string,
+): { hits: number; range: [number, number]; stages: [number, number][]; losesToLow: boolean } | undefined {
   if (!/\bhits?\s+of\s+armor\b/i.test(line)) return undefined;
   const found = [...line.matchAll(/frames?\s+(\d+)\s*(?:[-~–]\s*(\d+))?/gi)];
-  // More than one range in a sentence means two windows described at once
-  // (Honda's EX Headbutt: "1 hit on frames 1-8 and then another on 9-32"), which
-  // this grader has no way to attribute. Left out rather than half-matched.
+  // Two ranges written as one clause each — Marisa's Scutum, "on frame 3 and
+  // onwards ... up to frame 118" — is a single window this cannot assemble
+  // without guessing which number is which. Left out rather than half-matched.
+  // Neither Scutum move is mapped, so nothing is currently lost by it.
   if (found.length !== 1) return undefined;
+  const stages: [number, number][] = [[Number(found[0]![1]), Number(found[0]![2] ?? found[0]![1])]];
+  /**
+   * A second window named without repeating the word "frames": Honda's OD
+   * Headbutt, *"1 hit of armor on frames 1-8 and then another on 9-32"*. ADR-0016
+   * skipped the sentence and ADR-0042 read only its first clause, which is what
+   * made the atemi row look like it contradicted FAT — the row says two hits and
+   * the sentence, read whole, says one **and then another**. See ADR-0044.
+   */
+  const another = line.match(/\banother\b[^.]*?\bon\s+(\d+)\s*[-~–]\s*(\d+)/i);
+  if (another) stages.push([Number(another[1]), Number(another[2])]);
   return {
-    hits: /\b(?:2|two)\s+hits/i.test(line) ? 2 : 1,
-    range: [Number(found[0]![1]), Number(found[0]![2] ?? found[0]![1])],
+    hits: (/\b(?:2|two)\s+hits/i.test(line) ? 2 : 1) + (another ? 1 : 0),
+    range: [Math.min(...stages.map((s) => s[0])), Math.max(...stages.map((s) => s[1]))],
+    stages,
     losesToLow: /loses to Low|hit low enough|low enough can go past|no armor on the lower body|upper[- ]body/i.test(line),
   };
 }
@@ -149,6 +165,7 @@ export function verifyArmor(characters?: string[]): ArmorReport {
           input,
           actionName,
           fat: parsed.range,
+          stages: parsed.stages,
           dump,
           hits: parsed.hits,
           dumpHits: windows.length === 1 ? armorHits(geo, windows[0]!) : undefined,

@@ -56,6 +56,12 @@ Per check, over the clean population the headline numbers are quoted on:
 live dump.** So roughly **six sevenths of every residual in this project is ours**
 (or FAT's), not the snapshot's. Every decode built on a residual stands.
 
+*One row of that table has since changed:*
+[ADR-0044](./0044-one-and-then-another-is-two.md) fixed a mis-parsed armor
+sentence, so `armorHits` is 100% in both trees and the counts below read 166
+moved rows and 48 FAT-lags rather than 167 and 49. The headline numbers are
+unchanged.
+
 ### And it runs both ways: 49 rows agreed before and disagree now
 
 Of the 167 moved values, 97 are rows the pinned tree got wrong and the live tree

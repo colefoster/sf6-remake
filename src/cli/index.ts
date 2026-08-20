@@ -338,7 +338,7 @@ function main(): void {
         const only = p.length ? p.map((q) => requireCharacter(q).name) : undefined;
         printVerification(verify(only));
         printInvulnerability(verifyInvuln(only));
-        printArmor(verifyArmor(only));
+        printArmor(verifyArmor(only), only);
         printThrows(verifyThrows(only));
         printProjectiles(verifyProjectiles(only));
         return;
@@ -828,7 +828,7 @@ function printInvulnerability(report: ReturnType<typeof verifyInvuln>): void {
  * where the tree has the table (ADR-0042) and ADR-0039's FAT-derived map where
  * it does not.
  */
-function printArmor(report: ReturnType<typeof verifyArmor>): void {
+function printArmor(report: ReturnType<typeof verifyArmor>, only?: string[]): void {
   const { totals } = report;
   const pct = (n: number, of: number) => (of ? `${n}/${of} ${((n / of) * 100).toFixed(1)}%` : "—");
 
@@ -851,7 +851,9 @@ function printArmor(report: ReturnType<typeof verifyArmor>): void {
     );
   }
   // Armor Break has no field at all: it is what supers and Drive Reversals do.
-  const brk = verifyArmorBreak();
+  // Filtered with the rest of the report: printing a roster-wide rate under a
+  // one-character heading read as that character's.
+  const brk = verifyArmorBreak(only);
   console.log(
     `  armor break  ${pct(brk.agreeing, brk.checked).padEnd(18)} FAT's "Armor Break" tag == the move is a super or a Drive Reversal`,
   );

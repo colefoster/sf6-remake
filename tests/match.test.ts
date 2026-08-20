@@ -742,6 +742,21 @@ describe("armor", () => {
     expect(totals.hitCount.agreeing).toBe(29);
   });
 
+  it("reads a two-stage armor claim as both of its stages", () => {
+    // "1 hit of armor on frames 1-8 and then another on 9-32" — one sentence,
+    // two windows, two hits. Reading the first clause only made Honda's OD
+    // Headbutt look like a one-hit armor and made the atemi row look wrong.
+    // See ADR-0044.
+    const claim = verifyArmor(["E.Honda"]).claims.find((c) => c.input === "46PP")!;
+    expect(claim.stages).toEqual([
+      [1, 8],
+      [9, 32],
+    ]);
+    expect(claim.hits).toBe(2);
+    expect(claim.fat).toEqual([1, 32]);
+    expect(claim.dumpHits).toBe(2);
+  });
+
   it("deals a Drive Reversal's recoverable damage, which is all it has", () => {
     // `DmgValue` is 0 and `DmgRecover` is 500; FAT publishes 500. Reading only
     // the first made a Drive Reversal a free hit. See ADR-0041.
