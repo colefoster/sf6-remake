@@ -1058,23 +1058,47 @@ function superLevel(cmnName) {
 const isSuperAction = (name) => /^(SAA|CAA|SA\d)/.test(name);
 
 /**
+ * Every trigger in `triggers.json`, in the dump's own numeric order.
+ *
+ * The file keys its slots by action id and MMDK zero-pads some of them ("0900")
+ * and not others ("1052"). JavaScript puts canonical integer-like keys **first**,
+ * in ascending order, before any string key — so `Object.values` hands back 1052
+ * before 0900, and every "the first trigger for this slot wins" read of this file
+ * silently prefers whichever slot happened to be written unpadded. Ryu's Denjin
+ * Hadoken took the Heavy and OD slots off the plain Hadoken exactly that way.
+ *
+ * Sorting numerically restores the order the dump is written in, which is also
+ * the order the game authors variants in: the base move, then its rebalances.
+ * See ADR-0048.
+ */
+function triggersInOrder(file) {
+  const out = [];
+  const slots = Object.entries(file ?? {})
+    .filter(([, group]) => group && typeof group === "object")
+    .sort((a, b) => Number(a[0]) - Number(b[0]));
+  for (const [, group] of slots) {
+    const entries = Object.entries(group).sort((a, b) => Number(a[0]) - Number(b[0]));
+    for (const [index, trigger] of entries) {
+      if (trigger && typeof trigger === "object") out.push([Number(index), trigger]);
+    }
+  }
+  return out;
+}
+
+/**
  * Which actions each super level can lead to, from the triggers' own `_IsLv1`..
  * `_IsLv4` flags. This is the dump's classification, not ours, and it turns a
  * 300-action guess into a pool of two or three.
  */
 function superActionsByLevel(triggerFile) {
   const out = new Map();
-  for (const slots of Object.values(triggerFile ?? {})) {
-    if (!slots || typeof slots !== "object") continue;
-    for (const trigger of Object.values(slots)) {
-      if (!trigger || typeof trigger !== "object") continue;
-      for (const [k, v] of Object.entries(trigger)) {
-        const level = v === true && k.match(/^_IsLv(\d)$/);
-        if (!level) continue;
-        const key = Number(level[1]);
-        if (!out.has(key)) out.set(key, new Set());
-        out.get(key).add(trigger.action_id);
-      }
+  for (const [, trigger] of triggersInOrder(triggerFile)) {
+    for (const [k, v] of Object.entries(trigger)) {
+      const level = v === true && k.match(/^_IsLv(\d)$/);
+      if (!level) continue;
+      const key = Number(level[1]);
+      if (!out.has(key)) out.set(key, new Set());
+      out.get(key).add(trigger.action_id);
     }
   }
   return out;
@@ -1094,26 +1118,25 @@ function superActionsByLevel(triggerFile) {
 const STRENGTHS = ["Light", "Middle", "Heavy"];
 function specialFamilies(triggerFile, byId, sigs) {
   const out = new Map();
-  for (const slots of Object.values(triggerFile ?? {})) {
-    if (!slots || typeof slots !== "object") continue;
-    for (const trigger of Object.values(slots)) {
-      if (!trigger || typeof trigger !== "object") continue;
-      const kinds = Object.entries(trigger)
-        .filter(([k, v]) => k.startsWith("_Is") && v === true)
-        .map(([k]) => k.slice(3));
-      const family = kinds.find((k) => /^Special_\d+$/.test(k));
-      const strength = kinds.includes("Extra") ? "Extra" : STRENGTHS.find((s) => kinds.includes(s));
-      if (!family || !strength) continue;
-      const action = byId.get(trigger.action_id);
-      // A fireball's own action has no hitbox — the projectile is a separate
-      // action and the frame it spawns on is not extracted — so those families
-      // have nothing to score and are left out. See docs/adr/0021.
-      if (!action || !sigs.get(action.id)) continue;
-      if (!out.has(family)) out.set(family, { button: null, slots: new Map() });
-      const fam = out.get(family);
-      fam.button ??= kinds.includes("Punch") ? "P" : kinds.includes("Kick") ? "K" : null;
-      if (!fam.slots.has(strength)) fam.slots.set(strength, action);
-    }
+  // In the dump's own order, so that "the first trigger for a strength wins"
+  // means the base variant rather than whichever slot key JavaScript hoists.
+  // See `triggersInOrder`.
+  for (const [, trigger] of triggersInOrder(triggerFile)) {
+    const kinds = Object.entries(trigger)
+      .filter(([k, v]) => k.startsWith("_Is") && v === true)
+      .map(([k]) => k.slice(3));
+    const family = kinds.find((k) => /^Special_\d+$/.test(k));
+    const strength = kinds.includes("Extra") ? "Extra" : STRENGTHS.find((s) => kinds.includes(s));
+    if (!family || !strength) continue;
+    const action = byId.get(trigger.action_id);
+    // A fireball's own action has no hitbox — the projectile is a separate
+    // action and the frame it spawns on is not extracted — so those families
+    // have nothing to score and are left out. See docs/adr/0021.
+    if (!action || !sigs.get(action.id)) continue;
+    if (!out.has(family)) out.set(family, { button: null, slots: new Map() });
+    const fam = out.get(family);
+    fam.button ??= kinds.includes("Punch") ? "P" : kinds.includes("Kick") ? "K" : null;
+    if (!fam.slots.has(strength)) fam.slots.set(strength, action);
   }
   return out;
 }

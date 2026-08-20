@@ -13,6 +13,7 @@ import {
 import { invulnDisagreements, verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
 import { verifyArmor, verifyArmorBreak } from "../src/verify/armor.js";
 import { charactersWithGeometry, gradedRows } from "../src/verify/rows.js";
+import { verifyProjectiles } from "../src/verify/projectiles.js";
 import {
   actionableFrame,
   activeWindows,
@@ -935,5 +936,40 @@ describe("graded rows", () => {
     expect(charactersWithGeometry(["Ryu", "Ken"])).toEqual(["Ryu", "Ken"]);
     // Six of FAT's thirty have never been dumped, and no tree has them.
     expect(charactersWithGeometry(["Sagat"])).toEqual([]);
+  });
+});
+
+/**
+ * The Hadoken family, which is where a one-line ordering bug lived for eight
+ * ADRs. See ADR-0048.
+ */
+describe("Ryu's Hadokens against their published speeds", () => {
+  it("maps each strength to the plain variant, not the Denjin one", () => {
+    const geo = loadGeometry(requireCharacter("Ryu").id)!;
+    const speedOf = (input: string) => {
+      const move = geo.moves.find((m) => m.input === input)!;
+      const action = geo.actions.find((a) => a.id === move.action)!;
+      const shot = geo.actions.find((a) => a.id === action.shots![0]!.action)!;
+      return shot.motion?.launch;
+    };
+    // FAT: 0.055 / 0.07 / 0.085 / 0.112, times ADR-0040's factor of 100.
+    expect(speedOf("236LP")).toBe(5.5);
+    expect(speedOf("236MP")).toBe(7);
+    expect(speedOf("236HP")).toBe(8.5);
+    expect(speedOf("236PP")).toBe(11.2);
+    // The Denjin-charged pair share the family's Heavy and OD strengths and are
+    // the ones the trigger order used to hoist. Nothing maps to them.
+    const mapped = new Set(geo.moves.map((m) => m.actionName));
+    expect(mapped.has("SPA_HADO(4)")).toBe(false);
+    expect(mapped.has("SPA_HADO(5)")).toBe(false);
+  });
+
+  it("grades a shared notation against the first published entry", () => {
+    // `236PP` is both OD Hadoken (0.112) and OD Denjin Charge Hadoken (0.145).
+    // The extractor maps the first; the grader has to read the first too.
+    const row = verifyProjectiles(["Ryu"]).rows.find((r) => r.input === "236PP")!;
+    expect(row.published).toBe(0.112);
+    expect(row.launch).toBe(11.2);
+    expect(row.agrees).toBe(true);
   });
 });

@@ -101,7 +101,11 @@ function published(character: string): Record<string, number> {
         for (const move of Object.values(category)) {
           for (const line of move.extraInfo ?? []) {
             const found = /Projectile Speed:\s*([\d.]+)/i.exec(line);
-            if (found && move.numCmd) byInput[move.numCmd] = Number(found[1]);
+            // First wins: the plain variant, matching `publishedCount` above and
+            // the extractor's own mapping. See ADR-0048.
+            if (found && move.numCmd && byInput[move.numCmd] === undefined) {
+              byInput[move.numCmd] = Number(found[1]);
+            }
           }
         }
       }

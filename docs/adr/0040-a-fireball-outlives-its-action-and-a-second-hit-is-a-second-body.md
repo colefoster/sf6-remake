@@ -90,10 +90,12 @@ Add `src/verify/projectiles.ts`, grading launch speed and special hit count.
 
 ## Not settled
 
-- **Ryu's 236HP is mapped to the wrong action** — 12 against a published 0.085,
-  most likely the Denjin variant. Nothing is re-mapped here: the mapper is
-  ADR-0021's and changing it moves every other check, so this ADR reports the
-  disagreement and leaves the fix to be done deliberately.
+- ~~**Ryu's 236HP is mapped to the wrong action**~~ — 12 against a published
+  0.085, most likely the Denjin variant. Closed by
+  [ADR-0048](./0048-javascript-hoisted-the-denjin-hadoken.md): it *was* the Denjin
+  variant, and the cause was JavaScript hoisting integer-like keys so the mapper
+  read `triggers.json` in the wrong order. Five rows moved, all Ryu's, and the
+  speed check went 78.9% → 81.6%.
   **236PP was not the mapper.**
   [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md) grades a live
   dump: OD Hadoken's `SPA_HADO(3) PROJ` is 9.5 in the pinned snapshot and 11.2 in

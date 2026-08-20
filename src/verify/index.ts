@@ -250,7 +250,8 @@ function fatMoves(character: string): Record<string, FatColumns> {
     for (const [name, entry] of Object.entries(file)) {
       const byInput: Record<string, FatColumns> = {};
       for (const move of Object.values(entry.moves.normal)) {
-        if (move.numCmd) byInput[move.numCmd] = move;
+        // First wins — see ADR-0048.
+        if (move.numCmd) byInput[move.numCmd] ??= move;
       }
       fatCache[norm(name)] = byInput;
     }
