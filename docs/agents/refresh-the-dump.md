@@ -83,6 +83,23 @@ change an answer. It looks at action lengths and `MarginFrame`, hit-key windows,
 projectile launch speed, the outcome table's damage/stun/`DownTime`/`DmgType`/
 `DmgRecover`, and which action each notation maps to.
 
+## The whole-tree audit
+
+The per-character diff above says *what moved*. To find out whether any of it
+**matters to a percentage**, grade both trees row by row:
+
+```
+node scripts/skew-audit.mjs data/geometry /tmp/fresh
+```
+
+It reports, per check, how many rows moved, how many the newer tree fixes and how
+many it breaks — and names every moved row. As of
+[ADR-0043](../adr/0043-version-skew-is-worth-half-a-point.md) the answer for the
+Aug-2026 dump is **+0.5 points overall, +0.6 on the clean population**: 78 of the
+clean population's 509 disagreements are skew and 431 are ours. Skew is a real
+confound and a small one, and 49 rows run the other way, which is FAT lagging the
+game rather than the dump lagging FAT.
+
 ## Reading the result
 
 **No changes** — version skew is dead as an explanation for that character, and

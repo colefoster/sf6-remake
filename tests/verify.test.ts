@@ -12,6 +12,7 @@ import {
 } from "../src/verify/index.js";
 import { invulnDisagreements, verifyInvuln, type InvulnKind } from "../src/verify/invuln.js";
 import { verifyArmor, verifyArmorBreak } from "../src/verify/armor.js";
+import { charactersWithGeometry, gradedRows } from "../src/verify/rows.js";
 import {
   actionableFrame,
   activeWindows,
@@ -878,5 +879,42 @@ describe("ConditionFlag: what reads and what does not", () => {
     // The five values that carry the roster; anything else is a handful.
     for (const value of [4, 7, 11, 15]) expect(counts.get(value)!).toBeGreaterThan(100);
     expect([...counts.keys()].every((v) => v < 16)).toBe(true);
+  });
+});
+
+/**
+ * The graded-row index the skew audit runs on. See ADR-0043.
+ *
+ * Nothing here grades the game — it asserts the *addressing*, because the audit's
+ * whole method is looking the same row up in a second tree. A key that is not
+ * stable, or not unique, silently turns "this disagreement is version skew" into
+ * a comparison of two different rows.
+ */
+describe("graded rows", () => {
+  it("addresses every check the report prints, one key per row", () => {
+    const rows = gradedRows(["Ryu", "E.Honda"]);
+    const keys = Object.keys(rows);
+    expect(keys.length).toBeGreaterThan(800);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys.every((k) => k.split("|").length === 3)).toBe(true);
+    // Every grader is represented, including the three outside `verify`.
+    const checks = new Set(keys.map((k) => k.split("|")[0]));
+    for (const check of ["hitstun", "advantage", "armorWindow", "armorHits", "projSpeed", "throwReach"]) {
+      expect(checks.has(check)).toBe(true);
+    }
+  });
+
+  it("agrees with the report it is flattening", () => {
+    const rows = gradedRows(["Ryu"]);
+    const direct = verify(["Ryu"]);
+    for (const c of direct.comparisons) {
+      expect(rows[`${c.check}|${c.character}|${c.input}`]).toMatchObject({ dump: c.dump, fat: c.fat, agrees: c.agrees });
+    }
+  });
+
+  it("reports only the characters the tree actually has", () => {
+    expect(charactersWithGeometry(["Ryu", "Ken"])).toEqual(["Ryu", "Ken"]);
+    // Six of FAT's thirty have never been dumped, and no tree has them.
+    expect(charactersWithGeometry(["Sagat"])).toEqual([]);
   });
 });

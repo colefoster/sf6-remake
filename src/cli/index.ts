@@ -40,6 +40,7 @@ import { fighterFor, matchFor } from "../game/load.js";
 import { CHECKS, disagreements, verify } from "../verify/index.js";
 import { INVULN_CHECKS, invulnDisagreements, verifyInvuln } from "../verify/invuln.js";
 import { armorDisagreements, verifyArmor, verifyArmorBreak } from "../verify/armor.js";
+import { charactersWithGeometry, gradedRows } from "../verify/rows.js";
 import { verifyThrows } from "../verify/throws.js";
 import { verifyProjectiles } from "../verify/projectiles.js";
 import type { Character, Move } from "../domain/types.js";
@@ -127,6 +128,9 @@ COMMANDS
                                    frames connect.  --at <units> --vs <char> --crouch
   verify [char ...]                Grade the game's dumped data against the
                                    published frame data. No args = whole roster.
+  rows [char ...]                  Every graded row as JSON, keyed
+                                   <check>|<char>|<move>. GEOMETRY_DIR picks the
+                                   tree; scripts/skew-audit.mjs diffs two.
   walk <char> <script>             Play a fighter through held directions:
                                    6x60,5x5,9x5,5x60 walks, releases, jumps.
   fight <a> <b> <script> [script]  Two fighters, one clock. Scripts are
@@ -337,6 +341,15 @@ function main(): void {
         printArmor(verifyArmor(only));
         printThrows(verifyThrows(only));
         printProjectiles(verifyProjectiles(only));
+        return;
+      }
+
+      // Machine-readable, for `scripts/skew-audit.mjs`: the same rows the
+      // report prints, keyed so a second tree's can be looked up. See ADR-0043.
+      case "rows": {
+        const only = p.length ? p.map((q) => requireCharacter(q).name) : undefined;
+        const rows = gradedRows(only);
+        console.log(JSON.stringify({ characters: charactersWithGeometry(only), rows }));
         return;
       }
 

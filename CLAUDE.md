@@ -13,9 +13,11 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Refreshing the dump
 
 The geometry is extracted from a **pinned, year-old, third-party snapshot** of the
-game's data, graded against current frame data. Version skew is an unquantified
-confound in every `sf6 verify` percentage. See `docs/agents/refresh-the-dump.md`
-before attributing a residual to a mechanic.
+game's data, graded against current frame data. Version skew is now measured:
+**+0.5 points overall, +1.7 at worst on a headline check**, and six sevenths of
+every residual survives a live dump (ADR-0043). It runs both ways — FAT lags the
+game on 49 rows. Run `scripts/skew-audit.mjs` before attributing a residual to a
+mechanic; see `docs/agents/refresh-the-dump.md`.
 
 ### Domain docs
 
