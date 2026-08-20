@@ -48,10 +48,9 @@ are in ADR-0051.
 - [x] every category down; head-off-the-shoulders 8,946 → 71
 - [x] the residuals identified as the dump rather than the derivation
 - [x] 236 tests green
+- [x] the screenshot harness committed too — `npm run figure:sheet -- ryu:5LK:1,3,6`
 
 ## Not done
 
-- The contact-sheet screenshot harness needs Playwright, which is not a
-  dependency of this repo, so it is not committed.
 - Drawing a limb from its own hurtbox on startup and recovery frames. The
   footprint filter isolates exactly those boxes and throws them away.

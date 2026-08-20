@@ -65,7 +65,8 @@ fighter's own x.
 ## Decision
 
 `window.play` in `web/play.html`, `scripts/pose-audit.ts` behind
-`npm run pose:audit`, and the five rules above in `poseOf`.
+`npm run pose:audit`, `scripts/figure-sheet.mjs` behind `npm run figure:sheet`,
+and the five rules above in `poseOf`.
 
 ## Consequences
 
@@ -81,6 +82,8 @@ Audit counts, before this ADR and after:
 | axis jump from a missing pushbox | 41 | 0 |
 
 - Five tests added on the four rules and the held footprint.
+- `npm run figure:sheet -- ryu:5LK:1,3,6,12 blanka:ATK_5MK:4` composes a labelled
+  contact sheet of any moves on any fighters into one PNG.
 - **The residuals are the dump, not the derivation.** The 494 inverted spines are
   nine somersault actions; the 434 stretched legs are Akuma's air fireball and
   Dhalsim's float; 497 of the axis pops are the pushbox itself moving inside an
@@ -89,9 +92,10 @@ Audit counts, before this ADR and after:
 
 ## Not settled
 
-- **The contact-sheet harness is not in the repo.** It drives the page through
-  Playwright, which is not a dependency, so it lives in a scratchpad. The numeric
-  audit — the part that catches regressions — needs nothing and is committed.
+- **Playwright is a dependency now.** `figure-sheet` needs a browser to drive the
+  page, and the audit is only half the loop — it ranks poses but cannot say
+  whether the one it ranked worst actually looks wrong. Nothing else in the repo
+  uses it and the tests do not.
 - **A kick is still told from a punch by the action's name.** Every special falls
   back to height, so Akuma's tatsumaki draws its kick as an arm.
 - **Arms at rest are still invented** (ADR-0049), and the extended-limb hurtboxes

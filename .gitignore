@@ -23,3 +23,6 @@ data/raw/mmdk-2024/
 .env
 .env.*
 !.env.example
+
+# Contact sheets from `npm run figure:sheet` — regenerated, never reviewed as source.
+.scratch/sheets/
