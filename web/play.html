@@ -62,7 +62,11 @@
   <label>P1 <select id="p1"></select></label>
   <label>P2 <select id="p2"></select></label>
   <label>P2 is <select id="mode">
-    <option value="dummy">an unresponsive dummy</option>
+    <option value="stand">a dummy, standing</option>
+    <option value="crouch">a dummy, crouching</option>
+    <option value="blockAll">a dummy, blocking</option>
+    <option value="blockAfterFirstHit">a dummy, blocking after one hit</option>
+    <option value="mash">a dummy, mashing 5LP</option>
     <option value="human">a second player</option>
   </select></label>
   <button id="pause" aria-pressed="false">pause</button>
@@ -82,6 +86,11 @@
     <div class="row"><span class="p2" id="n2">P2</span><span id="a2">—</span></div>
     <div class="row"><span>gap</span><span id="gap">—</span></div>
     <div class="row"><span>advantage</span><span id="adv">—</span></div>
+    <div class="row"><span>punish</span><span id="punish">—</span></div>
+    <h2>counters</h2>
+    <div class="row"><span class="p1">P1 stun / floor</span><span id="s1">—</span></div>
+    <div class="row"><span class="p2">P2 stun / floor</span><span id="s2">—</span></div>
+    <div class="row"><span>combo</span><span id="combo">—</span></div>
     <h2>inputs</h2>
     <div class="row"><span class="p1">P1</span><span id="in1">—</span></div>
     <h2>contact log</h2>
@@ -98,6 +107,7 @@
 <script type="module">
 import {
   Match, hold, projectileBoxes, DRIVE_MAX,
+  DUMMIES, Advantage, punishes,
   viewFor, worldBoxes, poseOf, headRadius,
   drawStage, drawBoxes, drawFigure, drawGauges, drawProjectile,
 } from "./play.js";
@@ -156,9 +166,9 @@ let logged = 0;
 let poses = [null, null];
 let radii = [14, 14];
 let posedAt = -1;
-/** Frame advantage, watched as it resolves: who was free, and when. */
-let watch = null;
-let advantage = null;
+/** Frame advantage and the punish it opens, both from `src/game/training.ts`. */
+const advantage = new Advantage();
+let punish = null;
 
 async function reset() {
   const a = await geometry(document.getElementById("p1").value);
@@ -167,8 +177,8 @@ async function reset() {
   radii = [headRadius(a), headRadius(b)];
   poses = [null, null];
   posedAt = -1;
-  watch = null;
-  advantage = null;
+  advantage.reset();
+  punish = null;
   logged = 0;
   document.getElementById("log").innerHTML = "";
   document.getElementById("n1").textContent = a.character;
@@ -198,21 +208,24 @@ document.getElementById("step").onclick = () => {
 
 function tick() {
   if (!match || match.over) return;
-  const human = document.getElementById("mode").value === "human";
-  // An unresponsive dummy: it holds neutral and takes what it is given. The
-  // opponent is just an input frame, which is all `advance` ever wanted.
-  match.advance(read(P1), human ? read(P2) : hold(5));
-  const hits = match.hits.length;
-  if (hits > logged && watch === null) watch = { attacker: match.hits[hits - 1].attacker, free: [null, null] };
-  if (watch) {
-    for (const side of [0, 1]) {
-      if (watch.free[side] === null && match.fighters[side].actionable()) watch.free[side] = match.frame;
-    }
-    if (watch.free[0] !== null && watch.free[1] !== null) {
-      const defender = watch.attacker === 0 ? 1 : 0;
-      advantage = watch.free[defender] - watch.free[watch.attacker];
-      watch = null;
-    }
+  // The opponent is an input frame, which is all `advance` ever wanted, so the
+  // dummy is a function beside the match rather than a mode inside it.
+  const mode = document.getElementById("mode").value;
+  const dummy = DUMMIES[mode];
+  match.advance(read(P1), dummy ? dummy(match, 1) : read(P2));
+
+  const before = advantage.value;
+  advantage.observe(match);
+  // The punish window is asked once, on the frame the advantage resolves: it is
+  // what the *defender* could have started before the attacker recovered.
+  if (advantage.value !== null && advantage.value !== before && advantage.attacker !== null) {
+    // `value` is the *attacker's* advantage, so plus means the attacker recovered
+    // first and is the one holding the window.
+    const defender = advantage.attacker === 0 ? 1 : 0;
+    const free = advantage.value > 0 ? advantage.attacker : defender;
+    const window = Math.abs(advantage.value);
+    const options = punishes(match, free, window).filter((o) => o.reaches);
+    punish = { side: free, window, options };
   }
 }
 
@@ -317,6 +330,16 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+/** What the free fighter could have punished with, from `punishes()`. */
+function punishText() {
+  if (!punish) return "—";
+  const who = punish.side === 0 ? "P1" : "P2";
+  if (!punish.options.length) return `${who} +${punish.window}, nothing reaches`;
+  const shown = punish.options.slice(0, 3).map((o) => `${o.name.replace(/^ATK_|^SPA_/, "")} ${o.startup}f`);
+  const more = punish.options.length - shown.length;
+  return `${who} +${punish.window} — ${shown.join(" · ")}${more > 0 ? ` +${more}` : ""}`;
+}
+
 function report() {
   if (!match) return;
   const [a, b] = match.fighters;
@@ -325,7 +348,20 @@ function report() {
   document.getElementById("a2").textContent = `${b.actionName} f${b.state.frame}${b.stunned ? ` (stun ${b.stunned})` : ""}`;
   document.getElementById("gap").textContent = `${(b.position().x - a.position().x).toFixed(0)}u`;
   document.getElementById("adv").textContent =
-    advantage === null ? "—" : `${advantage > 0 ? "+" : ""}${advantage}`;
+    advantage.value === null ? "—" : `${advantage.value > 0 ? "+" : ""}${advantage.value}`;
+  document.getElementById("punish").textContent = punishText();
+
+  for (const [i, f] of [a, b].entries()) {
+    document.getElementById(i === 0 ? "s1" : "s2").textContent =
+      f.stunned || f.floored ? `${f.stunned} / ${f.floored}` : "—";
+  }
+  // `match.combo[i]` is the combo that side is *taking*, so this names the victim.
+  const live = match.combo.map((c, i) => ({ ...c, on: i })).filter((c) => c.hits > 0);
+  document.getElementById("combo").textContent = live.length
+    ? live
+        .map((c) => `${c.on === 0 ? "P1" : "P2"} taking ${c.hits} × ${c.damage}${c.scaling < 100 ? ` @${c.scaling}%` : ""}`)
+        .join("  ")
+    : "—";
   // What the game read, not what the keyboard sent: the fighter's own history.
   const held = read(P1);
   const edges = a.history.recent(14).map((e) => e.dir).join(" ");
@@ -409,6 +445,7 @@ const surface = {
     poses[side] = pose;
     posedAt = match.frame;
     draw();
+    report();
     return { action: found.name, frame, pose: surface.pose(side) };
   },
 
@@ -420,6 +457,7 @@ const surface = {
     for (let i = 0; i < frames; i++) tick();
     for (const k of held) down.delete(k);
     draw();
+    report();
     return surface.state();
   },
 
@@ -428,6 +466,7 @@ const surface = {
     surface.pause(true);
     for (let i = 0; i < frames; i++) tick();
     draw();
+    report();
     return surface.state();
   },
 
@@ -481,7 +520,8 @@ const surface = {
       frame: match.frame,
       p1: { character: a.geo.character, action: a.actionName, at: a.state.frame, x: Math.round(a.position().x) },
       p2: { character: b.geo.character, action: b.actionName, at: b.state.frame, x: Math.round(b.position().x) },
-      advantage,
+      advantage: advantage.value,
+      punish: punish && { side: punish.side, window: punish.window, options: punish.options.length },
       hits: match.hits.length,
     };
   },

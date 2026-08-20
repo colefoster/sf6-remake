@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 
 import { hold, reactionFor } from "../src/game/match.js";
+import { DUMMIES, blockAll, mash, stand } from "../src/game/dummy.js";
+import { Advantage, punishes } from "../src/game/training.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
@@ -845,5 +847,93 @@ describe("wake-up and teching", () => {
       thrown.advance(hold(5, i < 3 ? (["LP", "LK"] as Button[]) : []), hold(5));
     }
     expect(thrown.hits[0]?.reaction).not.toBe("TECH");
+  });
+});
+
+
+/**
+ * The opponent beside the match, and the two questions a training room asks.
+ * See ADR-0052.
+ */
+describe("the dummy and what the panel reads off it", () => {
+  /** Ryu attacking a dummy on the right, with `p2` driving the dummy. */
+  const spar = (opponent: typeof stand, input: [Direction, Button[], number][], frames = 120) => {
+    const match = matchFor("Ryu", "Ken", { distance: 130 });
+    const flat: [Direction, Button[]][] = [];
+    for (const [dir, buttons, n] of input) for (let i = 0; i < n; i++) flat.push([dir, buttons]);
+    const advantage = new Advantage();
+    for (let i = 0; i < frames; i++) {
+      const [dir, buttons] = flat[i] ?? [5, []];
+      match.advance(hold(dir, buttons), opponent(match, 1));
+      advantage.observe(match);
+    }
+    return { match, advantage };
+  };
+
+  it("blocks a low crouching and a high standing, because the attack says which", () => {
+    // The height rule is the engine's (`contactType` refuses a low blocked
+    // standing), so the dummy has to read the attack's own flag rather than
+    // pick a stance and hope.
+    const low = spar(blockAll, [[2, ["MK"], 30]]);
+    const high = spar(blockAll, [[5, ["HP"], 30]]);
+    expect(low.match.hits.map((h) => h.type)).toEqual(["block"]);
+    expect(high.match.hits.map((h) => h.type)).toEqual(["block"]);
+    // Crouching for the low, standing for the high: the reaction the engine
+    // chose names the stance it was blocked in.
+    expect(low.match.hits[0]!.reaction).toMatch(/^GRD_C/);
+    expect(high.match.hits[0]!.reaction).not.toMatch(/^GRD_C/);
+    expect(low.match.health[1]).toBe(low.match.fighters[1].geo.fighter?.health ?? 10000);
+  });
+
+  it("does not walk itself into the corner between attacks", () => {
+    // Holding back is how you block, and a dummy that holds it forever is in
+    // the corner within a few exchanges — a different scenario than the one
+    // that was asked for.
+    const match = matchFor("Ryu", "Ken", { distance: 130 });
+    const where = match.fighters[1].position().x;
+    for (let i = 0; i < 60; i++) match.advance(hold(5), blockAll(match, 1));
+    expect(match.fighters[1].position().x).toBeCloseTo(where, 5);
+    // But it still holds back the moment something is on the way.
+    match.advance(hold(5, ["HP"]), blockAll(match, 1));
+    expect(blockAll(match, 1).dir).toBe(6);
+  });
+
+  it("mashes on the press, not on the hold", () => {
+    // A trigger fires on the press and a held button is one press however long
+    // it is held, so a dummy that just held LP would swing exactly once.
+    const match = matchFor("Ryu", "Ken", { distance: 130 });
+    let presses = 0;
+    let last = "";
+    for (let i = 0; i < 90; i++) {
+      match.advance(hold(5), mash(match, 1));
+      const now = match.fighters[1].state.action.name;
+      if (now !== last && now.startsWith("ATK_")) presses++;
+      last = now;
+    }
+    expect(presses).toBeGreaterThan(3);
+    expect(Object.keys(DUMMIES)).toContain("blockAfterFirstHit");
+  });
+
+  it("resolves the advantage of a blocked move and offers what punishes it", () => {
+    const { match, advantage } = spar(blockAll, [[2, ["MK"], 30]]);
+    expect(advantage.value).not.toBeNull();
+    expect(advantage.value).toBeLessThan(0);
+    expect(advantage.attacker).toBe(0);
+
+    // The defender is plus by the same number, and everything offered is fast
+    // enough to land inside it.
+    const window = Math.abs(advantage.value!);
+    const options = punishes(match, 1, window);
+    expect(options.length).toBeGreaterThan(0);
+    for (const option of options) expect(option.startup).toBeLessThanOrEqual(window);
+    expect(options[0]!.startup).toBeLessThanOrEqual(options[options.length - 1]!.startup);
+    // A move that cannot cover the gap is offered but flagged, not silently kept.
+    expect(options.every((o) => o.reaches)).toBe(false);
+  });
+
+  it("offers nothing when there is no window", () => {
+    const { match } = spar(stand, [[5, [], 10]]);
+    expect(punishes(match, 1, 0)).toEqual([]);
+    expect(punishes(match, 1, -3)).toEqual([]);
   });
 });

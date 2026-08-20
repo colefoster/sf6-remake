@@ -10,6 +10,11 @@
 export { DRIVE_MAX, Fighter, InputHistory, NEUTRAL, lean } from "./index.js";
 export type { Button, Direction, FighterState, InputFrame, Stance } from "./index.js";
 export { COUNT, Match, STAGE_HALF_WIDTH, hold, projectileBoxes, reactionFor } from "./match.js";
+// The opponent and the questions a training room asks. See ADR-0049 and 0052.
+export { DUMMIES, blockAfterFirstHit, blockAll, crouch, mash, stand } from "./dummy.js";
+export type { Opponent } from "./dummy.js";
+export { Advantage, punishes } from "./training.js";
+export type { PunishOption } from "./training.js";
 export type { Contact, Hit, MatchOptions, Projectile, Result } from "./match.js";
 export {
   activeWindows,

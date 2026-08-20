@@ -583,6 +583,28 @@ export class Fighter {
     return this.stun;
   }
 
+  /** Frames still owed on the floor once the knockdown reaction ends. */
+  get floored(): number {
+    return this.floor;
+  }
+
+  /**
+   * The actions this fighter can start from neutral.
+   *
+   * The private list resolved to actions, for a caller asking *what could you do
+   * from here* — the training room's punish window, which needs the startup and
+   * the reach of everything on it. The state machine asks the same question
+   * through `options()`, which also has to handle mid-action cancel windows.
+   */
+  get neutralActions(): GeometryAction[] {
+    const out: GeometryAction[] = [];
+    for (const entry of this.neutral) {
+      const action = actionById(this.geo, entry.trigger.action);
+      if (action) out.push(action);
+    }
+    return out;
+  }
+
   /**
    * Bumped every time an action is entered. It is how a caller tells "still the
    * same swing" from "swung again" — a hitbox that is out for three frames must
