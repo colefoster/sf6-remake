@@ -8,13 +8,17 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import type { Character } from "../domain/types.js";
 import type { GeometryFile } from "./geometry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DIR = join(HERE, "..", "..", "data", "geometry");
+// Overridable so a second, freshly-dumped extraction can be graded beside the
+// pinned one without swapping files about. See docs/agents/refresh-the-dump.md.
+const DIR = process.env.GEOMETRY_DIR
+  ? resolve(process.env.GEOMETRY_DIR)
+  : join(HERE, "..", "..", "data", "geometry");
 
 const cache = new Map<string, GeometryFile | undefined>();
 
