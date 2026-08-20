@@ -33,6 +33,17 @@ resolves armor onto the wrong row — silently, and in Zangief's case onto a row
 that takes no damage at all. See
 [ADR-0042](../adr/0042-the-atemi-table-was-behind-another-button.md).
 
+## The other two shared dumps
+
+Beside **Dump Atemis** there is a rects dumper: `common_rects.json` at the dump
+root, the shared rect tables that sit behind every fighter's own. It carries the
+downed-state pushbox (`BoxNo` 6) that no fighter's tables have and that the
+extractor warned about for two years — press it too. See
+[ADR-0046](../adr/0046-the-shared-rect-tables-and-the-box-a-downed-fighter-has.md).
+
+`common_moves.json` writes `null` on this build. It dumps nothing; do not go
+looking for shared action data in it.
+
 ## Who cannot be dumped, and why
 
 Both trees hold the same 24 of FAT's 30. Absent: **Alex, C.Viper, Elena, Ingrid,

@@ -3,7 +3,7 @@
  * hitbox / hurtbox / proximity-box geometry, plus a mapping from FAT move
  * notation onto the game's action ids.
  *
- *   node scripts/fetch-mmdk.mjs Ryu Akuma      # once, populates data/raw/mmdk/
+ *   node scripts/fetch-mmdk.mjs Ryu Akuma      # the Dec-2024 upstream snapshot
  *   node scripts/extract-geometry.mjs          # Ryu Akuma
  *   node scripts/extract-geometry.mjs Ken      # any fetched character
  *
@@ -118,15 +118,57 @@ function ordered(obj) {
     .filter((v) => v && typeof v === "object");
 }
 
-function makeRects(rectsFile) {
-  const lists = new Map();
-  for (const [listId, list] of Object.entries(rectsFile)) {
-    if (!list || typeof list !== "object") continue;
-    const byId = new Map();
-    for (const [boxId, rect] of Object.entries(list)) byId.set(Number(boxId), rect);
-    lists.set(Number(listId), byId);
-  }
-  return (listId, boxId) => lists.get(listId)?.get(Number(boxId));
+/**
+ * The fighter's rect tables, with the game's **shared** tables behind them.
+ *
+ * `common_rects.json` is dumped once for the whole roster rather than per
+ * fighter, and it is where the boxes a character's own tables do not carry live.
+ * The long-standing case is pushbox `BoxNo` 6: every fighter's knockdown and
+ * tech actions reference it, no fighter's list 5 or 7 has it, and the extractor
+ * has warned about it since ADR-0004. The common list 5 does.
+ *
+ * The fighter's own tables win; the common ones are consulted only where an id
+ * resolves to nothing, so this can add boxes and never move one. `viaCommon`
+ * counts what it added, because a silent fallback is how a shared default gets
+ * mistaken for a per-character value. See ADR-0046.
+ */
+function makeRects(rectsFile, commonFile, stats) {
+  const index = (file) => {
+    const lists = new Map();
+    for (const [listId, list] of Object.entries(file ?? {})) {
+      if (!list || typeof list !== "object") continue;
+      const byId = new Map();
+      for (const [boxId, rect] of Object.entries(list)) byId.set(Number(boxId), rect);
+      lists.set(Number(listId), byId);
+    }
+    return lists;
+  };
+  const own = index(rectsFile);
+  const common = index(commonFile);
+  /**
+   * `listId` may be a list of lists, in preference order — pushboxes are
+   * "the override list, then the base list". The fighter's tables are searched
+   * across *all* of them before the shared ones are consulted, so a shared
+   * default can never displace a box the fighter actually carries.
+   */
+  return (listId, boxId) => {
+    const ids = Array.isArray(listId) ? listId : [listId];
+    const id = Number(boxId);
+    for (const list of ids) {
+      const mine = own.get(list)?.get(id);
+      if (mine) return mine;
+    }
+    for (const list of ids) {
+      const shared = common.get(list)?.get(id);
+      if (!shared) continue;
+      if (stats) {
+        const key = `${list}/${id}`;
+        stats.viaCommon.set(key, (stats.viaCommon.get(key) ?? 0) + 1);
+      }
+      return shared;
+    }
+    return undefined;
+  };
 }
 
 /** Resolve a key's BoxList / HeadList / ... into boxes. */
@@ -218,7 +260,7 @@ function extractAction(action, rect, unresolvedPush) {
     const start = key._StartFrame + 1;
     const end = key._EndFrame;
     if (end < start) continue;
-    const rct = rect(RECT_PUSH_OVERRIDE, key.BoxNo) ?? rect(RECT_PUSH_BASE, key.BoxNo);
+    const rct = rect([RECT_PUSH_OVERRIDE, RECT_PUSH_BASE], key.BoxNo);
     const box = toBox(rct, key.RootOffset);
     if (!box) {
       unresolvedPush.add(key.BoxNo);
@@ -1340,7 +1382,7 @@ function calibrate(actions) {
 
 async function buildCharacter(fatName, dumpDir, fat, source) {
   const dir = path.join(RAW, dumpDir);
-  const [rectsFile, movesFile, hitFile, groupFile, triggerFile, infoFile, commandFile, atemiFile, commonAtemiFile] =
+  const [rectsFile, movesFile, hitFile, groupFile, triggerFile, infoFile, commandFile, atemiFile, commonAtemiFile, commonRectsFile] =
     await Promise.all([
       readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
       readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
@@ -1354,8 +1396,11 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
       // MMDK's "Dump Atemis" button was found; the read side falls back then.
       readFile(path.join(dir, "atemi.json"), "utf8").then(JSON.parse).catch(() => null),
       readFile(path.join(RAW, "common_atemi.json"), "utf8").then(JSON.parse).catch(() => null),
+      // The shared rect tables, dumped once for the roster. See `makeRects`.
+      readFile(path.join(RAW, "common_rects.json"), "utf8").then(JSON.parse).catch(() => null),
     ]);
-  const rect = makeRects(rectsFile);
+  const rectStats = { viaCommon: new Map() };
+  const rect = makeRects(rectsFile, commonRectsFile, rectStats);
 
   const actions = [];
   const unresolvedPush = new Set();
@@ -1479,6 +1524,10 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   for (const c of cancelMismatches) {
     const disagreement = c.fatSays ? "FAT says cancellable, no window found" : "window found, FAT says not cancellable";
     console.log(`  ? ${c.input.padEnd(16)} ${c.actionName.padEnd(16)} ${disagreement} (${c.match})`);
+  }
+  if (rectStats.viaCommon.size) {
+    const via = [...rectStats.viaCommon.entries()].map(([k, n]) => `${k} x${n}`).join(", ");
+    console.log(`  + boxes from the shared rect tables (list/id): ${via}`);
   }
   if (unresolvedPush.size) {
     // BoxNo 6 is the downed-state pushbox, which lives in a shared asset MMDK

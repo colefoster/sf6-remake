@@ -502,3 +502,45 @@ describe("atemi rows", () => {
     expect(armorDamage(undefined, 800)).toEqual({ damage: 800, grey: 0 });
   });
 });
+
+/**
+ * The shared rect tables. See ADR-0046.
+ *
+ * `common_rects.json` is dumped once for the roster and sits behind every
+ * fighter's own tables. The one box the project needed from it for two years is
+ * pushbox `BoxNo` 6, which every fighter's knockdown and tech actions reference
+ * and no fighter's own tables carry.
+ */
+describe("the downed pushbox", () => {
+  const DOWNED = /^BAS_(DN_STD|TECH_(FN|BR))_(AO|UT)$/;
+
+  it("resolves BoxNo 6 for every fighter that has a knockdown", () => {
+    const widths = new Map<string, number>();
+    for (const name of listCharacters()) {
+      const g = loadGeometry(requireCharacter(name).id);
+      if (!g) continue;
+      const keys = g.actions
+        .filter((a) => DOWNED.test(a.name))
+        .flatMap((a) => a.push.filter((p) => p.boxNo === 6));
+      expect(keys.length).toBeGreaterThan(0);
+      // One box per fighter, whichever table it came from.
+      expect(new Set(keys.map((k) => k.box.width)).size).toBe(1);
+      widths.set(g.character, keys[0]!.box.width);
+    }
+    expect(widths.size).toBe(24);
+    // Twenty take the shared 70-wide default; the four who override it are the
+    // four widest bodies in the game, which is the evidence that the shared
+    // table is a default and the fighter's own table wins. See ADR-0046.
+    const own = [...widths].filter(([, w]) => w !== 70).map(([c]) => c);
+    expect(own.sort()).toEqual(["Blanka", "E.Honda", "Marisa", "Zangief"]);
+    for (const c of own) expect(widths.get(c)!).toBeGreaterThan(70);
+  });
+
+  it("does not let a shared box displace a fighter's own", () => {
+    // Ryu's standing pushbox is his own +/-33, not the shared +/-35. The fallback
+    // is consulted only after every one of the fighter's own lists.
+    const stand = geo.actions.find((a) => a.name === "BAS_STD_Loop")!;
+    expect(stand.push[0]!.box.x).toBe(-33);
+    expect(stand.push[0]!.box.width).toBe(66);
+  });
+});
