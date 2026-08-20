@@ -17,7 +17,10 @@ import type { Match } from "./match.js";
 /** One thing the free fighter could have started, and whether it would land. */
 export interface PunishOption {
   action: GeometryAction;
+  /** The input a player would press — `214LK` — falling back to the action's name. */
   name: string;
+  /** The move's readable name, where the action is a mapped one. */
+  title?: string;
   /** First active frame. */
   startup: number;
   /** Furthest distance the move still touches, or 0 for one that cannot. */
@@ -50,7 +53,18 @@ export function punishes(match: Match, side: 0 | 1, window: number): PunishOptio
     const startup = windows[0]!.start;
     if (startup > window) continue;
     const far = reach(action, target) ?? 0;
-    out.push({ action, name: action.name, startup, reach: far, reaches: far >= gap });
+    // The dump's action names are not what anybody presses: Ken's 4-frame light
+    // tatsu is `SPA_TATSUMAKI_END`, which reads like a chain fragment and is not
+    // one. The move mapping already knows it as `214LK`.
+    const move = me.geo.moves.find((m) => m.action === action.id);
+    out.push({
+      action,
+      name: move?.input ?? action.name,
+      ...(move ? { title: move.name } : {}),
+      startup,
+      reach: far,
+      reaches: far >= gap,
+    });
   }
   return out.sort((a, b) => a.startup - b.startup || b.reach - a.reach);
 }

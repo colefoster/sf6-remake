@@ -77,11 +77,12 @@ punish, stun/floor per side, and the combo each side is taking with its scaling.
 
 ## Not settled
 
-- **`SPA_TATSUMAKI_END` is offered as a 4-frame punish.** It is in Ken's neutral
-  trigger list and the list is the game's own, but a chain tail with a 4-frame
-  first active window is more likely the dump grouping a family than a move
-  anybody can press. Nothing filters it, because filtering by name is exactly the
-  authoring this project does not do. Worth its own look.
+- ~~`SPA_TATSUMAKI_END` is offered as a 4-frame punish, which looks like a chain
+  tail leaking into the neutral list.~~ **Checked: it is Ken's light Tatsumaki,
+  and FAT publishes its start-up as 4.** The `(n)` suffixes in the neutral list
+  are the L/M/H strengths, not fragments, and the mapping is exact. What was
+  actually wrong was the *label*: the panel showed the dump's action name where
+  the move mapping already had `214LK`. Fixed — the punish list reads inputs now.
 - **Throw-tech, punish-after-block and DI on wake-up** from the spec are not
   built. Each is the same five lines against the same signature.
 - The panel shows the punish that *was* available, held until the next exchange.

@@ -337,7 +337,7 @@ function punishText() {
   if (!punish) return "—";
   const who = punish.side === 0 ? "P1" : "P2";
   if (!punish.options.length) return `${who} +${punish.window}, nothing reaches`;
-  const shown = punish.options.slice(0, 3).map((o) => `${o.name.replace(/^ATK_|^SPA_/, "")} ${o.startup}f`);
+  const shown = punish.options.slice(0, 3).map((o) => `${o.name} ${o.startup}f`);
   const more = punish.options.length - shown.length;
   return `${who} +${punish.window} — ${shown.join(" · ")}${more > 0 ? ` +${more}` : ""}`;
 }
