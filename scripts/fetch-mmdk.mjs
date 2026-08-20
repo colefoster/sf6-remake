@@ -1,8 +1,15 @@
 /**
- * Downloads MMDK's committed fighter dumps into data/raw/mmdk/<Char>/.
+ * Downloads MMDK's committed fighter dumps into data/raw/mmdk-2024/<Char>/.
  *
  *   node scripts/fetch-mmdk.mjs            # Ryu Akuma
  *   node scripts/fetch-mmdk.mjs Ken Cammy
+ *
+ * **This is no longer the tree the pipeline reads.** MMDK's committed dumps are
+ * a snapshot of the Dec-2024 game and upstream has not moved since; ADR-0045
+ * re-pinned `data/raw/mmdk/` onto a dump taken off the live game. So this writes
+ * to `mmdk-2024/`, which is the comparison tree `skew-audit.mjs` grades against
+ * — pointing it at `mmdk/` would silently overwrite the live dump with a
+ * year-old one, and re-dumping needs the game running.
  *
  * MMDK (alphazolam/MMDK) is a REFramework moveset-modding kit for SF6. It ships
  * per-fighter JSON dumps of the game's own CharacterAsset data — including the
@@ -21,7 +28,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = path.join(root, "data/raw/mmdk");
+const OUT = path.join(root, "data/raw/mmdk-2024");
 const REPO = "alphazolam/MMDK";
 const DUMP_DIR = "MMDK/reframework/data/MMDK/PlayerData";
 /**
@@ -102,4 +109,4 @@ await writeFile(
     2,
   ),
 );
-console.log(`data/raw/mmdk: ${fetched.join(", ")}`);
+console.log(`data/raw/mmdk-2024: ${fetched.join(", ")}`);

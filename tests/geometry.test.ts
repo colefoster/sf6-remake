@@ -475,12 +475,16 @@ describe("atemi rows", () => {
     expect(armorHits(withTable({ 1: row({ hits: 3 }) }), window(1))).toBe(3);
   });
 
-  it("falls back to the count FAT published, per ADR-0039, where it does not", () => {
-    // The pinned tree's own case: Drive Impact's two hits, and an index the
-    // roster never uses staying unknown rather than defaulting.
-    expect(geo.atemi).toBeUndefined();
+  it("falls back to the count FAT published, per ADR-0039, where there is no table", () => {
+    // Every tree has the table since ADR-0045 re-pinned the dump onto a live one,
+    // so the fallback is for a tree extracted from a dump that predates MMDK's
+    // atemi button. Synthesised, because nothing on disk is that any more.
+    const { atemi: _dropped, ...noTable } = geo;
+    expect(armorHits(noTable as GeometryFile, window(1))).toBe(2);
+    expect(armorHits(noTable as GeometryFile, window(4))).toBeUndefined();
+    // And with the table, the row wins over the map.
+    expect(geo.atemi).toBeDefined();
     expect(armorHits(geo, window(1))).toBe(2);
-    expect(armorHits(geo, window(4))).toBeUndefined();
   });
 
   it("lets a fighter's own row win, which is why the index alone means nothing", () => {

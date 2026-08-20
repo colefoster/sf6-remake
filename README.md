@@ -23,11 +23,19 @@ extracted from the game's own `CharacterAsset` data via the Modding Dev Kit, so 
 Capcom's data rather than mine to redistribute. Generate it locally:
 
 ```
-npm run geometry
+npm run geometry            # from a dump already in data/raw/mmdk/
+npm run geometry:2024       # or download MMDK's committed Dec-2024 dumps first
 ```
 
-That fetches the MMDK dumps into `data/raw/mmdk/` and extracts `data/geometry/<char>.json`
-for all 24 dumped fighters. Both directories are gitignored.
+That extracts `data/geometry/<char>.json` for all 24 dumped fighters. Both
+directories are gitignored.
+
+`data/raw/mmdk/` is meant to hold a dump taken off the **running game** — MMDK is
+a REFramework script, not a file reader, so producing one needs the game and a
+human (`docs/agents/refresh-the-dump.md`). If you have no such dump,
+`npm run geometry:2024` fetches MMDK's committed ones into `data/raw/mmdk-2024/`
+and builds from those instead; they are a Dec-2024 reading of the game, which
+costs about half a point of agreement against current frame data.
 
 Everything that does not need per-frame boxes works without this step — frame data comes
 from FAT and is committed. Commands that need geometry report the character as having none
@@ -116,7 +124,7 @@ Stand HP on block (meaty 3 deep): +1  ->  PLUS ✅
 
 ### Spacing and boxes
 
-Per-frame hitbox and hurtbox geometry is extracted from the game's own collision data (see [ADR-0004: hitbox geometry from MMDK dumps](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md)). It covers **all 24 characters that the Modding Dev Kit (MMDK) dumps** — the Season 1 and 2 roster.
+Per-frame hitbox and hurtbox geometry is extracted from the game's own collision data (see [ADR-0004: hitbox geometry from MMDK dumps](./docs/adr/0004-hitbox-geometry-from-mmdk-dumps.md)). It covers **all 24 characters that the Modding Dev Kit (MMDK) dumps** — the Season 1 and 2 roster, plus Ed, M.Bison and Terry. MMDK's roster is a hardcoded table that stops there, which is why the newer fighters have no geometry.
 
 ```bash
 npm run sf6 -- boxes ryu 2mk --at 140

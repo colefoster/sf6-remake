@@ -167,7 +167,10 @@ describe("the game's data against the published frame data", () => {
     };
     expect(at("A.K.I.", "5HK")).toBe("3 keys, 1 windows, 1 hits");
     expect(at("Ryu", "6MP")).toBe("3 keys, 1 windows, 2 hits");
-    expect(at("Akuma", "214KK")).toBe("7 keys, 5 windows, 5 hits");
+    // Eight keys for five hits: the live dump repeats two of Akuma's hit keys
+    // verbatim — same frames, same `HitID` — which the HitID rule absorbs and a
+    // key count does not. See ADR-0045.
+    expect(at("Akuma", "214KK")).toBe("8 keys, 5 windows, 5 hits");
   });
 
   it("finds a second guard-release constant on Drive Reversal, and it is uniform", () => {
@@ -602,16 +605,24 @@ describe("per-frame invulnerability against the published notes", () => {
   });
 
   it("does not score a kinded claim the dump answers by absence", () => {
-    // FAT writes "fully invincible 1-12" and "projectile invincible 13-41"
-    // about Lily's Thunderbird, and the dump has no hurtbox until frame 41.
-    // The second sentence is true; it is just not TypeFlag's doing, so the
-    // projectile check counts it apart rather than as a failure.
-    const rows = invuln.comparisons.filter(
+    // The mechanism: a claim the dump satisfies by carrying no hurtbox at all is
+    // counted apart rather than as a TypeFlag failure. Dee Jay's Lv2 and Lily's
+    // enhanced Tomahawk are the roster's remaining cases.
+    const rows = invuln.comparisons.filter((c) => c.byAbsence);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(invulnDisagreements(invuln)).not.toContain(row);
+    // Lily's Thunderbird used to be one of them — FAT writes "projectile
+    // invincible 13-41" and the Dec-2024 dump had no hurtbox to check it
+    // against. The live dump carries the flag outright, and it is FAT's window
+    // to the frame. See ADR-0045.
+    const thunderbird = invuln.comparisons.filter(
       (c) => c.actionName === "SAA_THUNDERBIRD" && c.kind === "projectile",
     );
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) expect(row.byAbsence).toBe(true);
-    expect(invulnDisagreements(invuln)).not.toContain(rows[0]);
+    expect(thunderbird.length).toBeGreaterThan(0);
+    for (const row of thunderbird) {
+      expect(row.byAbsence).toBe(false);
+      expect(row.agrees).toBe(true);
+    }
   });
 });
 
@@ -628,13 +639,15 @@ describe("armor against the published notes", () => {
     // the two that miss are both OD: the strength whose armor window FAT and the
     // dump disagree about. Named, rather than absorbed into a floor.
     const missed = report.claims.filter((c) => !c.agrees).map((c) => `${c.character} ${c.input}`);
-    expect(missed.sort()).toEqual(["E.Honda 46PP", "Marisa 623PP"]);
+    expect(missed.sort()).toEqual(["E.Honda 46PP", "Marisa 623HP"]);
   });
 
   it("grades Marisa's armored special, which ADR-0016 could not reach", () => {
     const phalanx = report.claims.filter((c) => c.actionName.startsWith("SPA_Phalanx"));
     expect(phalanx.length).toBe(4);
-    for (const c of phalanx.filter((c) => c.input !== "623PP")) {
+    // The strength that misses moved from OD to HP when the dump was re-pinned:
+    // HP's window is 11-15 against a published 10-15. See ADR-0045.
+    for (const c of phalanx.filter((c) => c.input !== "623HP")) {
       expect(`${c.input}: ${c.dump?.join("-")}`).toBe(`${c.input}: ${c.fat?.join("-")}`);
     }
   });

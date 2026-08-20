@@ -515,9 +515,11 @@ describe("knockdowns", () => {
     }
     expect(down).toBeGreaterThan(0);
     expect(up).toBeGreaterThan(down);
-    // `DownTime` 10 for Ryu's 2HK plus the down action's own recovery — it is
-    // actionable on `MarginFrame + 1`, which is 31 on every fighter.
-    expect(up - down).toBe(10 + 30);
+    // `DownTime` 15 for Ryu's 2HK plus the down action's own recovery — it is
+    // actionable on `MarginFrame + 1`, which is 31 on every fighter. The 15 was
+    // 10 in the Dec-2024 snapshot, and FAT still publishes the +40 that implies;
+    // see ADR-0045.
+    expect(up - down).toBe(15 + 30);
     expect(ken.down).toBe(false);
     expect(ken.actionable()).toBe(true);
   });
@@ -810,10 +812,15 @@ describe("wake-up and teching", () => {
 
   it("refuses a hard knockdown", () => {
     // The rule, asserted directly: `_no_rolling` or a `DownTime` of 0. Ryu's
-    // sweep carries `_no_rolling` on every condition, so it is never soft.
+    // sweep carries `_no_rolling` on its **punish-counter** row only, which is
+    // exactly what FAT publishes about it — `KD +40` on hit, `HKD +47` on punish
+    // counter. In the Dec-2024 snapshot the flag was on the hit row too, so the
+    // sweep was hard on every condition; the live dump agrees with FAT's tag
+    // where the old one did not. See ADR-0045.
     const geo = loadGeometry(requireCharacter("Ryu").id)!;
     const sweepData = hitDataFor(geo, geo.actions.find((a) => a.name === "ATK_2HK")!)!;
-    expect(hardKnockdown(sweepData.hit!)).toBe(true);
+    expect(hardKnockdown(sweepData.hit!)).toBe(false);
+    expect(hardKnockdown(sweepData.punishCounter!)).toBe(true);
     const impactData = hitDataFor(geo, geo.actions.find((a) => a.name === "ATK_CTA")!)!;
     expect(hardKnockdown(impactData.hit!)).toBe(false);
   });

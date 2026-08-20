@@ -29,7 +29,8 @@ with MMDK. That is a step further than published frame data, which is closer to 
 creative work — so it is not committed to this repository and not in its history.
 
 Generate it locally with `npm run geometry`, which fetches the MMDK dumps and extracts the
-per-frame geometry. Both `data/raw/mmdk/` and `data/geometry/` are gitignored.
+per-frame geometry. `data/raw/mmdk/`, `data/raw/mmdk-2024/` and `data/geometry/`
+are all gitignored.
 
 ## Frame data and facts
 

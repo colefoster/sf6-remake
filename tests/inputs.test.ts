@@ -85,8 +85,20 @@ describe("the motion inputs against FAT's notation", () => {
     for (const r of dp) expect(`${r.character} ${r.input}: ${r.motions[0]!.join("")}`).toBe(
       `${r.character} ${r.input}: 626`,
     );
-    // And once the dragon punch is accounted for, almost nothing else is left.
-    expect(missed.length - dp.length).toBeLessThan(5);
+    // And once the dragon punch is accounted for, what is left is two more of
+    // the same kind of thing rather than noise: Guile's charge releases, whose
+    // pinned directions are the charge slot and not the notation, and Manon's
+    // `624`, which the table spells 6-3-1-4. Named, since ADR-0045 re-pinned the
+    // dump and a bare floor here would not have said which moved.
+    const rest = missed.filter((r) => !r.input.startsWith("623"));
+    expect([...new Set(rest.map((r) => `${r.character} ${r.input}`))].sort()).toEqual([
+      "Guile 46LP",
+      "Guile 46PP",
+      "Manon 624HP",
+      "Manon 624LP",
+      "Manon 624MP",
+      "Manon 624PP",
+    ]);
   });
 
   it("gives every mapped special a button, and OD means all three", () => {

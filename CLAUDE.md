@@ -12,12 +12,14 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 
 ### Refreshing the dump
 
-The geometry is extracted from a **pinned, year-old, third-party snapshot** of the
-game's data, graded against current frame data. Version skew is now measured:
-**+0.5 points overall, +1.7 at worst on a headline check**, and six sevenths of
-every residual survives a live dump (ADR-0043). It runs both ways — FAT lags the
-game on 49 rows. Run `scripts/skew-audit.mjs` before attributing a residual to a
-mechanic; see `docs/agents/refresh-the-dump.md`.
+`data/raw/mmdk/` is a dump of the **live game** (Aug-2026, 24 fighters) as of
+ADR-0045; the old third-party snapshot lives in `data/raw/mmdk-2024/` and is what
+`fetch-mmdk.mjs` downloads — never point it at `mmdk/`. Skew between the two is
+measured: **+0.6 points**, and six sevenths of every residual survives the
+re-pin. It runs both ways — FAT lags the game on 49 rows. Run
+`scripts/skew-audit.mjs` before attributing a residual to a mechanic; see
+`docs/agents/refresh-the-dump.md`. Six fighters plus Yasmine cannot be dumped at
+all: MMDK's roster is a hardcoded table that stops at Terry.
 
 ### Domain docs
 
