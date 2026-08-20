@@ -24,6 +24,9 @@ import {
   BAR,
 } from "../src/data/geometry.js";
 import type { ArmorWindow, AtemiRow, GeometryFile } from "../src/data/geometry.js";
+import type { GeometryAction } from "../src/data/geometry.js";
+import type { Fighter } from "../src/game/index.js";
+import { headRadius, poseOf } from "../src/game/render.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -542,5 +545,67 @@ describe("the downed pushbox", () => {
     const stand = geo.actions.find((a) => a.name === "BAS_STD_Loop")!;
     expect(stand.push[0]!.box.x).toBe(-33);
     expect(stand.push[0]!.box.width).toBe(66);
+  });
+});
+
+/**
+ * The figure derived from the boxes. See ADR-0049.
+ *
+ * `poseOf` takes only a fighter's `state` and position, so the derivation is
+ * tested against a stub rather than through a match: what is under test is the
+ * geometry read, not the state machine.
+ */
+describe("a pose derived from the boxes", () => {
+  const named = (name: string) => geo.actions.find((a) => a.name === name)!;
+  const stub = (action: GeometryAction, frame: number, facing: 1 | -1 = 1) =>
+    ({ state: { action, frame, facing }, position: () => ({ x: 0, y: 0 }) }) as unknown as Fighter;
+  const radius = headRadius(geo);
+
+  it("takes the head's size from the idle pose and keeps it", () => {
+    // The head hurtbox grows to cover a lean, so a skull sized to the current box
+    // balloons over the torso exactly when the fighter attacks.
+    const idle = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+    const punching = poseOf(stub(named("ATK_5HP"), 13), radius);
+    expect(idle.head!.r).toBe(radius);
+    expect(punching.head!.r).toBe(radius);
+    expect(radius).toBeGreaterThan(8);
+  });
+
+  it("draws the active hitbox as the limb, and knows a kick from a punch", () => {
+    const punch = poseOf(stub(named("ATK_5HP"), 13), radius);
+    expect(punch.limbs).toHaveLength(1);
+    expect(punch.limbs[0]!.kick).toBe(false);
+    // Rooted at the shoulder, reaching the hitbox's far edge.
+    expect(punch.limbs[0]!.root.y).toBeGreaterThan(punch.hips.y);
+    expect(punch.limbs[0]!.tip.x).toBeGreaterThan(punch.neck.x);
+
+    // A mid-height kick is still a kick: the action's own name says so, which is
+    // why height alone is not the rule.
+    const kick = poseOf(stub(named("ATK_5MK"), 10), radius);
+    expect(kick.limbs[0]!.kick).toBe(true);
+    expect(kick.limbs[0]!.root).toEqual(kick.hips);
+  });
+
+  it("holds a part whose hurtbox has gone, because that means invulnerable", () => {
+    // ADR-0020: full invulnerability *is* the absence of a hurtbox. A rising
+    // Shoryuken has no head or body box at all, and a figure that dropped them
+    // would lose its torso on exactly the frames that matter.
+    const rising = named("SPA_SYORYU_START(2)");
+    const before = poseOf(stub(rising, 8), radius);
+    const during = poseOf(stub(rising, 14), radius, before);
+    expect(before.faded).toEqual({ head: false, body: false, leg: false });
+    // Head and legs gone, body box still there and carried upward: the figure
+    // rises with the move, and the parts it is invulnerable on are held over
+    // from the last frame that had them rather than dropped.
+    expect(during.faded).toEqual({ head: true, body: false, leg: true });
+    expect(during.head).not.toBeNull();
+    expect(during.feet).toEqual(before.feet);
+    expect(during.neck.y).toBeGreaterThan(before.neck.y + 100);
+  });
+
+  it("mirrors with the fighter", () => {
+    const right = poseOf(stub(named("ATK_5HP"), 13), radius, undefined);
+    const left = poseOf(stub(named("ATK_5HP"), 13, -1), radius, undefined);
+    expect(left.limbs[0]!.tip.x).toBeCloseTo(-right.limbs[0]!.tip.x, 5);
   });
 });

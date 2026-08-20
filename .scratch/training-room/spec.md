@@ -1,6 +1,6 @@
 # Spec — the training room
 
-Status: `ready-for-human` (direction decided, two questions open — see Open questions)
+Status: `ready-for-agent` (both questions answered; 02 and 03 shipped in ADR-0049)
 Date: 2026-08-20
 
 A browser training room you can actually play: two stick figures driven by the
@@ -128,15 +128,15 @@ state; this is presentation, not engine.
   that resolves but is unread. Each is its own piece of work; the training room
   is what will make the case for which one matters.
 
-## Open questions
+## Decisions
 
-1. **Deploy, or localhost?** If this goes on `colefoster.ca` the payload needs a
-   slimmed per-character bundle (drop cosmetic actions, quantise box
-   coordinates) — a build-script job, but it wants deciding before the render
-   module hardens.
-2. **Scripted dummy first, or go at the reactive AI?** They share the seam, so
-   scripted costs nothing later. Recommendation: scripted, then watch the figure
-   move before deciding what the AI should do.
+1. **Local only, not public.** The 45 MB payload is not a problem to solve —
+   issue 05 is closed `wontfix`. Revisit only if this ever deploys.
+2. **An unresponsive dummy.** Not the scripted-behaviour suite and not the
+   reactive AI: P2 holds neutral and takes what it is given. Issue 03 is that,
+   and it is done — the seam is `hold(5)` and nothing in `match.ts` moved. The
+   scripted behaviours and the AI stay unbuilt until watching the figures says
+   which are worth having.
 
 ## Issues
 
@@ -144,4 +144,4 @@ state; this is presentation, not engine.
 - `02-stick-figure.md` — `poseFrom`, with the three spike findings baked in
 - `03-dummy-seam.md` — the opponent function and the scripted behaviours
 - `04-training-panel.md` — the frame data on screen
-- `05-payload.md` — the slim per-character bundle (blocked on question 1)
+- `05-payload.md` — `wontfix`: local only

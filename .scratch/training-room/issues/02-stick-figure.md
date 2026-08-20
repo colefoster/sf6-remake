@@ -1,6 +1,6 @@
 # 02 — The stick figure, derived from the boxes
 
-Status: `ready-for-agent`
+Status: done — ADR-0049
 Depends on: `01-render-module.md`
 
 ## Why

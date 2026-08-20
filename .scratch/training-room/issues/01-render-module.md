@@ -1,6 +1,6 @@
 # 01 — A render module behind the bundle seam
 
-Status: `ready-for-agent`
+Status: `ready-for-agent` — `play.html` done (ADR-0049); `boxes.html` not yet ported
 
 ## Why
 

@@ -22,6 +22,9 @@
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Column, not a fixed offset: the header wraps at narrow widths and a
+       hardcoded `100vh - 47px` put the fighters' feet below the fold. */
+    display: flex; flex-direction: column; height: 100vh;
   }
   header {
     display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
@@ -34,8 +37,9 @@
   }
   button:hover { border-color: #3b424f; }
   button[aria-pressed="true"] { border-color: var(--p1); color: var(--p1); }
-  main { display: grid; grid-template-columns: 1fr 300px; gap: 0; height: calc(100vh - 47px); }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+  main { display: grid; grid-template-columns: 1fr 300px; gap: 0; flex: 1; min-height: 0; }
+  #stage { display: block; width: 100%; height: 100%; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
   #stage { width: 100%; height: 100%; display: block; background: #0a0c10; }
   aside { border-left: 1px solid var(--line); padding: 12px 14px; overflow: auto; background: var(--panel); }
   aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 16px 0 6px; }
@@ -57,7 +61,12 @@
   <h1>sf6 · play</h1>
   <label>P1 <select id="p1"></select></label>
   <label>P2 <select id="p2"></select></label>
+  <label>P2 is <select id="mode">
+    <option value="dummy">an unresponsive dummy</option>
+    <option value="human">a second player</option>
+  </select></label>
   <button id="pause" aria-pressed="false">pause</button>
+  <button id="figures" aria-pressed="true">figures</button>
   <button id="step">step</button>
   <button id="reset">reset</button>
   <button id="boxes" aria-pressed="true">boxes</button>
@@ -72,6 +81,9 @@
     <div class="row"><span class="p1" id="n1">P1</span><span id="a1">—</span></div>
     <div class="row"><span class="p2" id="n2">P2</span><span id="a2">—</span></div>
     <div class="row"><span>gap</span><span id="gap">—</span></div>
+    <div class="row"><span>advantage</span><span id="adv">—</span></div>
+    <h2>inputs</h2>
+    <div class="row"><span class="p1">P1</span><span id="in1">—</span></div>
     <h2>contact log</h2>
     <ul id="log"></ul>
     <h2>what this is</h2>
@@ -85,7 +97,9 @@
 
 <script type="module">
 import {
-  Match, hold, hitboxesAt, hurtboxesAt, pushboxesAt, originAt, projectileBoxes, DRIVE_MAX,
+  Match, hold, projectileBoxes, DRIVE_MAX,
+  viewFor, worldBoxes, poseOf, headRadius,
+  drawStage, drawBoxes, drawFigure, drawGauges, drawProjectile,
 } from "./play.js";
 
 const canvas = document.getElementById("stage");
@@ -134,12 +148,25 @@ function read(map) {
 let match = null;
 let paused = false;
 let showBoxes = true;
+let showFigures = true;
 let logged = 0;
+/** Last frame's pose per side, so a part with no hurtbox can be held over. */
+let poses = [null, null];
+let radii = [14, 14];
+let posedAt = -1;
+/** Frame advantage, watched as it resolves: who was free, and when. */
+let watch = null;
+let advantage = null;
 
 async function reset() {
   const a = await geometry(document.getElementById("p1").value);
   const b = await geometry(document.getElementById("p2").value);
   match = new Match(a, b, { distance: 220 });
+  radii = [headRadius(a), headRadius(b)];
+  poses = [null, null];
+  posedAt = -1;
+  watch = null;
+  advantage = null;
   logged = 0;
   document.getElementById("log").innerHTML = "";
   document.getElementById("n1").textContent = a.character;
@@ -157,6 +184,10 @@ document.getElementById("boxes").onclick = (e) => {
   showBoxes = !showBoxes;
   e.target.setAttribute("aria-pressed", String(showBoxes));
 };
+document.getElementById("figures").onclick = (e) => {
+  showFigures = !showFigures;
+  e.target.setAttribute("aria-pressed", String(showFigures));
+};
 document.getElementById("step").onclick = () => {
   paused = true;
   document.getElementById("pause").setAttribute("aria-pressed", "true");
@@ -165,28 +196,31 @@ document.getElementById("step").onclick = () => {
 
 function tick() {
   if (!match || match.over) return;
-  match.advance(read(P1), read(P2));
+  const human = document.getElementById("mode").value === "human";
+  // An unresponsive dummy: it holds neutral and takes what it is given. The
+  // opponent is just an input frame, which is all `advance` ever wanted.
+  match.advance(read(P1), human ? read(P2) : hold(5));
+  const hits = match.hits.length;
+  if (hits > logged && watch === null) watch = { attacker: match.hits[hits - 1].attacker, free: [null, null] };
+  if (watch) {
+    for (const side of [0, 1]) {
+      if (watch.free[side] === null && match.fighters[side].actionable()) watch.free[side] = match.frame;
+    }
+    if (watch.free[0] !== null && watch.free[1] !== null) {
+      const defender = watch.attacker === 0 ? 1 : 0;
+      advantage = watch.free[defender] - watch.free[watch.attacker];
+      watch = null;
+    }
+  }
 }
 
 /* ---- drawing ------------------------------------------------------------- */
 
-/** A fighter's boxes in world space: the runtime's own placement, mirrored. */
-function boxesOf(fighter) {
-  const { action, frame, facing } = fighter.state;
-  const at = fighter.position();
-  const origin = originAt(action, frame);
-  const place = (b) => {
-    const y = b.y + origin.y;
-    const x = facing === 1 ? at.x + b.x : at.x - (b.x + b.width);
-    return { x, y, width: b.width, height: b.height };
-  };
-  return {
-    hurt: hurtboxesAt(action, frame).map(place),
-    hit: hitboxesAt(action, frame).map(place),
-    push: pushboxesAt(action, frame).map((p) => place(p)),
-  };
-}
-
+/**
+ * Everything below comes out of `src/game/render.ts` through the same bundle the
+ * runtime does, so this page and the box viewer draw a fighter the same way.
+ * See ADR-0049.
+ */
 function draw() {
   const dpr = devicePixelRatio || 1;
   const w = canvas.clientWidth;
@@ -200,122 +234,41 @@ function draw() {
   if (!match) return;
 
   const [a, b] = match.fighters;
-  // Keep both fighters and a comfortable margin on screen; never zoom past 1:1.
-  const span = Math.max(560, Math.abs(b.position().x - a.position().x) + 420);
-  // The camera stops at the walls, so a corner reads as one on screen instead of
-  // the pair sliding to the middle of an empty view.
-  const room = match.half - span / 2;
-  const centre = (a.position().x + b.position().x) / 2;
-  const mid = room <= 0 ? 0 : Math.max(-room, Math.min(room, centre));
-  // A fighter is about 210 units tall; leave headroom for a jump without letting
-  // the pair shrink to nothing when they are far apart.
-  const scale = Math.min(w / span, h / 330);
-  const ground = h - 56;
-  const sx = (x) => w / 2 + (x - mid) * scale;
-  const sy = (y) => ground - y * scale;
+  const view = viewFor(canvas, [a.position().x, b.position().x], match.half);
+  drawStage(ctx, view, match.half);
 
-  // floor
-  ctx.strokeStyle = "#20252e";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, ground + 0.5);
-  ctx.lineTo(w, ground + 0.5);
-  ctx.stroke();
-  ctx.fillStyle = "#151920";
-  for (let x = Math.ceil((mid - span / 2) / 100) * 100; x < mid + span / 2; x += 100) {
-    ctx.fillRect(sx(x), ground + 4, 1, 10);
-  }
-
-  // walls
-  for (const side of [-1, 1]) {
-    const x = sx(side * match.half);
-    if (x < -20 || x > w + 20) continue;
-    // Drawn on the *inside* of the wall: the camera stops at the corner, so a
-    // line hung outside it lands off the canvas exactly when it matters.
-    ctx.fillStyle = "rgba(148,163,184,.55)";
-    ctx.fillRect(side === -1 ? x : x - 3, ground - 260 * scale, 3, 260 * scale);
-    ctx.fillStyle = "rgba(148,163,184,.07)";
-    if (side === -1 && x > 0) ctx.fillRect(0, 0, x, ground);
-    if (side === 1 && x < w) ctx.fillRect(x, 0, w - x, ground);
+  // Poses advance with the match, not with the render: holding a vanished part
+  // over needs the *previous frame's* pose, and draw runs while paused.
+  if (match.frame !== posedAt) {
+    poses = match.fighters.map((f, i) => poseOf(f, radii[i], poses[i] ?? undefined));
+    posedAt = match.frame;
   }
 
   for (const [i, fighter] of match.fighters.entries()) {
-    const boxes = boxesOf(fighter);
-    const tint = i === 0 ? "#38bdf8" : "#fb7185";
-    const rect = (bx, stroke, fill) => {
-      ctx.strokeStyle = stroke;
-      ctx.fillStyle = fill;
-      const x = sx(bx.x);
-      const y = sy(bx.y + bx.height);
-      const bw = bx.width * scale;
-      const bh = bx.height * scale;
-      ctx.fillRect(x, y, bw, bh);
-      ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
-    };
-    if (showBoxes) {
-      for (const p of boxes.push) rect(p, "rgba(107,114,128,.6)", "rgba(107,114,128,.08)");
-      for (const hb of boxes.hurt) rect(hb, "rgba(59,130,246,.75)", "rgba(59,130,246,.14)");
-      for (const hb of boxes.hit) rect(hb, "rgba(239,68,68,.95)", "rgba(239,68,68,.28)");
-    } else {
-      // Boxes off: one silhouette per fighter, from the hurtbox extents.
-      const xs = boxes.hurt.flatMap((r) => [r.x, r.x + r.width]);
-      const ys = boxes.hurt.flatMap((r) => [r.y, r.y + r.height]);
-      if (xs.length) {
-        ctx.fillStyle = tint + "33";
-        ctx.strokeStyle = tint;
-        const x = sx(Math.min(...xs));
-        const y = sy(Math.max(...ys));
-        ctx.fillRect(x, y, (Math.max(...xs) - Math.min(...xs)) * scale, (Math.max(...ys) - Math.min(...ys)) * scale);
-        ctx.strokeRect(x, y, (Math.max(...xs) - Math.min(...xs)) * scale, (Math.max(...ys) - Math.min(...ys)) * scale);
-      }
-    }
+    if (showBoxes) drawBoxes(ctx, view, worldBoxes(fighter));
+    if (showFigures && poses[i]) drawFigure(ctx, view, poses[i], i);
     // origin marker and facing
-    const ox = sx(fighter.position().x);
-    ctx.fillStyle = tint;
-    ctx.fillRect(ox - 1, ground - 3, 2, 6);
-    ctx.fillRect(ox + (fighter.state.facing === 1 ? 4 : -10), ground - 1, 6, 2);
-  }
-
-  // fireballs, drawn as what they are: a hitbox with nothing attached
-  for (const shot of match.projectiles) {
-    for (const box of projectileBoxes(shot)) {
-      const x = sx(box.x);
-      const y = sy(box.y + box.height);
-      ctx.fillStyle = "rgba(251,191,36,.3)";
-      ctx.strokeStyle = "rgba(251,191,36,.95)";
-      ctx.fillRect(x, y, box.width * scale, box.height * scale);
-      ctx.strokeRect(x + 0.5, y + 0.5, box.width * scale - 1, box.height * scale - 1);
-    }
-  }
-
-  // health bars
-  for (const [i, hp] of match.health.entries()) {
-    const max = match.fighters[i].geo.fighter?.health ?? 10000;
-    const bw = w / 2 - 40;
-    const x = i === 0 ? 20 : w / 2 + 20;
-    ctx.fillStyle = "#1b1f27";
-    ctx.fillRect(x, 16, bw, 12);
+    const ox = view.x(fighter.position().x);
     ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";
-    const filled = Math.max(0, hp) / max * bw;
-    ctx.fillRect(i === 0 ? x + bw - filled : x, 16, filled, 12);
+    ctx.fillRect(ox - 1, view.ground - 3, 2, 6);
+    ctx.fillRect(ox + (fighter.state.facing === 1 ? 4 : -10), view.ground - 1, 6, 2);
+  }
 
-    // Drive under the health bar, in its six bars, and super under that in three.
-    const f = match.fighters[i];
-    const gauge = (y, value, cap, segments, colour, height) => {
-      const gw = bw * 0.62;
-      const gx = i === 0 ? x + bw - gw : x;
-      ctx.fillStyle = "#1b1f27";
-      ctx.fillRect(gx, y, gw, height);
-      const on = Math.max(0, value) / cap * gw;
-      ctx.fillStyle = colour;
-      ctx.fillRect(i === 0 ? gx + gw - on : gx, y, on, height);
-      ctx.fillStyle = "#0a0c10";
-      for (let s = 1; s < segments; s++) ctx.fillRect(gx + (gw * s) / segments, y, 1, height);
-    };
-    // Burnout is the state the `_tired` actions belong to; it reads as a gauge
-    // that is empty and refilling, so it gets its own colour rather than none.
-    gauge(32, f.drive, DRIVE_MAX, 6, f.burnout ? "#ef4444" : "#22d3ee", 7);
-    gauge(42, f.superMeter, f.superMax, 3, "#facc15", 5);
+  for (const shot of match.projectiles) {
+    for (const box of projectileBoxes(shot)) drawProjectile(ctx, view, box);
+  }
+
+  for (const [i, fighter] of match.fighters.entries()) {
+    drawGauges(ctx, view, i, {
+      health: match.health[i],
+      healthMax: fighter.geo.fighter?.health ?? 10000,
+      recoverable: match.recoverable[i],
+      drive: fighter.drive,
+      driveMax: DRIVE_MAX,
+      burnout: fighter.burnout,
+      superMeter: fighter.superMeter,
+      superMax: fighter.superMax,
+    });
   }
 
   // combo counter, on the side taking it
@@ -325,11 +278,10 @@ function draw() {
     ctx.font = "600 15px ui-monospace, monospace";
     ctx.textAlign = i === 0 ? "left" : "right";
     const scaled = combo.scaling < 100 ? ` ${combo.scaling}%` : "";
-    ctx.fillText(`${combo.hits} hits${scaled}`, i === 0 ? 22 : w - 22, 66);
+    ctx.fillText(`${combo.hits} hits${scaled} · ${combo.damage}`, i === 0 ? 22 : w - 22, 66);
     ctx.textAlign = "left";
   }
 
-  // round clock
   if (match.clock !== null) {
     ctx.fillStyle = "#e5e7eb";
     ctx.font = "600 20px ui-monospace, monospace";
@@ -365,6 +317,13 @@ function report() {
   document.getElementById("a1").textContent = `${a.actionName} f${a.state.frame}${a.stunned ? ` (stun ${a.stunned})` : ""}`;
   document.getElementById("a2").textContent = `${b.actionName} f${b.state.frame}${b.stunned ? ` (stun ${b.stunned})` : ""}`;
   document.getElementById("gap").textContent = `${(b.position().x - a.position().x).toFixed(0)}u`;
+  document.getElementById("adv").textContent =
+    advantage === null ? "—" : `${advantage > 0 ? "+" : ""}${advantage}`;
+  // What the game read, not what the keyboard sent: the fighter's own history.
+  const held = read(P1);
+  const edges = a.history.recent(14).map((e) => e.dir).join(" ");
+  document.getElementById("in1").textContent =
+    `${edges}${held.buttons.length ? `  ${held.buttons.join("+")}` : ""}`;
   const log = document.getElementById("log");
   for (const hit of match.hits.slice(logged)) {
     const li = document.createElement("li");

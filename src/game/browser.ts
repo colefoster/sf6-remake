@@ -15,8 +15,23 @@ export {
   activeWindows,
   hitboxesAt,
   hurtboxesAt,
+  hurtPartsAt,
   originAt,
   pushboxesAt,
   shift,
 } from "../data/geometry.js";
+// The view, shared by the two pages that draw a fighter. See ADR-0049.
+export {
+  drawBoxes,
+  drawFigure,
+  drawGauges,
+  drawProjectile,
+  drawStage,
+  headRadius,
+  placeBox,
+  poseOf,
+  viewFor,
+  worldBoxes,
+} from "./render.js";
+export type { Point, Pose, View, WorldBoxes } from "./render.js";
 export type { GeometryAction, GeometryFile } from "../data/geometry.js";

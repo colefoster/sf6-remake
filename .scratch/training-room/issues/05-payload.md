@@ -1,6 +1,6 @@
 # 05 — A payload a browser should download
 
-Status: `needs-info` (blocked on: does this deploy publicly?)
+Status: `wontfix` — local only, decided 2026-08-20
 
 ## Why
 

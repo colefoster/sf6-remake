@@ -83,6 +83,17 @@ export class InputHistory {
   }
 
   /**
+   * The last `count` direction edges, oldest first — the input display.
+   *
+   * Edges rather than frames is the point: a display built from held frames says
+   * "6 6 6 6 6" where the game read one forward, and a missed quarter-circle is
+   * only visible against what the game actually read. See ADR-0049.
+   */
+  recent(count = 12): { dir: Direction; frame: number }[] {
+    return this.edges.slice(-count);
+  }
+
+  /**
    * Does the tail of the history satisfy this command?
    *
    * Walked backwards from the newest edge, because a motion is recognised by

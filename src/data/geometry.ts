@@ -505,6 +505,29 @@ export function hitKeysAt(action: GeometryAction, frame: number): HitKey[] {
 }
 
 /**
+ * The live hurtboxes this frame, kept **apart by part**.
+ *
+ * `hurtboxesAt` merges them, which is what a hit test wants. A body does not: the
+ * head, body and leg boxes are the only thing in the dump that says where a
+ * fighter's parts are, so a drawn figure is derived from them one part at a time.
+ * A part with no live box is *invulnerable* there (ADR-0020), not absent, which
+ * is a distinction the caller has to make. See ADR-0049.
+ */
+export function hurtPartsAt(
+  action: GeometryAction,
+  frame: number,
+): { head: Box[]; body: Box[]; leg: Box[] } {
+  const out = { head: [] as Box[], body: [] as Box[], leg: [] as Box[] };
+  for (const key of action.hurt) {
+    if (!covers(key, frame)) continue;
+    out.head.push(...key.head);
+    out.body.push(...key.body);
+    out.leg.push(...key.leg);
+  }
+  return out;
+}
+
+/**
  * Every hurtbox live this frame. Throwable boxes are excluded by default.
  *
  * `to` narrows to the boxes a given kind of attack can actually hit, which is

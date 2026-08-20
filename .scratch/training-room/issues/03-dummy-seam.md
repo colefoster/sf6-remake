@@ -1,6 +1,6 @@
 # 03 — An opponent that does something
 
-Status: `ready-for-agent`
+Status: done — ADR-0049, as an unresponsive dummy by decision
 
 ## Why
 
