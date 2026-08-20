@@ -88,11 +88,28 @@ export const blockAfterFirstHit: Opponent = (match, side) =>
  */
 export const mash: Opponent = (match) => hold(5, match.frame % 2 === 0 ? ["LP"] : []);
 
+/**
+ * Holds Drive Parry through anything on the way.
+ *
+ * The buttons are the parry: `Fighter` enters the stance off the trigger and
+ * stays in it while they are down, so this behaviour is the same shape as
+ * `blockAll` — hold while threatened, neutral otherwise, because a parry held
+ * forever is half a bar of Drive a second going nowhere.
+ */
+export const parryAll: Opponent = (match, side) => {
+  const keys = match.fighters[side].parryButtons;
+  if (!keys.length) return hold(5);
+  // Only while there is something to catch. Held past that the dummy never
+  // releases, so it never recovers, and nothing downstream ever sees it free.
+  return threatened(match, side) ? hold(5, keys) : hold(5);
+};
+
 /** The behaviours by name, for a page that puts them in a dropdown. */
 export const DUMMIES: Record<string, Opponent> = {
   stand,
   crouch,
   blockAll,
   blockAfterFirstHit,
+  parryAll,
   mash,
 };

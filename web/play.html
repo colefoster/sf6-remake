@@ -66,6 +66,7 @@
     <option value="crouch">a dummy, crouching</option>
     <option value="blockAll">a dummy, blocking</option>
     <option value="blockAfterFirstHit">a dummy, blocking after one hit</option>
+    <option value="parryAll">a dummy, Drive Parrying</option>
     <option value="mash">a dummy, mashing 5LP</option>
     <option value="human">a second player</option>
   </select></label>
@@ -74,7 +75,7 @@
   <button id="step">step</button>
   <button id="reset">reset</button>
   <button id="boxes" aria-pressed="true">boxes</button>
-  <span class="hint">P1 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · <kbd>U</kbd><kbd>I</kbd><kbd>O</kbd> punches · <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> kicks &nbsp;|&nbsp; P2 arrows · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> / <kbd>4</kbd><kbd>5</kbd><kbd>6</kbd></span>
+  <span class="hint">P1 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · <kbd>U</kbd><kbd>I</kbd><kbd>O</kbd> punches · <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> kicks · <kbd>I</kbd>+<kbd>K</kbd> parry &nbsp;|&nbsp; P2 arrows · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> / <kbd>4</kbd><kbd>5</kbd><kbd>6</kbd></span>
 </header>
 
 <main>
@@ -373,7 +374,10 @@ function report() {
   for (const hit of match.hits.slice(logged)) {
     const li = document.createElement("li");
     li.className = hit.attacker === 0 ? "p1" : "p2";
-    li.textContent = `f${hit.frame} ${hit.action} ${hit.type} — ${hit.damage} dmg, ${hit.stun}f, ${hit.reaction}`;
+    li.textContent =
+      hit.type === "parry"
+        ? `f${hit.frame} ${hit.action} parried — ${hit.reaction}`
+        : `f${hit.frame} ${hit.action} ${hit.type} — ${hit.damage} dmg, ${hit.stun}f, ${hit.reaction}`;
     log.prepend(li);
   }
   logged = match.hits.length;

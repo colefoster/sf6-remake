@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 
 import { hold, reactionFor } from "../src/game/match.js";
-import { DUMMIES, blockAll, mash, stand } from "../src/game/dummy.js";
+import { DUMMIES, blockAll, mash, parryAll, stand } from "../src/game/dummy.js";
 import { Advantage, punishes } from "../src/game/training.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
 import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHitboxes, flightOrigin, hardKnockdown, hitDataFor } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
+import { driveTickAt } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
 import { runScenario } from "../src/sim/index.js";
 import { verifyThrows } from "../src/verify/throws.js";
@@ -935,5 +936,87 @@ describe("the dummy and what the panel reads off it", () => {
     const { match } = spar(stand, [[5, [], 10]]);
     expect(punishes(match, 1, 0)).toEqual([]);
     expect(punishes(match, 1, -3)).toEqual([]);
+  });
+});
+
+
+/** Drive Parry. See ADR-0054. */
+describe("Drive Parry", () => {
+  const geo = loadGeometry("ryu")!;
+
+  /** Ryu attacks; Ken defends with `defence` until the advantage resolves. */
+  const exchange = (dir: Direction, buttons: Button[], defence: typeof parryAll, frames = 300) => {
+    const match = matchFor("Ryu", "Ken", { distance: 130 });
+    const advantage = new Advantage();
+    for (let i = 0; i < frames; i++) {
+      match.advance(i < 30 ? hold(dir, buttons) : hold(5), defence(match, 1));
+      advantage.observe(match);
+      if (advantage.value !== null) break;
+    }
+    return { match, advantage };
+  };
+
+  it("takes its buttons from the trigger next door, because its own states none", () => {
+    // `ok_key_flags` is absent on the Parry trigger of all 24 fighters. The
+    // parry-into-rush trigger beside it carries MP+MK on all 24, and that is the
+    // input. Without it the parry can never fire at all.
+    const parry = Object.values(geo.triggers ?? {}).find((t) => t?.kind?.includes("Parry"))!;
+    expect(parry.keys).toEqual(["MP", "MK"]);
+    expect(parry.drive).toBe(5000);
+  });
+
+  it("drains fifty a frame while it is held, and the action says so", () => {
+    // One rule out of the action's own gauge events, and three mechanics come
+    // out of it: the parry drains, a forward walk regenerates, a tech refunds.
+    const stance = geo.actions.find((a) => a.name === "DPA_STD_Loop")!;
+    const walk = geo.actions.find((a) => a.name === "BAS_FORWARD_Loop")!;
+    expect(driveTickAt(stance, 1)).toBe(-50);
+    expect(driveTickAt(walk, 1)).toBe(20);
+
+    const match = matchFor("Ryu", "Ken", { distance: 200 });
+    const held = hold(5, ["MP", "MK"]);
+    for (let i = 0; i < 4; i++) match.advance(held, hold(5));
+    const entered = match.fighters[0].drive;
+    expect(match.fighters[0].parrying).toBe(true);
+    expect(entered).toBeLessThan(DRIVE_MAX - 4000); // the trigger's half bar, up front
+    for (let i = 0; i < 60; i++) match.advance(held, hold(5));
+    // The drain nets against the passive regeneration, which nothing turns off.
+    expect(match.fighters[0].drive).toBeLessThan(entered);
+  });
+
+  it("holds the stance while the buttons are down and releases into its own recovery", () => {
+    const match = matchFor("Ryu", "Ken", { distance: 200 });
+    for (let i = 0; i < 200; i++) match.advance(hold(5, ["MP", "MK"]), hold(5));
+    // `_START` runs out into `_Loop`, and `_Loop` plays again, the way a walk does.
+    expect(match.fighters[0].state.action.name).toBe("DPA_STD_Loop");
+    expect(match.fighters[0].actionable()).toBe(false);
+    match.advance(hold(5), hold(5));
+    expect(match.fighters[0].state.action.name).toBe("DPA_STD_END");
+  });
+
+  it("catches a hit at any height, for no damage, in the strength's own animation", () => {
+    const low = exchange(2, ["MK"], parryAll);
+    const heavy = exchange(5, ["HP"], parryAll);
+    expect(low.match.hits[0]!.type).toBe("parry");
+    expect(low.match.hits[0]!.damage).toBe(0);
+    expect(low.match.health[1]).toBe(10000);
+    // The low is blocked crouching or not at all; a parry does not care.
+    expect(low.match.hits[0]!.reaction).toBe("DPA_M");
+    expect(heavy.match.hits[0]!.reaction).toBe("DPA_H");
+  });
+
+  it("leaves the parrier minus, because releasing costs more than the block did", () => {
+    // The parry's value is not in the frames it leaves: it is in what the catch
+    // can be cancelled into, and that is not built. Releasing costs the 33
+    // frames `DPA_STD_END` states, which is worse than blocking on every normal.
+    const blocked = exchange(2, ["MK"], blockAll);
+    const parried = exchange(2, ["MK"], parryAll);
+    expect(blocked.advantage.value).toBeLessThan(0); // Ryu is minus on block
+    expect(parried.advantage.value).toBeGreaterThan(0); // and plus on parry
+    expect(parried.match.health[1]).toBeGreaterThan(blocked.match.health[1] - 1);
+  });
+
+  it("is a behaviour the dummy offers", () => {
+    expect(Object.keys(DUMMIES)).toContain("parryAll");
   });
 });

@@ -199,6 +199,13 @@ export interface GeometryAction {
    * See ADR-0022.
    */
   shots?: { action: number; frame: number; offset: { x: number; y: number } }[];
+  /**
+   * Gauge the action gives or takes **per frame while it runs**, from its own
+   * `EventKey`s. `index` 4 is Drive. Three mechanics across the roster: holding
+   * Drive Parry drains 50 a frame, walking forward regenerates 20, and a throw
+   * tech hands back half a bar over its single frame. See ADR-0054.
+   */
+  gauge?: { index: number; per: number; start: number; end: number }[];
   /** Where an airborne action puts itself down, and that action's own margin. */
   lands?: { action: number; margin: number };
   branches?: { frame: number; action: number; type: number | null }[];
@@ -248,6 +255,8 @@ export interface HitOutcome {
   floor?: { bounce: boolean; dest: { x: number; y: number }; time: number; boundDest: number };
   /** Drive gauge the defender loses: blocking costs, a just-parry costs less. */
   driveDamage?: { normal: number; just: number };
+  /** Hitstop when the hit is parried, which is not the hitstop when it lands. */
+  parryStop?: { owner: number; target: number };
   /** Chip-damage rules, side switching, and the rest of the boolean column. */
   flags?: string[];
 }
@@ -1054,6 +1063,19 @@ export function actionableFrame(action: GeometryAction): Actionable | undefined 
 }
 
 export type Stance = "stand" | "crouch";
+
+/** The Drive gauge's index in an action's `gauge` events. */
+export const DRIVE_GAUGE = 4;
+
+/** Drive the action gives (or takes, negative) on this frame of it. */
+export function driveTickAt(action: GeometryAction, frame: number): number {
+  let total = 0;
+  for (const key of action.gauge ?? []) {
+    if (key.index !== DRIVE_GAUGE) continue;
+    if (frame >= key.start && frame <= key.end) total += key.per;
+  }
+  return total;
+}
 
 /** Pushboxes live this frame. */
 export function pushboxesAt(action: GeometryAction, frame: number): Box[] {

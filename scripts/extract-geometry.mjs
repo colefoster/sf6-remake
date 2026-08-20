@@ -299,6 +299,23 @@ function extractAction(action, rect, unresolvedPush) {
     .filter((k) => k && k._IsTIMER && typeof k.Timer === "number" && k.Timer !== 0)
     .map((k) => Math.abs(k.Timer));
 
+  /**
+   * Gauge the action gives or takes **per frame**, from its `EventKey`s.
+   *
+   * `_IsCHARA_GAUGE_ADD` with `Param01` naming the gauge (4 is Drive) and
+   * `Param02` the amount. 270 actions across the roster carry one, and they are
+   * three mechanics: holding Drive Parry drains 50 a frame, walking forward
+   * regenerates 20, and a throw tech hands back half a bar over its one frame.
+   */
+  const gauge = ordered(action.EventKey)
+    .filter((k) => k && k._IsCHARA_GAUGE_ADD && typeof k.Param02 === "number" && k.Param02 !== 0)
+    .map((k) => ({
+      index: k.Param01 ?? 0,
+      per: k.Param02,
+      start: (k._StartFrame ?? 0) + 1,
+      end: k._EndFrame ?? 0,
+    }));
+
   const branches = ordered(action.BranchKey)
     .filter((k) => typeof k.Action === "number" && k.Action > 0)
     .map((k) => ({ frame: (k._StartFrame ?? 0) + 1, action: k.Action, type: k.Type ?? null }));
@@ -337,6 +354,7 @@ function extractAction(action, rect, unresolvedPush) {
   if (motion) out.motion = motion;
   if (branches.length) out.branches = dedupeBranches(branches);
   if (freezes.length) out.freeze = Math.max(...freezes);
+  if (gauge.length) out.gauge = gauge;
   if (action.mot_name) out.mot = action.mot_name;
   return out;
 }
@@ -473,6 +491,14 @@ function hitOutcome(entry) {
       dest: { x: entry.FloorDest?.x ?? 0, y: entry.FloorDest?.y ?? 0 },
       time: entry.FloorTime ?? 0,
       boundDest: entry.BoundDest ?? 0,
+    };
+  }
+  // Hitstop when the hit is *parried*, which is not the hitstop when it lands:
+  // set on 5,625 rows across the roster against `HitStopOwner`'s every row.
+  if ((entry.ParryStopOwner ?? -1) !== -1 || (entry.ParryStopTarget ?? -1) !== -1) {
+    out.parryStop = {
+      owner: (entry.ParryStopOwner ?? -1) === -1 ? 0 : entry.ParryStopOwner,
+      target: (entry.ParryStopTarget ?? -1) === -1 ? 0 : entry.ParryStopTarget,
     };
   }
   // Drive gauge the *defender* loses: blocking costs, and a just-parry costs less.
@@ -764,6 +790,16 @@ function extractTriggers(file, used, commandFile) {
       out[id] = record;
     }
   }
+  // Drive Parry's own trigger states its price (half a bar) and its action, and
+  // no buttons at all: `ok_key_flags` is absent on all 24. The buttons are one
+  // trigger over — the `DriveDash` that carries no motion is the parry-into-rush,
+  // and it is `MP+MK` on all 24. So the input is in the dump; it is just not on
+  // the trigger that uses it. Without this the parry can never fire. See ADR-0054.
+  const parry = Object.values(out).find((t) => t.kind?.includes("Parry") && !t.keys?.length);
+  const sibling = Object.values(out).find(
+    (t) => t.kind?.includes("DriveDash") && !t.motions?.length && t.keys?.length === 2,
+  );
+  if (parry && sibling) parry.keys = [...sibling.keys];
   return out;
 }
 

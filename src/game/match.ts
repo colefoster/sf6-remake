@@ -35,9 +35,14 @@
  *   quick-risen out of, two throws at once tech into `NGE`/`NGF`, and a Drive
  *   Reversal's damage is its `DmgRecover`.
  *
+ *   Drive Parry as of ADR-0054: the stance drains 50 Drive a frame from the
+ *   action's own gauge events, a parried hit costs nothing and plays the catch
+ *   its strength names, and releasing costs the 33 frames `DPA_STD_END` states.
+ *
  * WHAT IT DOES NOT
- *   Drive Parry, back rise, and grey health growing back — nothing in either
- *   dump states a health regeneration rate.
+ *   The just-parry window — the dump prices a just parry without saying when one
+ *   happens — cancelling a parry into a Drive Rush, back rise, and grey health
+ *   growing back: nothing in either dump states a health regeneration rate.
  */
 
 import {
@@ -95,7 +100,7 @@ export const STAGE_HALF_WIDTH = 765;
 /** Frames per tick of the round clock. Assumed, not measured — see ADR-0030. */
 export const COUNT = 60;
 
-export type Contact = "block" | "hit" | "counter" | "punishCounter";
+export type Contact = "block" | "hit" | "counter" | "punishCounter" | "parry";
 
 /** How a round ended, or `null` while it is still being fought. */
 export type Result = { winner: 0 | 1 | null; by: "ko" | "timeout" };
@@ -501,6 +506,14 @@ export class Match {
     // A throw cannot be blocked, so the guard check is skipped outright rather
     // than being allowed to return "block" for a defender holding back.
     const type = thrown ? "hit" : this.contactType(them, defenderInput, attack);
+    // A parry is not a block with better numbers: no damage, no chip, no
+    // blockstun, no combo. The hit table has no parry row, so the strength that
+    // picks the catch animation and the Drive it costs are read off the block
+    // row (the hit row where there is none).
+    if (type === "parry") {
+      const guard = data.block ?? data.hit;
+      return guard ? this.parried(attacker, them, guard, attack) : false;
+    }
     const outcome = data[type] ?? data.hit;
     if (!outcome) return false;
 
@@ -590,6 +603,38 @@ export class Match {
       type,
       damage,
       stun,
+      action: attack.name,
+      reaction: reaction?.name ?? "?",
+    });
+    return true;
+  }
+
+  /**
+   * A parried hit.
+   *
+   * Everything here is the dump's: the catch animation is `DPA_` plus the
+   * attack's own strength letter, its `MarginFrame` of −1 says the defender is
+   * free the moment it starts (and its cancel window runs the whole length,
+   * which is how a parry becomes a Drive Rush), the freeze is the row's
+   * `ParryStopOwner` where it states one, and the Drive it costs is
+   * `DriveNorm`. See ADR-0054.
+   */
+  private parried(attacker: 0 | 1, them: Fighter, outcome: HitOutcome, attack: GeometryAction): boolean {
+    const strength = outcome.reaction.strength;
+    const letter = strength === "H" || strength === "S" ? "H" : strength === "M" ? "M" : "L";
+    const reaction = actionByName(them.geo, `DPA_${letter}`) ?? actionByName(them.geo, "DPA_M");
+    // No stun: the catch is `MarginFrame` −1, so the defender owes nothing. What
+    // holds them in it is the buttons, the same as the rest of the stance.
+    if (reaction) them.react(reaction, 0, 0, false);
+    const cost = outcome.driveDamage?.normal ?? 0;
+    if (cost) them.gain("drive", -Math.abs(cost));
+    this.freeze = outcome.parryStop?.owner || outcome.hitStop.owner;
+    this.hits.push({
+      frame: this.frame,
+      attacker,
+      type: "parry",
+      damage: 0,
+      stun: 0,
       action: attack.name,
       reaction: reaction?.name ?? "?",
     });
@@ -769,6 +814,10 @@ export class Match {
    * and `punishCounter` rows exist at all.
    */
   private contactType(them: Fighter, input: InputFrame, attack: GeometryAction): Contact {
+    // Drive Parry catches it whatever height it came at, which is the whole
+    // point of the parry and the reason the low/overhead rule below is only the
+    // *block*'s. See ADR-0054.
+    if (them.parrying) return "parry";
     const guarding =
       them.state.stance !== "air" &&
       them.stunned === 0 &&

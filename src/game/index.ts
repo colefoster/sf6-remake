@@ -28,6 +28,7 @@ import {
   type GeometryAction,
   type GeometryFile,
   type Trigger,
+  driveTickAt,
 } from "../data/geometry.js";
 
 /** Numpad directions. 5 is neutral. */
@@ -259,6 +260,8 @@ export class Fighter {
   readonly history = new InputHistory();
   /** The triggers available from neutral — the game's own list of what you can do. */
   private readonly neutral: { id: number; trigger: Trigger }[];
+  /** The buttons that hold Drive Parry — `MP+MK` on all 24. */
+  private readonly parryKeys: Button[];
 
   /**
    * Takes the geometry itself, never a name.
@@ -281,6 +284,9 @@ export class Fighter {
       facing,
       stance: "stand",
     };
+    this.parryKeys = (Object.values(geo.triggers ?? {}).find((t) => t?.kind?.includes("Parry"))?.keys ?? []).filter(
+      isButton,
+    );
     const ids = new Set(geo.neutralGroups.flatMap((g) => geo.cancelGroups[String(g)] ?? []));
     this.neutral = [...ids]
       .map((id) => ({ id, trigger: geo.triggers[String(id)] }))
@@ -391,6 +397,11 @@ export class Fighter {
     const air = this.state.stance === "air";
     const rate = this.burnout ? (air ? rates.burnoutAir : rates.burnout) : air ? rates.normalAir : rates.normal;
     this.gain("drive", rate);
+    // And whatever the action itself says, per frame: holding Drive Parry drains
+    // 50, walking forward regenerates 20, a throw tech hands back half a bar.
+    // One rule, three mechanics, all of them the dump's own. See ADR-0054.
+    const tick = driveTickAt(this.state.action, this.state.frame);
+    if (tick) this.gain("drive", tick);
   }
 
   private satisfied(trigger: Trigger, input: InputFrame, _presses: Button[]): boolean {
@@ -487,6 +498,13 @@ export class Fighter {
     // you are free on the one after, which is what `actionableFrame` means by
     // `marginFrame + 1`. Reading it as `>=` makes every move one frame more plus
     // than the scenario player says. See ADR-0011.
+    // Holding Drive Parry is a commitment, whatever the margin says. The parry
+    // actions all state `MarginFrame` −1, which everywhere else means "movement,
+    // leave whenever" — but the stance takes no direction and the only options
+    // it offers are its own cancel window's. Reading it as free made a parried
+    // 2MK come out at −31 for a defender who could not in fact do anything.
+    // See ADR-0054.
+    if (this.parrying) return false;
     return action.marginFrame && action.marginFrame > 0 ? frame > action.marginFrame : true;
   }
 
@@ -573,9 +591,32 @@ export class Fighter {
     this.enter(action, this.state.stance === "air" ? "air" : "stand");
   }
 
+  /** The buttons that hold Drive Parry, for a caller that wants to hold them. */
+  get parryButtons(): Button[] {
+    return [...this.parryKeys];
+  }
+
+  /** Are the parry buttons still down. The trigger names them; see ADR-0054. */
+  private holdingParry(input: InputFrame): boolean {
+    const keys = this.parryKeys;
+    return keys.length > 0 && keys.every((k) => input.buttons.includes(k));
+  }
+
   /** Is this fighter on the floor rather than merely in hitstun. */
   get down(): boolean {
     return this.state.action.name.startsWith("BAS_DN_");
+  }
+
+  /**
+   * Is this fighter holding Drive Parry.
+   *
+   * The stance is `DPA_STD_START` into `DPA_STD_Loop`, and the catch reactions
+   * `DPA_L`/`_M`/`_H` count too: parrying one hit of a string does not drop the
+   * parry. `DPA_STD_END` is the release and does not. See ADR-0054.
+   */
+  get parrying(): boolean {
+    const name = this.state.action.name;
+    return name.startsWith("DPA_") && !name.endsWith("_END");
   }
 
   /** Frames of hitstun or blockstun still owed. */
@@ -655,6 +696,14 @@ export class Fighter {
       }
       this.jumpFamily = null;
     }
+    // The parry stance loops the same way a walk does: `_START` branches into
+    // `_Loop` and `_Loop` plays again for as long as the buttons are held. The
+    // branch is type 0 and `takeBranch` only follows those inside a movement
+    // family, so the chain is walked here by name instead.
+    if (this.parrying) {
+      const loop = actionByName(this.geo, "DPA_STD_Loop");
+      if (loop) return this.enter(loop, stance === "crouch" ? "crouch" : "stand");
+    }
     // A walk's `Loop` is a loop: 114 frames of animation the game plays again
     // for as long as the direction is held. Re-entering it banks the travel and
     // starts the motion over, which is what keeps the walk speed constant.
@@ -671,6 +720,14 @@ export class Fighter {
   }
 
   private applyInput(input: InputFrame): void {
+    // Holding Drive Parry is holding the buttons. Nothing else the stick says
+    // reaches the fighter — a parry does not walk — so this comes first and the
+    // release is the only way out of it.
+    if (this.parrying) {
+      if (this.holdingParry(input)) return;
+      const end = actionByName(this.geo, "DPA_STD_END");
+      if (end) return this.enter(end, this.state.stance === "crouch" ? "crouch" : "stand");
+    }
     if (!this.actionable()) return;
     const { x, y } = lean(input.dir, this.state.facing);
     const name = this.actionName;
