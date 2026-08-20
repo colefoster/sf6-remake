@@ -810,9 +810,10 @@ function printInvulnerability(report: ReturnType<typeof verifyInvuln>): void {
 }
 
 /**
- * The armor grader. `AtemiDataListIndex` points into a table the dump does not
- * ship, so what is checkable is where the armor is and what it covers — and both
- * are what FAT writes down.
+ * The armor grader. Where the armor is and what it covers are the dump's, and
+ * both are what FAT writes down; the hit count is the atemi row's `ResistLimit`
+ * where the tree has the table (ADR-0042) and ADR-0039's FAT-derived map where
+ * it does not.
  */
 function printArmor(report: ReturnType<typeof verifyArmor>): void {
   const { totals } = report;
@@ -827,8 +828,15 @@ function printArmor(report: ReturnType<typeof verifyArmor>): void {
     `  low does not ${pct(totals.holdsLow.coversLeg, totals.holdsLow.total).padEnd(18)} FAT says nothing == the window covers the leg box`,
   );
   console.log(
-    `  hit count    ${pct(totals.hitCount.agreeing, totals.hitCount.total).padEnd(18)} the atemi index == FAT's published number of absorbed hits`,
+    `  hit count    ${pct(totals.hitCount.agreeing, totals.hitCount.total).padEnd(18)} the atemi row's ResistLimit == FAT's published number of absorbed hits`,
   );
+  // Named rather than buried in the percentage: a row the two sources disagree
+  // about is the one place the table and the prose can be told apart.
+  for (const c of report.claims.filter((x) => x.dumpHits !== undefined && x.dumpHits !== x.hits)) {
+    console.log(
+      `    ${c.character.padEnd(9)} ${c.input.padEnd(14)} atemi ${c.index.join("/")} says ${c.dumpHits} hit(s), published ${c.hits}`,
+    );
+  }
   // Armor Break has no field at all: it is what supers and Drive Reversals do.
   const brk = verifyArmorBreak();
   console.log(

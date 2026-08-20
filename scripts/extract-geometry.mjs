@@ -609,6 +609,37 @@ function chargeHold(steps) {
 }
 
 /**
+ * The atemi table — what an armored hurtbox's `AtemiDataListIndex` points at.
+ *
+ * ADR-0016 called this table "not in the dump" and ADR-0039 read its hit count
+ * off FAT's prose instead. MMDK does dump it, under a separate button: a shared
+ * `common_atemi.json` at the dump root plus per-fighter `atemi.json` overrides
+ * (only Luke, Marisa and Zangief have one). Both hold rows in the same index
+ * space, the per-character keys zero-padded ("07") and the common ones not
+ * ("7"), so both are read as numbers and the fighter's own row wins.
+ *
+ * Kept: `ResistLimit`, the number of hits the armor absorbs, and the three
+ * ratios — percentages applied to what an absorbed hit does. See docs/adr/0042.
+ */
+function extractAtemi(commonFile, charFile) {
+  const rows = {};
+  for (const file of [commonFile, charFile]) {
+    for (const [key, row] of Object.entries(file ?? {})) {
+      if (!row || typeof row !== "object") continue;
+      const index = Number(key);
+      if (!Number.isInteger(index)) continue;
+      rows[index] = {
+        hits: row.ResistLimit ?? 0,
+        damageRatio: row.DamageRatio ?? 100,
+        recoverRatio: row.RecoverRatio ?? 0,
+        gaugeRatio: row.GaugeRatio ?? 0,
+      };
+    }
+  }
+  return Object.keys(rows).length ? rows : undefined;
+}
+
+/**
  * The fighter's own constants, from `char_info.json` — health, meter maxima, and
  * the Drive gauge's regeneration rates.
  *
@@ -1309,15 +1340,21 @@ function calibrate(actions) {
 
 async function buildCharacter(fatName, dumpDir, fat, source) {
   const dir = path.join(RAW, dumpDir);
-  const [rectsFile, movesFile, hitFile, groupFile, triggerFile, infoFile, commandFile] = await Promise.all([
-    readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
-    readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
-    readFile(path.join(dir, "HIT_DT.json"), "utf8").then(JSON.parse).catch(() => null),
-    readFile(path.join(dir, "tgroups.json"), "utf8").then(JSON.parse).catch(() => null),
-    readFile(path.join(dir, "triggers.json"), "utf8").then(JSON.parse).catch(() => null),
-    readFile(path.join(dir, "char_info.json"), "utf8").then(JSON.parse).catch(() => null),
-    readFile(path.join(dir, "commands.json"), "utf8").then(JSON.parse).catch(() => null),
-  ]);
+  const [rectsFile, movesFile, hitFile, groupFile, triggerFile, infoFile, commandFile, atemiFile, commonAtemiFile] =
+    await Promise.all([
+      readFile(path.join(dir, "rects.json"), "utf8").then(JSON.parse),
+      readFile(path.join(dir, "moves_dict.json"), "utf8").then(JSON.parse),
+      readFile(path.join(dir, "HIT_DT.json"), "utf8").then(JSON.parse).catch(() => null),
+      readFile(path.join(dir, "tgroups.json"), "utf8").then(JSON.parse).catch(() => null),
+      readFile(path.join(dir, "triggers.json"), "utf8").then(JSON.parse).catch(() => null),
+      readFile(path.join(dir, "char_info.json"), "utf8").then(JSON.parse).catch(() => null),
+      readFile(path.join(dir, "commands.json"), "utf8").then(JSON.parse).catch(() => null),
+      // The atemi table ships as two layers, and the shared one sits at the dump
+      // root rather than under the fighter. Absent from any dump taken before
+      // MMDK's "Dump Atemis" button was found; the read side falls back then.
+      readFile(path.join(dir, "atemi.json"), "utf8").then(JSON.parse).catch(() => null),
+      readFile(path.join(RAW, "common_atemi.json"), "utf8").then(JSON.parse).catch(() => null),
+    ]);
   const rect = makeRects(rectsFile);
 
   const actions = [];
@@ -1391,6 +1428,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
   }
 
   const id = slug(fatName);
+  const atemi = extractAtemi(commonAtemiFile, atemiFile);
   const out = {
     character: fatName,
     id,
@@ -1401,6 +1439,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
     },
     calibration: calibrate(actions),
     fighter: extractFighter(infoFile),
+    atemi,
     hitData: extractHitData(hitFile),
     cancelGroups,
     triggers,
@@ -1419,6 +1458,7 @@ async function buildCharacter(fatName, dumpDir, fat, source) {
       withCancels: actions.filter((a) => a.cancels).length,
       cancellable: moves.filter((m) => m.cancel).length,
       cancelMismatches: cancelMismatches.length,
+      atemi: Object.keys(atemi ?? {}).length,
     },
     moves,
     unmapped,

@@ -26,9 +26,10 @@
  *   on the floor and gets up, and a throw is an unblockable horizontal range
  *   check against the throwable box.
  *
-   *   Armor as of ADR-0037: an armored hurtbox absorbs the hit, fireballs
+ *   Armor as of ADR-0037: an armored hurtbox absorbs the hit, fireballs
  *   included, and a super or a Drive Reversal breaks through. As of ADR-0039 it
- *   runs out — two hits on a Drive Impact — and absorbing costs Drive.
+ *   runs out — two hits on a Drive Impact — and absorbing costs Drive. As of
+ *   ADR-0042 the atemi table says so itself, and halves the damage.
  *
  *   Wake-up and teching as of ADR-0041: a soft knockdown's `DownTime` can be
  *   quick-risen out of, two throws at once tech into `NGE`/`NGF`, and a Drive
@@ -46,7 +47,9 @@ import {
   hitKeysAt,
   knocksDown,
   armorAt,
+  armorDamage,
   armorHits,
+  atemiRow,
   breaksArmor,
   flightEnds,
   hardKnockdown,
@@ -638,17 +641,23 @@ export class Match {
     const window = armorAt(them.state.action, them.state.frame, part);
     if (!window) return false;
     if (breaksArmor(me.geo, attack)) return false;
-    // Armor runs out. How many hits it takes is not in the dump — the atemi
-    // table is not shipped — but the index into that table is, and FAT publishes
-    // the count for every index the roster uses. Drive Impact's is two. Spent
-    // per window per playthrough of the action, which is what the instance
-    // counter is for. See ADR-0039.
-    const allowed = armorHits(window);
+    // Armor runs out. The count is `ResistLimit` on the atemi row the window's
+    // index resolves to, or — for a dump taken before the atemi table was found
+    // — the count ADR-0039 read off FAT for that index. Drive Impact's is two
+    // either way. Spent per window per playthrough of the action, which is what
+    // the instance counter is for. See ADR-0042.
+    const allowed = armorHits(them.geo, window);
     const key = `${attacker === 0 ? 1 : 0}:${them.instance}:${window.index}`;
     const spent = (this.armorSpent.get(key) ?? 0) + 1;
     if (allowed !== undefined && spent > allowed) return false;
     this.armorSpent.set(key, spent);
-    this.health[attacker === 0 ? 1 : 0] -= outcome.damage;
+    // What the absorbed hit actually costs, from the atemi row: `DamageRatio`
+    // 50 halves it and `RecoverRatio` 50 makes half of what is left grey.
+    // ADR-0037 applied the whole number and no grey at all. See ADR-0042.
+    const victim = attacker === 0 ? 1 : 0;
+    const { damage, grey } = armorDamage(atemiRow(them.geo, window), outcome.damage);
+    this.health[victim] -= damage;
+    this.recoverable[victim] += grey;
     // Absorbing costs the defender Drive: `DriveNorm` on the row that landed,
     // the same field a block reads. ADR-0037 left this unapplied.
     const drain = outcome.driveDamage?.normal;
@@ -658,7 +667,7 @@ export class Match {
       frame: this.frame,
       attacker,
       type: "hit",
-      damage: outcome.damage,
+      damage,
       stun: 0,
       action: attack.name,
       reaction: "ARMOR",

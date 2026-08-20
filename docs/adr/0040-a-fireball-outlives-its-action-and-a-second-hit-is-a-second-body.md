@@ -90,11 +90,15 @@ Add `src/verify/projectiles.ts`, grading launch speed and special hit count.
 
 ## Not settled
 
-- **Ryu's 236HP and 236PP are mapped to the wrong actions**, and the speed check
-  is what says so — 12 and 14.5 against a published 0.085 and 0.112. They are
-  most likely the Denjin variants. Nothing is re-mapped here: the mapper is
+- **Ryu's 236HP is mapped to the wrong action** — 12 against a published 0.085,
+  most likely the Denjin variant. Nothing is re-mapped here: the mapper is
   ADR-0021's and changing it moves every other check, so this ADR reports the
   disagreement and leaves the fix to be done deliberately.
+  **236PP was not the mapper.**
+  [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md) grades a live
+  dump: OD Hadoken's `SPA_HADO(3) PROJ` is 9.5 in the pinned snapshot and 11.2 in
+  the current game, which is FAT's 0.112 exactly. The residual was version skew.
+  236HP's is not — its action is 8.5 in both trees.
 - **A super's hit count is not its body count.** Nine published multi-hit
   projectile supers put fewer bodies in the air than they have hits, and what
   repeats them is not decoded.

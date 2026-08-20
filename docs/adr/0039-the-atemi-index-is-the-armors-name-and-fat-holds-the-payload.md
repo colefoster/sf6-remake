@@ -5,6 +5,9 @@
 - Extends: [ADR-0016](./0016-armor-is-per-hurtbox.md),
   [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md),
   [ADR-0037](./0037-armor-absorbs-and-the-boxes-that-connected-are-the-ones-that-matter.md)
+- Corrected by: [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md) —
+  the table *is* dumped, by a different MMDK button. It confirms rows 1 and 7 and
+  contradicts row 3: `ResistLimit` there is **2**, not the 1 inferred below.
 
 ## Context
 
@@ -85,15 +88,18 @@ FAT's published hit count.
 
 ## Not settled
 
-- **The atemi table is still not in the dump.** Three of its rows are known by
-  what FAT says about them; everything else an atemi row might carry — whether
-  the armor takes reduced damage, what it does to the attacker — is unknown, and
-  every armor in the runtime still behaves identically apart from its count.
+- ~~**The atemi table is still not in the dump.**~~ It is, behind MMDK's *Dump
+  Atemis* button —
+  [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md). The armor does
+  take reduced damage: `DamageRatio` 50 on every row. `ARMOR_HITS` survives as
+  the fallback for a tree extracted from a dump that predates the atemi dump,
+  which the pinned one is.
 - **`ArmorPoint` 100 and `ArmorTimer` 50/30 are unread.** The 30 belongs to
   Marisa and Zangief and is the only per-fighter variation in either number, so
   it is probably not noise.
-- **Armor damage is not recoverable.** SF6 makes it grey health; `recoverable`
-  is on the hit row and the runtime has no grey-health pool to put it in.
+- ~~**Armor damage is not recoverable.**~~ `RecoverRatio` 50 on the atemi row is
+  read as the share that is, and it goes into the pool ADR-0041 added. See
+  [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md).
 - **Armor break is still a rule about the move, not the hit** — a super that
   whiffs its armored frames counts as breaking, because the test never looks at
   timing. Unchanged from ADR-0037.

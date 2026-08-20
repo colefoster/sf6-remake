@@ -16,12 +16,33 @@ No ADR has ever separated these. Until the diff below is run, "93.2%" means
 residual is standing on sand. This is worth remembering before attributing a
 few percent to a clever mechanic.
 
+## The atemi table is a separate button
+
+MMDK's character dump has no atemi table, which three ADRs were written around.
+Its **Dump Atemis** button does: `common_atemi.json` at the dump root, plus
+`<Char>/atemi.json` for the fighters with private rows (Luke, Marisa, Zangief).
+Press it while you are in there — `extract-geometry.mjs` reads both layers if
+they are present and falls back to ADR-0039's FAT-derived hit counts if they are
+not.
+
+An atemi **index is only meaningful with the table from its own build**. Between
+the pinned snapshot and the Aug-2026 dump, Luke's Sokutou moved from row 6 to 5
+and Zangief's 5HP from 6 to 7. Pasting one dump's table onto another's geometry
+resolves armor onto the wrong row — silently, and in Zangief's case onto a row
+that takes no damage at all. See
+[ADR-0042](../adr/0042-the-atemi-table-was-behind-another-button.md).
+
 ## What is missing from the pinned snapshot
 
 Geometry exists for 24 of FAT's 30. Absent: **Alex, C.Viper, Elena, Ingrid,
 Mai, Sagat**. They are excluded from every geometry-based check and cannot be
 played in the runtime. Terry and M.Bison are present, which dates the snapshot
 to roughly mid-Year-2.
+
+The Aug-2026 live dump in `data/raw/mmdk-fresh/` covers **21** — the same roster
+minus **Ed, M.Bison and Terry**, which nobody has dumped by hand yet. So neither
+tree contains the other, and re-pinning would trade three playable fighters for
+a year of patches. Both stay.
 
 ## Getting a live dump
 

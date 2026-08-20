@@ -118,9 +118,10 @@ the field's *existence* is what invites a decode that cannot happen.
   which one a notation means.
   [ADR-0018](./0018-cmnname-says-what-a-move-is.md) does it, through the trigger
   levels, and finds that a super's frames cannot be graded against FAT's at all.
-- **What the atemi table rows mean** is unchanged from ADR-0016: the table is not
-  in the dump. This ADR closes the attack side by establishing there is nothing
-  there to read, not by reading it.
+- ~~**What the atemi table rows mean**~~ — the *attack* side is still empty, but
+  the table itself is not missing:
+  [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md) dumps it from
+  the game through MMDK's atemi button.
 - **The rule has two counterexamples now.**
   [ADR-0021](./0021-specials-map-through-the-triggers.md) maps 193 specials, and
   two of them — Marisa's `623PP` and `236KK` — are published as Armor Break while

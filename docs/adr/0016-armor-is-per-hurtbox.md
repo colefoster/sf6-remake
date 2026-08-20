@@ -6,6 +6,9 @@
   [ADR-0010](./0010-the-grader.md), [ADR-0014](./0014-per-frame-invulnerability.md)
 - Extended by: [ADR-0017](./0017-armor-break-is-a-rule-not-a-flag.md) — the attack
   side turns out to be empty, and the Drive-move mis-mapping below is structural.
+- Extended by: [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md) —
+  "there is no atemi table in the dump" was true of the character dump only. MMDK
+  dumps it under its own button, and it has the hit count and three ratios.
 
 ## Context
 
@@ -131,9 +134,11 @@ the ordinary mapping. The rate is unchanged.)
 
 ## Not settled
 
-- **What each atemi row actually does.** The table is not in the dump, so the rows
-  can only ever be characterised from outside. Rows 2, 3, 6 and 8 have no
-  reachable published claim at all.
+- ~~**What each atemi row actually does.**~~ Closed by
+  [ADR-0042](./0042-the-atemi-table-was-behind-another-button.md): the table is
+  dumped by a different MMDK button, and it carries `ResistLimit` plus a damage,
+  recover and gauge ratio per row. It also says two hits where FAT says one for
+  row 3, which is the first place the two sources contradict each other here.
 - ~~**The low-attack half of the decode rests on two claims**~~ — partly closed by
   [ADR-0021](./0021-specials-map-through-the-triggers.md), which maps specials
   through the triggers' own family and strength. Marisa's Phalanx family joins and

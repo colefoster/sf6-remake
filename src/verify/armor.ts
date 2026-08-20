@@ -3,9 +3,10 @@
  * armor notes.
  *
  * Like `invuln.ts` this compares a frame range to a sentence, because FAT records
- * armor only in `extraInfo`. Unlike it, the field being graded has no payload in
- * the dump at all: `AtemiDataListIndex` points into an atemi table MMDK does not
- * ship, so the index says *which* armor a box has and nothing about what it does.
+ * armor only in `extraInfo`. `AtemiDataListIndex` points into an atemi table
+ * which MMDK does dump, under its own button (ADR-0042) — so the hit count is a
+ * genuine two-source check wherever the tree being graded has the table, and a
+ * fallback onto ADR-0039's FAT-derived map where it does not.
  * What the dump does carry is where the armor is and which hurtboxes it covers,
  * and those are the two things FAT writes down.
  *
@@ -35,6 +36,8 @@ export interface ArmorClaim {
   dump: [number, number] | undefined;
   /** How many hits of armor FAT credits the move with. */
   hits: number;
+  /** How many the dump says: the atemi row's `ResistLimit`. See ADR-0042. */
+  dumpHits: number | undefined;
   /** The atemi table rows the dump's window is built from. */
   index: number[];
   /** FAT says a low attack goes under this armor. */
@@ -57,7 +60,7 @@ export interface ArmorReport {
     losesToLow: { total: number; bodyOnly: number };
     /** Claims where FAT says no such thing. */
     holdsLow: { total: number; coversLeg: number };
-    /** Does the atemi index predict FAT's published hit count? See ADR-0039. */
+    /** The armor's own `ResistLimit` against FAT's published count. ADR-0042. */
     hitCount: { total: number; agreeing: number };
   };
 }
@@ -148,6 +151,7 @@ export function verifyArmor(characters?: string[]): ArmorReport {
           fat: parsed.range,
           dump,
           hits: parsed.hits,
+          dumpHits: windows.length === 1 ? armorHits(geo, windows[0]!) : undefined,
           index: [...new Set(windows.map((w) => w.index))].sort((a, b) => a - b),
           losesToLow: parsed.losesToLow,
           coversLeg: windows.some((w) => w.covers.leg),
@@ -167,16 +171,15 @@ export function verifyArmor(characters?: string[]): ArmorReport {
     holdsLow: { total: 0, coversLeg: 0 },
     hitCount: { total: 0, agreeing: 0 },
   };
-  // Does the atemi index determine the hit count? The table it indexes is not
-  // shipped, so this is the only way to find out whether the index is the
-  // payload's name: every claim on the same index should publish the same
-  // count. See ADR-0039.
+  // Does the armor's own hit count match the one FAT publishes? Where the dump
+  // ships the atemi table this is `ResistLimit` against the prose, an ordinary
+  // two-source check. Where it does not, `armorHits` falls back to ADR-0039's
+  // FAT-derived map and the check grades that against its own source — which is
+  // circular, and is why the report says which it is. See ADR-0042.
   for (const c of claims) {
-    if (c.index.length !== 1) continue;
+    if (c.dumpHits === undefined) continue;
     totals.hitCount.total++;
-    if (armorHits({ start: 0, end: 0, index: c.index[0]!, covers: { head: false, body: false, leg: false } }) === c.hits) {
-      totals.hitCount.agreeing++;
-    }
+    if (c.dumpHits === c.hits) totals.hitCount.agreeing++;
   }
   for (const c of claims) {
     if (!c.dump) totals.absent++;

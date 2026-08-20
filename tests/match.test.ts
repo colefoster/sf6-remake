@@ -713,9 +713,10 @@ describe("armor", () => {
   });
 
   it("runs out: Drive Impact absorbs two hits and no more", () => {
-    // The count is FAT's, reached through the atemi index — the table itself is
-    // not in the dump. Mash a light into the window and the third one lands for
-    // real. See ADR-0039.
+    // Two, from the atemi row's `ResistLimit` where the tree has the table and
+    // from ADR-0039's FAT-derived map where it does not — the pinned tree's
+    // case. Mash a light into the window and the third one lands for real.
+    // See ADR-0042.
     const mashed = versusDriveImpact((i) => (i % 4 < 2 ? hold(5, ["LP"]) : hold(5)));
     const mine = mashed.hits.filter((h) => h.attacker === 0);
     expect(mine.filter((h) => h.reaction === "ARMOR")).toHaveLength(2);
@@ -733,6 +734,9 @@ describe("armor", () => {
   });
 
   it("has its hit count named by the atemi index, on every published claim", () => {
+    // On the pinned tree this grades ADR-0039's map against the source it came
+    // from, which is circular; a tree with the atemi table grades `ResistLimit`
+    // against FAT instead, and disagrees once (E.Honda's 46PP). See ADR-0042.
     const { totals } = verifyArmor();
     expect(totals.hitCount.total).toBe(29);
     expect(totals.hitCount.agreeing).toBe(29);

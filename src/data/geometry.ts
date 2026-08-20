@@ -401,6 +401,11 @@ export interface GeometryFile {
   } | null;
   /** Health, meter maxima and Drive regen, from `char_info.json`. See ADR-0025. */
   fighter: FighterInfo | null;
+  /**
+   * The atemi table an armored hurtbox's index points into, by index. Absent
+   * from dumps taken before MMDK's atemi dump was found. See ADR-0042.
+   */
+  atemi?: Record<string, AtemiRow>;
   counts: Record<string, number>;
   moves: MoveMapping[];
   unmapped: { input: string; name: string; category: string }[];
@@ -679,23 +684,69 @@ export function armorAt(
 }
 
 /**
- * How many hits an armor absorbs before it stops, by atemi index.
+ * One row of the atemi table: what an armored hurtbox does with the hit it eats.
  *
- * The atemi table itself is not in the dump (ADR-0016), so the index is a
- * discriminator with no payload here. FAT supplies the payload: it publishes a
- * hit count in `extraInfo` for every armored move in the roster, and across all
- * 29 published claims the index determines it — 1 is Drive Impact on all 24
- * fighters and is two hits, 3 is E.Honda's OD Headbutt and 7 is Marisa's
- * Gladius family, both one. No index is credited with two different counts.
+ * `hits` is `ResistLimit`, the number of hits the armor absorbs before it stops
+ * — the number ADR-0039 had to read off FAT's prose because the table was
+ * thought not to be shipped. The ratios are percentages, and every armor row in
+ * the roster carries 50 for all three; the rows that carry 0 are the ones that
+ * take no damage at all. See ADR-0042.
+ */
+export interface AtemiRow {
+  hits: number;
+  /** Percent of the hit's damage the armored fighter actually takes. */
+  damageRatio: number;
+  /** Percent of that damage which is recoverable ("grey") rather than gone. */
+  recoverRatio: number;
+  /** Percent of the hit's gauge effect. Extracted, unread — see ADR-0042. */
+  gaugeRatio: number;
+}
+
+/**
+ * How many hits an armor absorbs before it stops, by atemi index — the fallback
+ * for a dump with no atemi table.
  *
- * Three of the table's rows, not the table. An index outside this map is armor
- * the roster never uses and the count is unknown. See ADR-0039.
+ * ADR-0039 derived this from FAT, three rows of it: across 29 published claims
+ * the index determines the count, 1 being Drive Impact on all 24 fighters at two
+ * hits and 3 and 7 at one. ADR-0042 has the table itself, which agrees on 1 and
+ * 7 and says **2** where FAT says 1 for row 3. Kept because the pinned dump
+ * predates the atemi dump and still resolves through here.
  */
 const ARMOR_HITS: Record<number, number> = { 1: 2, 3: 1, 7: 1 };
 
-/** What an armor window absorbs before breaking, or undefined if unpublished. */
-export function armorHits(window: ArmorWindow): number | undefined {
-  return ARMOR_HITS[window.index];
+/**
+ * The atemi row an armor window resolves to, if the dump shipped the table.
+ *
+ * Per fighter, because the table is two layers and the fighter's own rows win:
+ * the same index means different armor on different characters, and the index
+ * space itself moved between game builds. See ADR-0042.
+ */
+export function atemiRow(geo: GeometryFile, window: ArmorWindow): AtemiRow | undefined {
+  return geo.atemi?.[String(window.index)];
+}
+
+/** What an armor window absorbs before breaking, or undefined if unknown. */
+export function armorHits(geo: GeometryFile, window: ArmorWindow): number | undefined {
+  return atemiRow(geo, window)?.hits ?? ARMOR_HITS[window.index];
+}
+
+/**
+ * What an absorbed hit costs: total health, and how much of it grows back.
+ *
+ * `DamageRatio` halves the damage — that much is unambiguous. Where the grey
+ * health comes from is a reading: `RecoverRatio` is the share of the damage
+ * taken that is recoverable, which is the behaviour SF6 shows (armor damage
+ * comes back) and closes ADR-0039's last open item. `ConvertRatio` is 100 on
+ * every row that does damage and 0 on every row that does not, so it is
+ * perfectly collinear with `DamageRatio` and could be the conversion instead;
+ * nothing in the table separates them. Recorded as the reading it is.
+ *
+ * With no table, both ratios are the identity and this is ADR-0037's behaviour:
+ * full damage, no grey.
+ */
+export function armorDamage(row: AtemiRow | undefined, damage: number): { damage: number; grey: number } {
+  const taken = Math.floor((damage * (row?.damageRatio ?? 100)) / 100);
+  return { damage: taken, grey: Math.floor((taken * (row?.recoverRatio ?? 0)) / 100) };
 }
 
 /**

@@ -18,8 +18,12 @@ import {
   cancelTargets,
   cancelOptions,
   affordable,
+  armorDamage,
+  armorHits,
+  atemiRow,
   BAR,
 } from "../src/data/geometry.js";
+import type { ArmorWindow, AtemiRow, GeometryFile } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -439,5 +443,58 @@ describe("what a cancel costs", () => {
     expect(affordable(options, {}).every((o) => !o.trigger.drive && !o.trigger.super)).toBe(true);
     expect(affordable(options, { drive: 2 * BAR }).length).toBeGreaterThan(affordable(options, {}).length);
     expect(affordable(options, { drive: 6 * BAR, super: 3 * BAR }).length).toBe(options.length);
+  });
+});
+
+/**
+ * The atemi table. See ADR-0042.
+ *
+ * The pinned dump predates MMDK's atemi dump, so `geo.atemi` is absent here and
+ * every row below is synthesised: what is under test is the resolution and the
+ * arithmetic, not the numbers, which only a tree extracted from a dump carrying
+ * `common_atemi.json` has.
+ */
+describe("atemi rows", () => {
+  const window = (index: number): ArmorWindow => ({
+    start: 1,
+    end: 27,
+    index,
+    covers: { head: true, body: true, leg: true },
+  });
+  const withTable = (rows: Record<string, AtemiRow>): GeometryFile =>
+    ({ ...geo, atemi: rows }) as GeometryFile;
+  const row = (over: Partial<AtemiRow> = {}): AtemiRow => ({
+    hits: 2,
+    damageRatio: 50,
+    recoverRatio: 50,
+    gaugeRatio: 50,
+    ...over,
+  });
+
+  it("takes the hit count from the table where the dump ships one", () => {
+    expect(armorHits(withTable({ 1: row({ hits: 3 }) }), window(1))).toBe(3);
+  });
+
+  it("falls back to the count FAT published, per ADR-0039, where it does not", () => {
+    // The pinned tree's own case: Drive Impact's two hits, and an index the
+    // roster never uses staying unknown rather than defaulting.
+    expect(geo.atemi).toBeUndefined();
+    expect(armorHits(geo, window(1))).toBe(2);
+    expect(armorHits(geo, window(4))).toBeUndefined();
+  });
+
+  it("lets a fighter's own row win, which is why the index alone means nothing", () => {
+    // Luke, Marisa and Zangief carry their own table, in the same index space
+    // as the common one. Same index, different armor.
+    const own = atemiRow(withTable({ 7: row({ hits: 1, damageRatio: 0 }) }), window(7));
+    expect(own).toEqual(row({ hits: 1, damageRatio: 0 }));
+  });
+
+  it("halves an absorbed hit and makes half of what is left grey", () => {
+    expect(armorDamage(row(), 800)).toEqual({ damage: 400, grey: 200 });
+    // A row that takes no damage takes none, and there is nothing to recover.
+    expect(armorDamage(row({ damageRatio: 0, recoverRatio: 0 }), 800)).toEqual({ damage: 0, grey: 0 });
+    // No table is ADR-0037's behaviour: the whole number, and no grey health.
+    expect(armorDamage(undefined, 800)).toEqual({ damage: 800, grey: 0 });
   });
 });
