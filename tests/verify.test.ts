@@ -114,7 +114,9 @@ describe("the game's data against the published frame data", () => {
     expect(share("blockstun")).toBeGreaterThan(0.75);
     // Deliberately a ceiling, not a floor: this is the number to beat, and it is
     // recorded so that improving the sim's special handling shows up as a break.
-    expect(share("advantage")).toBeLessThan(0.6);
+    // It has been beaten once — ADR-0056 took it from 0.59 to 0.66 by reading
+    // the twin's clock — and the ceiling moved up with it.
+    expect(share("advantage")).toBeLessThan(0.7);
   });
 
   it("counts a move's hits by HitID per window, and the rival readings lose", () => {

@@ -318,7 +318,18 @@ function extractAction(action, rect, unresolvedPush) {
 
   const branches = ordered(action.BranchKey)
     .filter((k) => typeof k.Action === "number" && k.Action > 0)
-    .map((k) => ({ frame: (k._StartFrame ?? 0) + 1, action: k.Action, type: k.Type ?? null }));
+    .map((k) => ({
+      frame: (k._StartFrame ?? 0) + 1,
+      action: k.Action,
+      type: k.Type ?? null,
+      // Where the twin picks up. `_InheritFrameX` carries the base action's own
+      // frame across, so the twin plays on one shared clock; without it the twin
+      // restarts at `ActionFrame` and its `MarginFrame` is a fresh count. Which
+      // one it is decides whether FAT's bracket is a pair of totals or a pair of
+      // recoveries. See ADR-0056.
+      inherit: !!(k._InheritFrame || k._InheritFrameX),
+      actionFrame: k.ActionFrame ?? 0,
+    }));
 
   const out = {
     id: action.id,

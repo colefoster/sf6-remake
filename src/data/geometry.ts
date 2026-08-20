@@ -208,7 +208,18 @@ export interface GeometryAction {
   gauge?: { index: number; per: number; start: number; end: number }[];
   /** Where an airborne action puts itself down, and that action's own margin. */
   lands?: { action: number; margin: number };
-  branches?: { frame: number; action: number; type: number | null }[];
+  branches?: {
+    frame: number;
+    action: number;
+    type: number | null;
+    /**
+     * `_InheritFrameX`: the twin carries on the base action's clock. Without it
+     * the twin restarts at `actionFrame` and counts its own frames. See
+     * ADR-0056.
+     */
+    inherit?: boolean;
+    actionFrame?: number;
+  }[];
   continues?: number;
   mot?: string;
 }
@@ -1085,12 +1096,44 @@ export function contactAction(
   action: GeometryAction,
   kinds: (keyof typeof BRANCH)[],
 ): GeometryAction | undefined {
+  return contactHandover(geo, action, kinds)?.action;
+}
+
+export interface Handover {
+  action: GeometryAction;
+  branch: NonNullable<GeometryAction["branches"]>[number];
+}
+
+/** The same lookup, keeping the branch — the caller needs how the twin's clock starts. */
+export function contactHandover(
+  geo: GeometryFile,
+  action: GeometryAction,
+  kinds: (keyof typeof BRANCH)[],
+): Handover | undefined {
   for (const kind of kinds) {
     const branch = (action.branches ?? []).find((b) => b.type === BRANCH[kind] && b.action !== action.id);
     const next = branch && actionById(geo, branch.action);
-    if (next) return next;
+    if (next && branch) return { action: next, branch };
   }
   return undefined;
+}
+
+/**
+ * The twin's own frame at a frame of the base action.
+ *
+ * Two actions, two clocks. An inheriting branch shares the base's, so the twin's
+ * `MarginFrame` is in the base's frame space and FAT's bracketed *total* is the
+ * pair. A branch that does not inherit restarts the twin at `actionFrame`, so
+ * its `MarginFrame` counts from there and FAT's bracketed *recovery* is the pair
+ * instead. Reading the second kind on the first kind's clock made a blocked
+ * sweep recover **earlier** than a whiffed one. See ADR-0056.
+ *
+ * Answers for frames before the branch too: the count runs negative, which is
+ * the frames of the base still left to play before the handover happens.
+ */
+export function handoverFrame(handover: Handover, frame: number): number {
+  const { branch } = handover;
+  return branch.inherit ? frame : (branch.actionFrame ?? 0) + (frame - branch.frame);
 }
 
 /** The Drive gauge's index in an action's `gauge` events. */

@@ -679,8 +679,11 @@ export class Fighter {
    * The dump branches it a frame or two past its last active frame into a twin
    * with its own `MarginFrame` — GUARD when it was blocked, TOUCH when it
    * connected, SWING when it hit nothing — which is the pair FAT publishes as
-   * `14(16)`. The branch keeps the frame (`_InheritFrameX`), so the twin picks
-   * up where the base left off rather than restarting. See ADR-0055.
+   * `14(16)`. Where the branch says `_InheritFrameX` the twin picks up where
+   * the base left off; where it does not, the twin restarts at the branch's
+   * `ActionFrame` and counts its own frames — which is the difference between
+   * FAT's bracket being a pair of totals and a pair of recoveries.
+   * See ADR-0055, ADR-0056.
    */
   private handOver(): void {
     if (!this.contacted) return;
@@ -689,8 +692,9 @@ export class Fighter {
       (b) => b.frame === frame && b.type === BRANCH[this.contacted!] && b.action !== action.id,
     );
     const next = branch && actionById(this.geo, branch.action);
-    if (!next) return;
+    if (!next || !branch) return;
     this.state.action = next;
+    if (!branch.inherit) this.state.frame = branch.actionFrame ?? 0;
     this.contacted = null;
   }
 

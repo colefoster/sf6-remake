@@ -142,6 +142,23 @@ function plainInt(value: unknown): number | undefined {
 }
 
 /**
+ * FAT's total, which it publishes as a bracketed list when the move has more
+ * than one action: `24(26)`, and `22(23)(24)` once.
+ *
+ * ADR-0055 found the bracket is the move's twins — the base action and whatever
+ * a `GUARD`/`TOUCH`/`SWING` branch hands it over to, each with its own
+ * `MarginFrame`. `plainInt` dropped every one of these rows, so 89 clean moves
+ * were getting no `total` comparison at all. The leading number is the base
+ * action's, which is what this check grades: measured, it matches 77 of the 89.
+ */
+function publishedTotal(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  const m = /^(\d+)(?:\(\d+\))*$/.exec(value.trim());
+  return m ? Number.parseInt(m[1]!, 10) : undefined;
+}
+
+/**
  * FAT states the starter penalty as prose: "20% Start", "30% Start". Only that
  * form is graded — "20% Immediate", "15% Multiplier (Mid-Combo)" and
  * "Combo (5% extra)" are different quantities wearing the same column.
@@ -417,7 +434,7 @@ export function verify(characters?: string[], options: VerifyOptions = {}): Repo
       const expected: Record<CheckName, number | undefined> = {
         hitstun: plainInt(columns.hitstun),
         blockstun: add(plainInt(columns.blockstun), guardRelease),
-        total: plainInt(columns.total),
+        total: publishedTotal(columns.total),
         cancelEnd: plainInt(columns[confirmColumn]),
         advantage: signedInt(move.fat.onBlock),
         damage: plainInt(columns.dmg),

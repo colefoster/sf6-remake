@@ -28,7 +28,8 @@ import type { Box, Character, Move } from "../domain/types.js";
 import {
   actionFor,
   actionableFrame,
-  contactAction,
+  contactHandover,
+  handoverFrame,
   activeWindows,
   hitDataFor,
   hitboxesAt,
@@ -366,13 +367,18 @@ export function runScenario(
         // dump branches it into a twin whose `MarginFrame` is the recovery FAT
         // publishes in brackets. GUARD names the blocked case and TOUCH the
         // connecting one; SWING, the whiff, is not this. See ADR-0055.
-        const handover = contactAction(attacker.geo, attacker.action, type === "block" ? ["GUARD", "TOUCH"] : ["TOUCH", "GUARD"]);
-        const free = actionableFrame(handover ?? attacker.action);
+        // The twin does not always run on the base's clock. `_InheritFrameX`
+        // carries the frame across; without it the twin restarts, and its
+        // `MarginFrame` has to be counted from there or a blocked sweep reads
+        // as recovering sooner than a whiffed one. See ADR-0056.
+        const handover = contactHandover(attacker.geo, attacker.action, type === "block" ? ["GUARD", "TOUCH"] : ["TOUCH", "GUARD"]);
+        const free = actionableFrame(handover?.action ?? attacker.action);
+        const clock = handover ? handoverFrame(handover, frame) : frame;
         if (rush !== undefined) {
           attackerActionable = Math.max(0, (opens ?? frame) - frame) + rush;
           recoverySource = "drive-rush";
         } else if (free) {
-          attackerActionable = free.frame - frame;
+          attackerActionable = free.frame - clock;
           recoverySource = free.source;
         } else if (attacker.move.recovery > 0) {
           attackerActionable = attacker.move.active - depth + attacker.move.recovery;
