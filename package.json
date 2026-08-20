@@ -14,6 +14,7 @@
     "web:build": "node scripts/build-site.mjs",
     "geometry": "node scripts/extract-geometry.mjs",
     "geometry:2024": "node scripts/fetch-mmdk.mjs && MMDK_RAW=data/raw/mmdk-2024 GEOMETRY_OUT=/tmp/geometry-2024 node scripts/extract-geometry.mjs",
+    "pose:audit": "tsx scripts/pose-audit.ts",
     "web": "node scripts/build-site.mjs && python3 -m http.server 8777 --directory web",
     "play": "node scripts/build-play.mjs && python3 -m http.server 8777 --directory web",
     "build:play": "node scripts/build-play.mjs"

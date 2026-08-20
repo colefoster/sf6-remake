@@ -149,6 +149,8 @@ let match = null;
 let paused = false;
 let showBoxes = true;
 let showFigures = true;
+/** Set by the control surface: draw one fighter, at a fixed zoom. */
+let framing = null;
 let logged = 0;
 /** Last frame's pose per side, so a part with no hurtbox can be held over. */
 let poses = [null, null];
@@ -234,7 +236,11 @@ function draw() {
   if (!match) return;
 
   const [a, b] = match.fighters;
-  const view = viewFor(canvas, [a.position().x, b.position().x], match.half);
+  const eyes = framing
+    ? [match.fighters[framing.side].position().x - framing.span / 2 + 210,
+       match.fighters[framing.side].position().x + framing.span / 2 - 210]
+    : [a.position().x, b.position().x];
+  const view = viewFor(canvas, eyes, match.half);
   drawStage(ctx, view, match.half);
 
   // Poses advance with the match, not with the render: holding a vanished part
@@ -245,6 +251,7 @@ function draw() {
   }
 
   for (const [i, fighter] of match.fighters.entries()) {
+    if (framing?.solo && i !== framing.side) continue;
     if (showBoxes) drawBoxes(ctx, view, worldBoxes(fighter));
     if (showFigures && poses[i]) drawFigure(ctx, view, poses[i], i);
     // origin marker and facing
@@ -334,7 +341,156 @@ function report() {
   logged = match.hits.length;
 }
 
+/* ---- control surface ------------------------------------------------------ */
+
+/**
+ * `window.play` — the page driven by a script instead of by hands.
+ *
+ * Hunting jank in the figure means looking at a named action on a named frame,
+ * and reaching one through the keyboard is a timing game: a move is six key
+ * events and a guess at how many steps land inside its active window. Worse, a
+ * move you cannot input from neutral cannot be looked at at all, which is most
+ * of a 309-action roster.
+ *
+ * So the surface has two halves. `press`/`step` drive the *match*, deterministic
+ * because they tick it directly rather than waiting on `requestAnimationFrame`.
+ * `scrub` bypasses the match entirely and sets a fighter's action and frame,
+ * replaying the pose chain from frame 1 so a part held over from a vanished
+ * hurtbox is held over exactly as it would be in play.
+ */
+const surface = {
+  /** Every character in the index. */
+  characters: () => index.map((c) => ({ id: c.id, name: c.name })),
+
+  /** Load a character on a side. Resets the match. */
+  async select(side, id) {
+    document.getElementById(side === 0 ? "p1" : "p2").value = id;
+    await reset();
+    return match.fighters[side].geo.character;
+  },
+
+  /** A side's actions, optionally filtered by name, with their hurt extent. */
+  actions(side, filter) {
+    const re = filter ? new RegExp(filter, "i") : null;
+    return match.fighters[side].geo.actions
+      .filter((a) => a.hurt.length && (!re || re.test(a.name)))
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        frames: Math.max(...a.hurt.map((h) => h.end ?? h.start ?? 1)),
+      }));
+  },
+
+  /**
+   * Put a fighter on an action and a frame, and draw it. Not a match advance:
+   * the clock does not move, so this reaches states inputs cannot.
+   */
+  scrub(side, action, frame = 1) {
+    const f = match.fighters[side];
+    const found =
+      f.geo.actions.find((a) => a.name === action || a.id === action) ??
+      f.geo.actions.find((a) => new RegExp(action, "i").test(a.name));
+    if (!found) throw new Error(`no action matching ${action} on ${f.geo.character}`);
+    surface.pause(true);
+    // Seed from the idle pose, not from nothing: a fighter always comes from
+    // somewhere, and an action with no hurtbox at all (A.K.I.'s command grab is
+    // invulnerable throughout) has only the pose it arrived with to hold over.
+    const was = f.state.action;
+    f.state.action = f.geo.actions.find((a) => a.id === f.geo.calibration?.standAction) ?? was;
+    f.state.frame = 1;
+    let pose = poseOf(f, radii[side]);
+    f.state.action = found;
+    // Replay from frame 1: a part with no hurtbox is held over from the frame
+    // before it, so the pose at frame n is not a function of frame n alone.
+    for (let n = 1; n <= frame; n++) {
+      f.state.frame = n;
+      pose = poseOf(f, radii[side], pose ?? undefined);
+    }
+    poses[side] = pose;
+    posedAt = match.frame;
+    draw();
+    return { action: found.name, frame, pose: surface.pose(side) };
+  },
+
+  /** Hold buttons and a direction for n match frames. Deterministic. */
+  press(keys, frames = 1, side = 0) {
+    const map = side === 0 ? P1 : P2;
+    const held = [].concat(keys).map((k) => map[k] ?? k.toLowerCase());
+    for (const k of held) down.add(k);
+    for (let i = 0; i < frames; i++) tick();
+    for (const k of held) down.delete(k);
+    draw();
+    return surface.state();
+  },
+
+  /** Advance the match n frames with nothing held. */
+  step(frames = 1) {
+    surface.pause(true);
+    for (let i = 0; i < frames; i++) tick();
+    draw();
+    return surface.state();
+  },
+
+  pause(on = true) {
+    paused = on;
+    document.getElementById("pause").setAttribute("aria-pressed", String(on));
+    return paused;
+  },
+  boxes(on) {
+    showBoxes = on ?? !showBoxes;
+    document.getElementById("boxes").setAttribute("aria-pressed", String(showBoxes));
+    draw();
+    return showBoxes;
+  },
+  figures(on) {
+    showFigures = on ?? !showFigures;
+    document.getElementById("figures").setAttribute("aria-pressed", String(showFigures));
+    draw();
+    return showFigures;
+  },
+
+  /** Draw one fighter at a fixed zoom, so a screenshot is comparable. */
+  frame(side, span = 560, solo = true) {
+    framing = side === null ? null : { side, span, solo };
+    draw();
+    return framing;
+  },
+
+  /** The pose as numbers, for a script that is looking for a broken one. */
+  pose(side) {
+    const p = poses[side];
+    if (!p) return null;
+    const round = (n) => Math.round(n * 100) / 100;
+    return {
+      head: p.head ? { x: round(p.head.x), y: round(p.head.y), r: round(p.head.r) } : null,
+      neck: { x: round(p.neck.x), y: round(p.neck.y) },
+      hips: { x: round(p.hips.x), y: round(p.hips.y) },
+      feet: p.feet.map((f) => ({ x: round(f.x), y: round(f.y) })),
+      limbs: p.limbs.map((l) => ({
+        root: { x: round(l.root.x), y: round(l.root.y) },
+        tip: { x: round(l.tip.x), y: round(l.tip.y) },
+        kick: l.kick,
+      })),
+      faded: { ...p.faded },
+    };
+  },
+
+  state() {
+    const [a, b] = match.fighters;
+    return {
+      frame: match.frame,
+      p1: { character: a.geo.character, action: a.actionName, at: a.state.frame, x: Math.round(a.position().x) },
+      p2: { character: b.geo.character, action: b.actionName, at: b.state.frame, x: Math.round(b.position().x) },
+      advantage,
+      hits: match.hits.length,
+    };
+  },
+
+  reset,
+};
+
 await reset();
+window.play = surface;
 requestAnimationFrame(frame);
 </script>
 </body>

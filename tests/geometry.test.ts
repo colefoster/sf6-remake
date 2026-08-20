@@ -639,6 +639,93 @@ describe("a pose derived from the boxes", () => {
     expect(last.hips.y).toBeGreaterThan(grounded.hips.y + 200);
   });
 
+  it("does not let a box tagged to every part decide which part it is", () => {
+    // Akuma's air fireball hangs one 80x120 box off head, body *and* leg at once.
+    // Believed, it put the hips level with the neck and stood him on stilts.
+    const akuma = loadGeometry("akuma")!;
+    const zanku = akuma.actions.find((a) => a.name === "SPA_ZANKU_L")!;
+    const p = poseOf(stub(zanku, 1), headRadius(akuma));
+    expect(p.neck.y).toBeGreaterThan(p.hips.y + 20);
+    expect(p.hips.y).toBeGreaterThan(p.feet[0]!.y + 20);
+    // The skull sits *on* the neck — its centre above it, its underside allowed
+    // to overlap the shoulders rather than float clear of them.
+    expect(p.head!.y).toBeGreaterThan(p.neck.y);
+    expect(p.head!.y - p.neck.y).toBeLessThan(p.head!.r * 1.6);
+  });
+
+  it("holds a part whose every box is out on a limb, rather than merging them", () => {
+    // Dee Jay's sweep tags both its leg boxes to the sweeping leg, 70 units in
+    // front of a 66-wide pushbox. Falling back to their union drew his legs as a
+    // tent above his head.
+    const deejay = loadGeometry("deejay")!;
+    const sweep = deejay.actions.find((a) => a.name === "ATK_2HK")!;
+    const r = headRadius(deejay);
+    const before = poseOf(stub(sweep, 1), r);
+    const during = poseOf(stub(sweep, 20), r, before);
+    expect(during.neck.y).toBeGreaterThan(during.hips.y);
+    expect(during.hips.y).toBeGreaterThan(during.feet[0]!.y);
+    // The leg keys are live, so this is not invulnerability — just no body in them.
+    expect(during.faded.leg).toBe(false);
+  });
+
+  it("hangs the figure upside down when the boxes are", () => {
+    // Blanka's 5MK is a flip: the head key sits on the floor and the leg key at
+    // 166. Only twelve actions on the roster do it, and all of them are somersaults.
+    const blanka = loadGeometry("blanka")!;
+    const flip = blanka.actions.find((a) => a.name === "ATK_5MK")!;
+    const p = poseOf(stub(flip, 4), headRadius(blanka));
+    expect(p.head!.y).toBeLessThan(p.hips.y);
+    expect(p.feet[0]!.y).toBeGreaterThan(p.hips.y);
+  });
+
+  it("does not draw a hitbox as a limb when no hurtbox reaches it", () => {
+    // A.K.I.'s EX snake is a 524-wide hitbox on an action with no hurtbox at all.
+    // The rule that the attacking limb *is* the hitbox drew it as a 563-unit arm
+    // out of a man who was not there. A limb is a body part, and a body part is
+    // hittable — Dhalsim's arm carries hurtboxes the whole way out.
+    const aki = loadGeometry("aki")!;
+    const snake = aki.actions.find((a) => a.name === "SPA_Jatoben_EX_END")!;
+    expect(hitboxesAt(snake, 13).length).toBeGreaterThan(0);
+    expect(poseOf(stub(snake, 13), headRadius(aki)).limbs).toEqual([]);
+
+    // The long arm that does carry hurtboxes is still an arm.
+    const dhalsim = loadGeometry("dhalsim")!;
+    const reach = dhalsim.actions.find((a) => a.name === "ATK_5HP")!;
+    const rd = headRadius(dhalsim);
+    let held = poseOf(stub(reach, 1), rd);
+    let drawn = false;
+    for (let f = 1; f <= 30; f++) {
+      held = poseOf(stub(reach, f), rd, held);
+      if (held.limbs.length) drawn = true;
+    }
+    expect(drawn).toBe(true);
+  });
+
+  it("holds the footprint through a frame that has no pushbox", () => {
+    // The axis is the pushbox's centre, and it is not always centred on the
+    // fighter. Snapping to the fighter's own x on a frame that has no pushbox
+    // teleported the whole figure sideways and back.
+    const aki = loadGeometry("aki")!;
+    const r = headRadius(aki);
+    let checked = 0;
+    for (const action of aki.actions) {
+      if (!action.hurt.length) continue;
+      const end = Math.min(60, Math.max(...action.hurt.map((h) => h.end ?? h.start ?? 1)));
+      let last = poseOf(stub(action, 1), r);
+      for (let f = 2; f <= end; f++) {
+        const had = pushboxesAt(action, f - 1).length > 0;
+        const has = pushboxesAt(action, f).length > 0;
+        const p = poseOf(stub(action, f), r, last);
+        if (had && !has) {
+          expect(p.hips.x).toBeCloseTo(last.hips.x, 5);
+          checked++;
+        }
+        last = p;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("mirrors with the fighter", () => {
     const right = poseOf(stub(named("ATK_5HP"), 13), radius, undefined);
     const left = poseOf(stub(named("ATK_5HP"), 13, -1), radius, undefined);

@@ -2,6 +2,8 @@
 
 - Status: accepted
 - Date: 2026-08-20
+- Amended by: [ADR-0051](./0051-the-page-drives-from-a-script-and-the-parts-stop-lying.md) —
+  four more things the boxes were saying that the figure believed
 - Amends: [ADR-0049](./0049-the-figure-is-derived-from-the-boxes.md)
 
 ## Context

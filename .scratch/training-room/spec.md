@@ -147,3 +147,6 @@ state; this is presentation, not engine.
 - `05-payload.md` — `wontfix`: local only
 - `06-the-figure-is-jank.md` — done in ADR-0050: the pose hangs on the pushbox
   axis, and a hurtbox centred away from the footprint is a limb, not the body
+- `07-drive-the-page-and-audit-the-figure.md` — done in ADR-0051: `window.play`
+  drives the page from a script, and `npm run pose:audit` scores every pose on
+  the roster. Four more derivation rules came out of it

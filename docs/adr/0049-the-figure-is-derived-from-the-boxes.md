@@ -3,7 +3,9 @@
 - Status: accepted
 - Date: 2026-08-20
 - Amended by: [ADR-0050](./0050-the-pushbox-is-the-axis-and-a-far-box-is-a-limb.md) —
-  the body hangs on the pushbox, not on the drifting hurtbox unions
+  the body hangs on the pushbox, not on the drifting hurtbox unions, and
+  [ADR-0051](./0051-the-page-drives-from-a-script-and-the-parts-stop-lying.md) —
+  the parts are not always in the order a body is
 - Extends: [ADR-0020](./0020-full-invulnerability-is-the-absence-of-a-hurtbox.md),
   [ADR-0025](./0025-what-to-press-and-what-a-hit-does-to-you.md),
   [ADR-0028](./0028-the-viewer-runs-the-runtime.md)
