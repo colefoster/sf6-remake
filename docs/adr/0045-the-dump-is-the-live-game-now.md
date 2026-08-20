@@ -113,11 +113,11 @@ bound.
   loudest unknown: the grading reference is itself behind, and Ryu's sweep is the
   clearest case — two sources, both current-ish, disagreeing about the same move
   in opposite directions.
-- **Where the duplicated hit keys come from.** Same frames, same `HitID`, twice in
-  one action, on several fighters. It looks like the dumper writing a list twice
-  rather than the game shipping it twice, which is exactly the "how the dump was
-  taken would present like a patch" caveat ADR-0043 flagged — now with an
-  instance, and still not separated.
+- ~~**Where the duplicated hit keys come from.**~~ Closed by
+  [ADR-0047](./0047-a-hit-reaches-through-more-than-one-box.md): they are not
+  duplicates but a **second box for the same hit**, they appear 1,141 times in the
+  Dec-2024 tree as well, and the 8-versus-7 count on Akuma's Tatsumaki really was
+  a patch — a hit key split across two rows.
 - **Six fighters cannot be dumped at all.** MMDK's roster is a hardcoded table of
   24 keyed by internal character id; Mai, Elena, Sagat, C.Viper, Alex, Ingrid and
   Yasmine have no entry, so they have no box in its UI. FAT publishes 30 and does

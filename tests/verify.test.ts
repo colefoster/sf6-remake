@@ -167,10 +167,16 @@ describe("the game's data against the published frame data", () => {
     };
     expect(at("A.K.I.", "5HK")).toBe("3 keys, 1 windows, 1 hits");
     expect(at("Ryu", "6MP")).toBe("3 keys, 1 windows, 2 hits");
-    // Eight keys for five hits: the live dump repeats two of Akuma's hit keys
-    // verbatim — same frames, same `HitID` — which the HitID rule absorbs and a
-    // key count does not. See ADR-0045.
+    // Eight keys for five hits: two of Akuma's keys share a window and a `HitID`
+    // and carry *different boxes* — one hit reaching through two volumes, which
+    // the HitID rule absorbs and a key count does not. See ADR-0047.
     expect(at("Akuma", "214KK")).toBe("8 keys, 5 windows, 5 hits");
+    const akuma = loadGeometry(requireCharacter("Akuma").id)!;
+    const tatsu = akuma.actions.find((a) => a.name === "SPA_TATSUMAKI_M_END(1)")!;
+    const paired = tatsu.hit.filter((h) => h.kind !== "proximity" && h.start === 19 && h.end === 20);
+    expect(paired).toHaveLength(2);
+    expect(new Set(paired.map((h) => h.hitId)).size).toBe(1);
+    expect(paired[0]!.boxes[0]).not.toEqual(paired[1]!.boxes[0]);
   });
 
   it("finds a second guard-release constant on Drive Reversal, and it is uniform", () => {
