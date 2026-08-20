@@ -145,5 +145,5 @@ state; this is presentation, not engine.
 - `03-dummy-seam.md` — the opponent function and the scripted behaviours
 - `04-training-panel.md` — the frame data on screen
 - `05-payload.md` — `wontfix`: local only
-- `06-the-figure-is-jank.md` — the pose hangs off drifting box unions; put it on
-  the pushbox axis. **Next up.**
+- `06-the-figure-is-jank.md` — done in ADR-0050: the pose hangs on the pushbox
+  axis, and a hurtbox centred away from the footprint is a limb, not the body

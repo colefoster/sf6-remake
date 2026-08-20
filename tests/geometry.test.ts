@@ -596,11 +596,47 @@ describe("a pose derived from the boxes", () => {
     expect(before.faded).toEqual({ head: false, body: false, leg: false });
     // Head and legs gone, body box still there and carried upward: the figure
     // rises with the move, and the parts it is invulnerable on are held over
-    // from the last frame that had them rather than dropped.
+    // from the last frame that had them rather than dropped — at their distance
+    // below the torso, so the whole figure leaves the ground together.
     expect(during.faded).toEqual({ head: true, body: false, leg: true });
     expect(during.head).not.toBeNull();
-    expect(during.feet).toEqual(before.feet);
+    expect(during.feet).toHaveLength(before.feet.length);
+    expect(during.feet.map((f) => f.x)).toEqual(before.feet.map((f) => f.x));
+    expect(during.hips.y - during.feet[0]!.y).toBeCloseTo(before.hips.y - before.feet[0]!.y, 5);
+    expect(during.feet[0]!.y).toBeGreaterThan(before.feet[0]!.y + 100);
     expect(during.neck.y).toBeGreaterThan(before.neck.y + 100);
+  });
+
+  it("hangs the body on the pushbox axis, not on the drifting hurtbox unions", () => {
+    // Issue 06. On 5LK the extended leg carries its own hurtbox, so the leg union
+    // is 174 wide centred 47 units forward while the pushbox stays 66 wide at 0.
+    // Read from that union the hips slide forward mid-move and the feet splay.
+    const lk = named("ATK_5LK");
+    const frames = [1, 3, 5, 8, 12, 16].map((f) => poseOf(stub(lk, f), radius));
+    for (const p of frames) {
+      expect(p.hips.x).toBe(0);
+      expect(p.neck.x).toBe(0);
+      expect(p.head!.x).toBe(0);
+      // Feet inset on the pushbox's half-width, not the leg union's.
+      expect(p.feet.map((q) => q.x)).toEqual([-15.84, 15.84]);
+      expect(p.hips.y).toBe(frames[0]!.hips.y);
+      expect(p.neck.y).toBe(frames[0]!.neck.y);
+    }
+    // The kick still reaches: only the body stopped moving with it.
+    expect(frames[2]!.limbs.some((l) => l.tip.x > 100)).toBe(true);
+  });
+
+  it("holds a part at its distance from the one above, not at an absolute height", () => {
+    // A jump keeps only its body box. Hips pinned to the height they last had
+    // stay on the floor while the torso climbs three hundred units away.
+    const air = named("BAS_JUMP_N_AIR");
+    const grounded = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+    const spine = grounded.neck.y - grounded.hips.y;
+    let last = grounded;
+    for (const f of [1, 5, 10, 16]) last = poseOf(stub(air, f), radius, last);
+    expect(last.faded.leg).toBe(true);
+    expect(last.neck.y - last.hips.y).toBeCloseTo(spine, 5);
+    expect(last.hips.y).toBeGreaterThan(grounded.hips.y + 200);
   });
 
   it("mirrors with the fighter", () => {

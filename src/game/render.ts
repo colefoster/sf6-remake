@@ -140,6 +140,13 @@ export function headRadius(geo: GeometryFile): number {
  * Everything is derived. `last` is the previous frame's pose, used to hold a part
  * whose hurtbox has gone rather than dropping it — a rising Shoryuken has no head
  * or body box at all on its invulnerable frames.
+ *
+ * The figure hangs on **one vertical axis, taken from the pushbox**, because the
+ * hurtbox unions cannot supply one: each part's union drifts differently as limbs
+ * extend, so three joints meant three notions of where the fighter was and the
+ * figure came apart. The pushbox is the body's authored footprint and does not
+ * move. Heights still come from the hurtboxes; only the horizontal placement is
+ * the pushbox's. See issue 06.
  */
 export function poseOf(fighter: Fighter, radius: number, last?: Pose): Pose {
   const { action, frame, facing } = fighter.state;
@@ -147,8 +154,24 @@ export function poseOf(fighter: Fighter, radius: number, last?: Pose): Pose {
   const origin = originAt(action, frame);
   const parts = hurtPartsAt(action, frame);
   const flip = (x: number): number => (facing === 1 ? at.x + x : at.x - x);
+
+  // The footprint, in action space: the pushbox, which does not move.
+  const push = union(pushboxesAt(action, frame));
+  const axis = push ? flip((push[0] + push[2]) / 2) : at.x;
+  const half = push ? (push[2] - push[0]) / 2 : radius * 2.4;
+
+  // A part is the boxes sitting over the footprint. A box centred out towards the
+  // pushbox's edge or beyond is an extended limb carrying its own hurtbox, and
+  // folding that into the union is what broke the figure: on 5LK it made the leg
+  // union 174 wide and 100 tall, so the hips rode up and forward and the feet
+  // splayed, and on 2MK a thigh box centred exactly on the pushbox edge put the
+  // hips above the neck. The core boxes sit near the axis; the limbs do not.
+  const middle = push ? (push[0] + push[2]) / 2 : 0;
+  const tolerance = push ? ((push[2] - push[0]) / 2) * 0.6 : 0;
   const box = (which: keyof typeof parts): [number, number, number, number] | null => {
-    const u = union(parts[which]);
+    const all = parts[which];
+    const core = push ? all.filter((b) => Math.abs(b.x + b.width / 2 - middle) < tolerance) : all;
+    const u = union(core.length ? core : all);
     return u ? [u[0], u[1] + origin.y, u[2], u[3] + origin.y] : null;
   };
 
@@ -164,21 +187,22 @@ export function poseOf(fighter: Fighter, radius: number, last?: Pose): Pose {
     return { head: null, neck: { x: at.x, y: 0 }, hips: { x: at.x, y: 0 }, feet: [], limbs: [], faded };
   }
 
-  const legBase = leg ? leg[1] : 0;
-  const hips: Point = leg
-    ? { x: flip((leg[0] + leg[2]) / 2), y: leg[3] }
-    : last
-      ? last.hips
-      : { x: at.x, y: torso ? torso[1] : 0 };
-  const neck: Point = torso ? { x: flip((torso[0] + torso[2]) / 2), y: torso[3] } : (last?.neck ?? hips);
-  const skull = head
-    ? { x: flip((head[0] + head[2]) / 2), y: head[3] - radius, r: radius }
-    : last
-      ? { ...last.head, x: neck.x, y: neck.y + radius, r: radius }
-      : null;
-  const feet: Point[] = leg
-    ? [0.22, 0.78].map((f) => ({ x: flip(leg[0] + (leg[2] - leg[0]) * f), y: legBase }))
-    : (last?.feet ?? []);
+  // One axis. Heights still come from the boxes; only the horizontal placement
+  // is the pushbox's, so the spine is vertical unless the fighter moves.
+  //
+  // A part with no box is held at its *distance* from the part above, not at the
+  // height it last had: a jump keeps only its body box, and hips pinned to an
+  // absolute height stay on the floor while the torso climbs 350 units away.
+  const spine = last ? last.neck.y - last.hips.y : null;
+  const drop = last?.feet.length ? last.hips.y - last.feet[0]!.y : 0;
+  const hipY = leg ? leg[3] : body ? (spine === null ? body[1] : body[3] - spine) : last!.hips.y;
+  const neckY = body ? body[3] : hipY + (spine ?? 0);
+
+  const hips: Point = { x: axis, y: hipY };
+  const neck: Point = { x: axis, y: neckY };
+  const skull = head || last?.head ? { x: axis, y: head ? head[3] - radius : neckY + radius, r: radius } : null;
+  const footY = leg ? leg[1] : hipY - drop;
+  const feet: Point[] = leg || last?.feet.length ? [-1, 1].map((s) => ({ x: axis + s * half * 0.48, y: footY })) : [];
 
   // An active hitbox is a limb, and which limb the action's own name usually
   // says: `ATK_5MK` is a kick, `ATK_5HP` a punch. Where the name does not say —
@@ -193,7 +217,7 @@ export function poseOf(fighter: Fighter, radius: number, last?: Pose): Pose {
     return { root: kick ? hips : { x: neck.x, y: neck.y - radius * 0.4 }, tip, kick };
   });
 
-  return { head: skull as Pose["head"], neck, hips, feet, limbs, faded };
+  return { head: skull, neck, hips, feet, limbs, faded };
 }
 
 /* ---- canvas -------------------------------------------------------------- */

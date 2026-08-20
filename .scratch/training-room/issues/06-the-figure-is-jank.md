@@ -1,6 +1,6 @@
 # 06 — The figure is jank: put the body back on one axis
 
-Status: `ready-for-agent`
+Status: `done` — ADR-0050
 Follows: `02-stick-figure.md`, ADR-0049
 
 ## The report
@@ -58,3 +58,26 @@ the axis fix comes first.
   head attached and a plausible stance
 - No joint moves horizontally except a limb and the fighter's own position
 - The `poseOf` tests still pass, with one added for the 5LK axis
+
+## Outcome
+
+Done, ADR-0050. The axis is the pushbox centre; each part is filtered to the
+boxes centred within 60% of the pushbox's half-width before its union is taken,
+which fixed the vertical drift as well as the horizontal — the extended-limb box
+was lifting the hips to 100 and the neck to 166. Two further things surfaced
+while in here:
+
+- **2MK needed the tolerance, not just the filter.** A thigh box centred exactly
+  on the pushbox edge passed a strict inside-the-footprint test and put the hips
+  above the neck.
+- **Held-over parts had to be held at a distance, not a height.** A jump keeps
+  only its body box, so hips pinned to their last absolute height stayed on the
+  floor while the torso climbed 345 units. ADR-0049's Shoryuken test asserted
+  that bug (`during.feet === before.feet`) and now asserts the offset instead.
+
+Not done, still worth having: **drawing the limb from its own hurtbox** on the
+startup and recovery frames where no hitbox is live. The filter already isolates
+exactly those boxes and throws them away.
+
+Residual: 277 frames of 385,607 across the roster still draw hips above the neck,
+all on acrobatic air specials where the legs genuinely are above the torso.
