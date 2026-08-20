@@ -1066,6 +1066,22 @@ function idleAction(geo: GeometryFile, stance: Stance): GeometryAction | undefin
   return byId ?? geo.actions.find((a) => a.hurt.length);
 }
 
+/** Proximity-guard boxes live this frame. They are a separate list in the dump. */
+export function proxboxesAt(action: GeometryAction, frame: number): Box[] {
+  return action.prox.filter((p) => covers(p, frame)).flatMap((p) => p.boxes);
+}
+
+/** Throwable boxes live this frame. See ADR-0035 for why they are not hurtboxes. */
+export function throwboxesAt(action: GeometryAction, frame: number): Box[] {
+  return action.hurt.filter((k) => covers(k, frame)).flatMap((k) => k.throw);
+}
+
+/** The pushbox of a character standing or crouching, for the defender's side. */
+export function idlePushboxes(geo: GeometryFile, stance: Stance = "stand"): Box[] {
+  const src = idleAction(geo, stance);
+  return src ? pushboxesAt(src, src.push[0]?.start ?? 1) : [];
+}
+
 /** Idle hurtboxes for the defender side of a spacing question. */
 export function idleHurtboxes(geo: GeometryFile, stance: Stance = "stand"): Box[] {
   const src = idleAction(geo, stance);

@@ -140,10 +140,10 @@ state; this is presentation, not engine.
 
 ## Issues
 
-- `01-render-module.md` — the seam, and both pages through it
+- `01-render-module.md` — done: the seam (ADR-0049) and both pages through it (ADR-0053)
 - `02-stick-figure.md` — `poseFrom`, with the three spike findings baked in
-- `03-dummy-seam.md` — the opponent function and the scripted behaviours
-- `04-training-panel.md` — the frame data on screen
+- `03-dummy-seam.md` — done: the opponent function (ADR-0049) and five behaviours (ADR-0052)
+- `04-training-panel.md` — done in ADR-0052: advantage, punish window, stun/floor and combo scaling
 - `05-payload.md` — `wontfix`: local only
 - `06-the-figure-is-jank.md` — done in ADR-0050: the pose hangs on the pushbox
   axis, and a hurtbox centred away from the footprint is a limb, not the body

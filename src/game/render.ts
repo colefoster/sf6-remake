@@ -18,6 +18,16 @@ import type { GeometryAction, GeometryFile } from "../data/geometry.js";
 import { hitboxesAt, hurtPartsAt, originAt, pushboxesAt } from "../data/geometry.js";
 import type { Fighter } from "./index.js";
 
+/**
+ * What the drawing needs of a fighter: an action, a frame, a facing and a place
+ * to stand. `Fighter` satisfies it, and so does the box viewer, which has an
+ * action selected and no match running at all.
+ */
+export interface Posed {
+  state: { action: GeometryAction; frame: number; facing: 1 | -1 };
+  position(): { x: number; y: number };
+}
+
 export interface Point {
   x: number;
   y: number;
@@ -102,21 +112,79 @@ export function viewFor(
   };
 }
 
+/**
+ * Everything an action's boxes cover, including where its travel takes them.
+ *
+ * The stage camera frames two fighters; the box viewer frames one action, and
+ * has to hold still while the frame is scrubbed or the boxes swim. So the
+ * bounds are the action's, not the frame's.
+ */
+export function boundsOf(action: GeometryAction, floor = { minX: -60, maxX: 160, maxY: 170 }): {
+  minX: number;
+  maxX: number;
+  maxY: number;
+} {
+  let { minX, maxX, maxY } = floor;
+  const travel = action.motion?.travel;
+  const eat = (b: Box): void => {
+    minX = Math.min(minX, b.x);
+    maxX = Math.max(maxX, b.x + b.width);
+    maxY = Math.max(maxY, b.y + b.height);
+    if (!travel) return;
+    eat2({ ...b, x: b.x + travel.maxX, y: b.y + travel.maxY });
+  };
+  const eat2 = (b: Box): void => {
+    minX = Math.min(minX, b.x);
+    maxX = Math.max(maxX, b.x + b.width);
+    maxY = Math.max(maxY, b.y + b.height);
+  };
+  for (const key of action.hit) key.boxes.forEach(eat);
+  for (const key of action.prox) key.boxes.forEach(eat);
+  for (const key of action.hurt) for (const part of [key.head, key.body, key.leg, key.throw]) part.forEach(eat);
+  return { minX, maxX, maxY };
+}
+
+/**
+ * The other camera: fit one action's own bounds to the canvas.
+ *
+ * `viewFor` follows two fighters around a stage. The box viewer has no stage and
+ * no second fighter — it has an action and a distance slider — so it frames the
+ * content instead, with the ground pinned so scrubbing does not move it.
+ */
+export function viewForAction(
+  size: { width: number; height: number },
+  bounds: { minX: number; maxX: number; maxY: number },
+  pad = 40,
+): View {
+  const { width, height } = size;
+  const scale = Math.min((width - pad * 2) / (bounds.maxX - bounds.minX), (height - pad * 2) / (bounds.maxY + 20));
+  const left = (width - (bounds.maxX - bounds.minX) * scale) / 2;
+  const ground = height - pad;
+  return {
+    width,
+    height,
+    scale,
+    ground,
+    x: (units) => left + (units - bounds.minX) * scale,
+    y: (units) => ground - units * scale,
+  };
+}
+
 /** A fighter's boxes in world space: the runtime's own placement, mirrored. */
-export function worldBoxes(fighter: Fighter): WorldBoxes {
+export function worldBoxes(fighter: Posed): WorldBoxes {
   const { action, frame } = fighter.state;
   return {
     hurt: place(fighter, (a, f) => [...hurtPartsAt(a, f).head, ...hurtPartsAt(a, f).body, ...hurtPartsAt(a, f).leg]),
     hit: place(fighter, hitboxesAt),
     push: place(fighter, pushboxesAt),
   };
-  function place(f: Fighter, boxes: (a: GeometryAction, n: number) => Box[]): Box[] {
+  function place(f: Posed, boxes: (a: GeometryAction, n: number) => Box[]): Box[] {
     return boxes(action, frame).map((b) => placeBox(f, b));
   }
 }
 
 /** One box from action space into world space. */
-export function placeBox(fighter: Fighter, box: Box): Box {
+export function placeBox(fighter: Posed, box: Box): Box {
   const { action, frame, facing } = fighter.state;
   const origin = originAt(action, frame);
   const at = fighter.position();
@@ -154,7 +222,7 @@ export function headRadius(geo: GeometryFile): number {
  * move. Heights still come from the hurtboxes; only the horizontal placement is
  * the pushbox's. See ADR-0050.
  */
-export function poseOf(fighter: Fighter, radius: number, last?: Pose): Pose {
+export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
   const { action, frame, facing } = fighter.state;
   const at = fighter.position();
   const origin = originAt(action, frame);
@@ -302,6 +370,7 @@ export interface Ctx {
   stroke(): void;
   fillRect(x: number, y: number, w: number, h: number): void;
   strokeRect(x: number, y: number, w: number, h: number): void;
+  setLineDash(pattern: number[]): void;
   fillText(text: string, x: number, y: number): void;
 }
 
@@ -336,27 +405,68 @@ export function drawStage(ctx: Ctx, view: View, half: number): void {
   }
 }
 
-function rect(ctx: Ctx, view: View, box: Box, stroke: string, fill: string): void {
-  ctx.strokeStyle = stroke;
-  ctx.fillStyle = fill;
+/**
+ * The one palette. Both pages drew boxes in slightly different colours because
+ * both pages drew boxes; ADR-0053 left one implementation, so there is one set
+ * of colours and the box viewer's is it — it is the richer of the two, having
+ * had to tell a throw box from a proximity box from a leg.
+ */
+export type BoxKind =
+  | "hit"
+  | "projectile"
+  | "throw"
+  | "hurt"
+  | "head"
+  | "body"
+  | "leg"
+  | "prox"
+  | "push"
+  | "opponent";
+
+const PALETTE: Record<BoxKind, { ink: string; fill: number; dashed?: true }> = {
+  hit: { ink: "#ff4d4d", fill: 0.3 },
+  projectile: { ink: "#ff8a3d", fill: 0.3 },
+  throw: { ink: "#26c99a", fill: 0.07, dashed: true },
+  hurt: { ink: "#4d8cff", fill: 0.18 },
+  head: { ink: "#6fa4ff", fill: 0.18 },
+  body: { ink: "#4d8cff", fill: 0.18 },
+  leg: { ink: "#3f74d8", fill: 0.18 },
+  prox: { ink: "#d8b74a", fill: 0.1, dashed: true },
+  push: { ink: "#a06cff", fill: 0.14 },
+  opponent: { ink: "#6d7488", fill: 0.16, dashed: true },
+};
+
+const alpha = (hex: string, a: number): string => {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+
+/** One box, in the colours its kind is drawn in. */
+export function drawBox(ctx: Ctx, view: View, kind: BoxKind, box: Box): void {
+  const style = PALETTE[kind];
   const x = view.x(box.x);
   const y = view.y(box.y + box.height);
   const w = box.width * view.scale;
   const h = box.height * view.scale;
+  ctx.fillStyle = alpha(style.ink, style.fill);
   ctx.fillRect(x, y, w, h);
-  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.strokeStyle = style.ink;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash(style.dashed ? [4, 3] : []);
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+  ctx.setLineDash([]);
 }
 
-/** Hurt, hit and pushboxes, in the colours the viewer has always used. */
+/** Hurt, hit and pushboxes for one fighter. */
 export function drawBoxes(ctx: Ctx, view: View, boxes: WorldBoxes): void {
-  for (const b of boxes.push) rect(ctx, view, b, "rgba(107,114,128,.6)", "rgba(107,114,128,.08)");
-  for (const b of boxes.hurt) rect(ctx, view, b, "rgba(59,130,246,.75)", "rgba(59,130,246,.14)");
-  for (const b of boxes.hit) rect(ctx, view, b, "rgba(239,68,68,.95)", "rgba(239,68,68,.28)");
+  for (const b of boxes.push) drawBox(ctx, view, "push", b);
+  for (const b of boxes.hurt) drawBox(ctx, view, "hurt", b);
+  for (const b of boxes.hit) drawBox(ctx, view, "hit", b);
 }
 
 /** A fireball: a hitbox with nothing attached, which is what it is. */
 export function drawProjectile(ctx: Ctx, view: View, box: Box): void {
-  rect(ctx, view, box, "rgba(251,191,36,.95)", "rgba(251,191,36,.3)");
+  drawBox(ctx, view, "projectile", box);
 }
 
 /**

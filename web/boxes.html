@@ -149,6 +149,7 @@
       <label><input type="checkbox" id="t-prox"> proximity</label>
       <label><input type="checkbox" id="t-push" checked> pushboxes</label>
       <label><input type="checkbox" id="t-path" checked> travel path</label>
+      <label><input type="checkbox" id="t-figure" checked> figure</label>
       <label>they <select id="guard"><option value="block">block</option><option value="hit">get hit</option></select></label>
       <button id="fit">snap to max range</button>
     </div>
@@ -199,168 +200,72 @@
   </main>
 </div>
 
-<script>
+<script type="module">
 /*
  * Renders the geometry extracted by scripts/extract-geometry.mjs.
  *
  * Boxes are game units: x = 0 is the character origin, y = 0 the ground, +x
  * forward. The attacker stands at x = 0 facing right; the opponent stands at
  * x = distance facing left, so its boxes are mirrored about its own origin.
+ *
+ * Every box, window and distance below is read through `./play.js` — the same
+ * bundle of `src/game` and `src/data/geometry` that `play.html` runs. This page
+ * used to carry its own copy of all of it (`hurtAt`, `originAt`, `activeWindows`,
+ * `maxReach`, `connectFrames`, and a canvas transform), which is the duplication
+ * ADR-0028 removed from the logic layer growing back in the view layer. See
+ * ADR-0053.
+ *
+ * The one thing still computed here is `outcomeAt`: advantage played out from
+ * the boxes and the hit table, deliberately *not* taken from `src/sim`, so that
+ * comparing it against FAT's published number is a check rather than a
+ * restatement.
  */
-
-const COLORS = {
-  hit: "#ff4d4d", strike: "#ff4d4d", projectile: "#ff8a3d", throw: "#26c99a",
-  hurt: "#4d8cff", head: "#6fa4ff", body: "#4d8cff", leg: "#3f74d8",
-  prox: "#d8b74a", push: "#a06cff", opp: "#6d7488",
-};
+import {
+  actionById, actionableFrame, activeWindows, connectFrames, hitDataFor, hitKeysAt,
+  idleHurtboxes, idlePushboxes, minDistance, mirrored, originAt, proxboxesAt,
+  pushboxesAt, hurtPartsAt, reach, shift, throwboxesAt,
+  boundsOf, drawBox, drawFigure, headRadius, poseOf, viewForAction,
+} from "./play.js";
 
 const state = {
   chars: [], data: null, action: null, move: null, frame: 1, playing: false, timer: null,
   distance: 120, stance: "stand", guard: "block",
-  show: { hurt: true, hit: true, prox: false, push: true, path: true },
+  show: { hurt: true, hit: true, prox: false, push: true, path: true, figure: true },
+  /** The pose chain, rebuilt from frame 1 whenever the frame moves. See ADR-0049. */
+  radius: 14,
 };
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-/* ---------- data helpers ---------- */
+/* ---------- the fighter this page is looking at ---------- */
 
-const covers = (key, frame) => frame >= key.start && frame <= key.end;
+/** What `poseOf` and the box placement want: an action, a frame, a place to stand. */
+const subject = () => ({
+  state: { action: state.action, frame: state.frame, facing: 1 },
+  position: () => ({ x: 0, y: 0 }),
+});
 
-function hitsAt(action, frame) {
-  return action.hit.filter((h) => covers(h, frame));
-}
-function proxAt(action, frame) {
-  return action.prox.filter((p) => covers(p, frame));
-}
-/** All hurt parts live in one flat list per frame, tagged for colour. */
+/** Hurtboxes for the frame, tagged by part so each draws in its own colour. */
 function hurtAt(action, frame) {
+  const parts = hurtPartsAt(action, frame);
   const out = [];
-  for (const key of action.hurt) {
-    if (!covers(key, frame)) continue;
-    for (const part of ["head", "body", "leg", "throw"]) {
-      for (const box of key[part] ?? []) out.push({ ...box, part, immune: key.immune ?? 0 });
-    }
-  }
+  for (const part of ["head", "body", "leg"]) for (const box of parts[part]) out.push({ box, part });
+  for (const box of throwboxesAt(action, frame)) out.push({ box, part: "throw" });
   return out;
 }
 
-/** Where the origin is this frame, relative to where the action began. */
-function originAt(action, frame) {
-  const m = action.motion;
-  if (!m) return { x: 0, y: 0 };
-  return { x: m.x?.[frame - 1] ?? 0, y: m.y?.[frame - 1] ?? 0 };
-}
-
-const shift = (box, o) => ({ ...box, x: box.x + o.x, y: box.y + o.y });
-
-function pushAt(action, frame) {
-  return action.push.filter((p) => covers(p, frame)).map((p) => p.box);
-}
-
-/** How far a stance's pushbox reaches in front of the origin. */
-function pushHalfWidth(stance) {
-  const calibrated = state.data.calibration?.pushHalfWidth?.[stance];
-  if (typeof calibrated === "number") return calibrated;
-  const src = stanceAction(stance);
-  const box = src?.push[0]?.box;
-  return box ? Math.max(Math.abs(box.x), Math.abs(box.x + box.width)) : 0;
-}
+/** The opponent's idle boxes, or none when the viewer is set to no opponent. */
+const opponentBoxes = () => (state.stance === "none" ? [] : idleHurtboxes(state.data, state.stance));
+const opponentPush = () => (state.stance === "none" ? [] : idlePushboxes(state.data, state.stance));
 
 /**
  * The closest the two origins can be: pushboxes touching. Spacing below this is
  * a position the game cannot produce, so the slider stops there.
  */
-function minDistance() {
+function closestDistance() {
   if (state.stance === "none") return 0;
-  return pushHalfWidth("stand") + pushHalfWidth(state.stance);
-}
-
-/** Every strike/projectile/throw window, merged into contiguous active spans. */
-function activeWindows(action) {
-  const hits = action.hit.filter((h) => h.kind !== "proximity").sort((a, b) => a.start - b.start);
-  const out = [];
-  for (const h of hits) {
-    const last = out[out.length - 1];
-    if (last && h.start <= last.end + 1) last.end = Math.max(last.end, h.end);
-    else out.push({ start: h.start, end: h.end });
-  }
-  return out;
-}
-
-function actionById(id) {
-  return state.data.actions.find((a) => a.id === id);
-}
-
-function stanceAction(stance) {
-  const id = stance === "crouch" ? state.data.calibration?.crouchAction : state.data.calibration?.standAction;
-  return actionById(id) ?? state.data.actions.find((a) => a.hurt.length);
-}
-
-/** The opponent's idle hurtboxes, taken from its stance action's first frame. */
-function opponentBoxes() {
-  if (state.stance === "none") return [];
-  const src = stanceAction(state.stance);
-  if (!src) return [];
-  const frame = src.hurt[0]?.start ?? 1;
-  return hurtAt(src, frame).filter((b) => b.part !== "throw");
-}
-
-/** The opponent's pushbox, same idle frame. */
-function opponentPush() {
-  if (state.stance === "none") return [];
-  const src = stanceAction(state.stance);
-  return src ? pushAt(src, src.push[0]?.start ?? 1) : [];
-}
-
-/** Mirror an opponent box (local, facing +x) into world space at `distance`. */
-function mirrored(box, distance) {
-  return { ...box, x: distance - (box.x + box.width), y: box.y, width: box.width, height: box.height };
-}
-
-const overlaps = (a, b) =>
-  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-
-/**
- * Largest distance at which any of `boxes` still touches an opponent box.
- * For attacker box A and opponent box B (local), overlap holds while
- * distance < A.x2 + B.x2, so the reach is the max of that over all pairs
- * whose heights overlap.
- */
-/** Attack boxes placed by the moving origin, tagged with their frame. */
-function worldHitboxes(action) {
-  const out = [];
-  for (const key of action.hit) {
-    if (key.kind === "proximity") continue;
-    for (let f = key.start; f <= key.end; f++) {
-      const o = originAt(action, f);
-      for (const b of key.boxes) out.push({ frame: f, box: shift(b, o) });
-    }
-  }
-  return out;
-}
-
-function maxReach(boxes, opponent) {
-  let best = null;
-  for (const a of boxes) {
-    for (const b of opponent) {
-      const yOverlap = a.y < b.y + b.height && b.y < a.y + a.height;
-      if (!yOverlap) continue;
-      const d = a.x + a.width + b.x + b.width;
-      if (best === null || d > best) best = d;
-    }
-  }
-  return best;
-}
-
-function connectFrames(action, opponent, distance) {
-  const frames = [];
-  for (const { frame, box } of worldHitboxes(action)) {
-    if (opponent.some((b) => overlaps(box, mirrored(b, distance))) && !frames.includes(frame)) {
-      frames.push(frame);
-    }
-  }
-  return frames.sort((a, b) => a - b);
+  return minDistance(state.data, state.data, { attacker: "stand", defender: state.stance }) ?? 0;
 }
 
 /* ---------- rendering ---------- */
@@ -368,58 +273,22 @@ function connectFrames(action, opponent, distance) {
 const canvas = $("stage");
 const ctx = canvas.getContext("2d");
 
-/** One stable world->screen transform per action, so scrubbing doesn't jitter. */
+/**
+ * One stable transform per action, so scrubbing doesn't jitter.
+ *
+ * `viewForAction` is the box viewer's camera, beside `viewFor`'s stage camera in
+ * the same module: this page frames one action's own bounds, that one follows
+ * two fighters. The floor keeps the fighter's standing height and the opponent
+ * in shot whatever the action's boxes do.
+ */
 function viewFor(action) {
-  let minX = -60, maxX = 160, maxY = state.data.calibration?.standingHeight ?? 170;
-  const eat = (b) => {
-    minX = Math.min(minX, b.x);
-    maxX = Math.max(maxX, b.x + b.width);
-    maxY = Math.max(maxY, b.y + b.height);
+  const floor = {
+    minX: -60,
+    maxX: Math.max(160, state.distance + 60),
+    maxY: state.data.calibration?.standingHeight ?? 170,
   };
-  const travel = action.motion?.travel;
-  const spread = (b) => {
-    eat(b);
-    if (!travel) return;
-    // The origin moves, so the same box sweeps a band; keep both ends in view.
-    eat({ ...b, x: b.x + travel.maxX, y: b.y + travel.maxY });
-  };
-  for (const key of action.hit) key.boxes.forEach(spread);
-  for (const key of action.prox) key.boxes.forEach(spread);
-  for (const key of action.hurt) {
-    for (const part of ["head", "body", "leg", "throw"]) (key[part] ?? []).forEach(spread);
-  }
-  maxX = Math.max(maxX, state.distance + 60);
-  const pad = 40;
-  const w = canvas.width, h = canvas.height;
-  const scale = Math.min((w - pad * 2) / (maxX - minX), (h - pad * 2) / (maxY + 20));
-  // Centre the world horizontally; the ground stays pinned to the same line.
-  const left = (w - (maxX - minX) * scale) / 2;
-  return {
-    scale,
-    minX,
-    toX: (x) => left + (x - minX) * scale,
-    toY: (y) => h - pad - y * scale,
-  };
+  return viewForAction({ width: canvas.width, height: canvas.height }, boundsOf(action, floor));
 }
-
-function rect(view, box, color, fill, dashed) {
-  const x = view.toX(box.x);
-  const y = view.toY(box.y + box.height);
-  const w = box.width * view.scale;
-  const h = box.height * view.scale;
-  ctx.fillStyle = fill;
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash(dashed ? [4, 3] : []);
-  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
-  ctx.setLineDash([]);
-}
-
-const alpha = (hex, a) => {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
-};
 
 function draw() {
   const action = state.action;
@@ -432,64 +301,66 @@ function draw() {
   ctx.strokeStyle = "#2f3442";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, view.toY(0));
-  ctx.lineTo(canvas.width, view.toY(0));
+  ctx.moveTo(0, view.y(0));
+  ctx.lineTo(canvas.width, view.y(0));
   ctx.stroke();
   for (const [x, label] of [[0, "attacker"], [state.distance, "opponent"]]) {
     if (label === "opponent" && state.stance === "none") continue;
     ctx.strokeStyle = "#3a4152";
     ctx.setLineDash([2, 4]);
     ctx.beginPath();
-    ctx.moveTo(view.toX(x), 0);
-    ctx.lineTo(view.toX(x), view.toY(0));
+    ctx.moveTo(view.x(x), 0);
+    ctx.lineTo(view.x(x), view.y(0));
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = "#6d7488";
     ctx.font = "11px ui-monospace, monospace";
-    ctx.fillText(`${label} x=${x}`, view.toX(x) + 4, view.toY(0) + 14);
+    ctx.fillText(`${label} x=${x}`, view.x(x) + 4, view.y(0) + 14);
   }
 
-  const opponent = opponentBoxes();
-  for (const b of opponent) rect(view, mirrored(b, state.distance), COLORS.opp, alpha(COLORS.opp, 0.16), true);
+  for (const b of opponentBoxes()) drawBox(ctx, view, "opponent", mirrored(b, state.distance));
 
   const origin = originAt(action, frame);
   drawPath(view, action);
 
   if (state.show.push) {
-    for (const b of opponentPush()) rect(view, mirrored(b, state.distance), COLORS.push, alpha(COLORS.push, 0.1), true);
-    for (const b of pushAt(action, frame)) rect(view, shift(b, origin), COLORS.push, alpha(COLORS.push, 0.14));
+    for (const b of opponentPush()) drawBox(ctx, view, "opponent", mirrored(b, state.distance));
+    for (const b of pushboxesAt(action, frame)) drawBox(ctx, view, "push", shift(b, origin));
   }
-
   if (state.show.prox) {
-    for (const key of proxAt(action, frame)) {
-      for (const b of key.boxes) rect(view, shift(b, origin), COLORS.prox, alpha(COLORS.prox, 0.1), true);
-    }
+    for (const b of proxboxesAt(action, frame)) drawBox(ctx, view, "prox", shift(b, origin));
   }
   if (state.show.hurt) {
-    for (const b of hurtAt(action, frame)) {
-      const color = b.part === "throw" ? COLORS.throw : COLORS[b.part] ?? COLORS.hurt;
-      rect(view, shift(b, origin), color, alpha(color, b.part === "throw" ? 0.07 : 0.18), b.part === "throw");
-    }
+    for (const { box, part } of hurtAt(action, frame)) drawBox(ctx, view, part, shift(box, origin));
   }
   if (state.show.hit) {
-    for (const key of hitsAt(action, frame)) {
-      const color = COLORS[key.kind] ?? COLORS.hit;
-      for (const b of key.boxes) rect(view, shift(b, origin), color, alpha(color, 0.3));
+    for (const key of hitKeysAt(action, frame)) {
+      const kind = key.kind === "projectile" ? "projectile" : key.kind === "throw" ? "throw" : "hit";
+      for (const b of key.boxes) drawBox(ctx, view, kind, shift(b, origin));
     }
+  }
+  // The same figure `play.html` draws, from the same derivation. Free, now that
+  // there is one renderer: the boxes were already here.
+  if (state.show.figure) {
+    let pose;
+    for (let f = 1; f <= frame; f++) {
+      pose = poseOf({ ...subject(), state: { action, frame: f, facing: 1 } }, state.radius, pose);
+    }
+    if (pose) drawFigure(ctx, view, pose, 0);
   }
 
   // scale bar: one metre, taking the standing hurtbox height as the fighter's height
   const height = state.data.calibration?.standingHeight;
   if (height) {
-    const x = view.toX(view.minX) + 10;
+    const x = 30;
     ctx.strokeStyle = "#3a4152";
     ctx.beginPath();
-    ctx.moveTo(x, view.toY(0));
-    ctx.lineTo(x, view.toY(height));
+    ctx.moveTo(x, view.y(0));
+    ctx.lineTo(x, view.y(height));
     ctx.stroke();
     ctx.fillStyle = "#6d7488";
     ctx.font = "10px ui-monospace, monospace";
-    ctx.fillText(`${height}u tall`, x + 5, view.toY(height) + 10);
+    ctx.fillText(`${height}u tall`, x + 5, view.y(height) + 10);
   }
 }
 
@@ -503,8 +374,8 @@ function drawPath(view, action) {
   ctx.beginPath();
   for (let f = 1; f <= total; f++) {
     const o = originAt(action, f);
-    const px = view.toX(o.x);
-    const py = view.toY(o.y);
+    const px = view.x(o.x);
+    const py = view.y(o.y);
     if (f === 1) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
@@ -513,7 +384,7 @@ function drawPath(view, action) {
   const now = originAt(action, state.frame);
   ctx.fillStyle = "#8c93a5";
   ctx.beginPath();
-  ctx.arc(view.toX(now.x), view.toY(now.y), 3, 0, Math.PI * 2);
+  ctx.arc(view.x(now.x), view.y(now.y), 3, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -523,15 +394,15 @@ function updateReadouts() {
   const action = state.action;
   const opponent = opponentBoxes();
   const frame = state.frame;
-  const hits = hitsAt(action, frame).filter((h) => h.kind !== "proximity");
+  const hits = hitKeysAt(action, frame);
   const here = originAt(action, frame);
   const windows = activeWindows(action);
 
   const onThisFrame = hits.length
-    ? hits.some((h) => h.boxes.some((a) => opponent.some((b) => overlaps(a, mirrored(b, state.distance)))))
+    ? connectFrames(action, opponent, state.distance).includes(frame)
     : null;
 
-  $("r-frame").textContent = hits.length ? "active" : proxAt(action, frame).length ? "proximity" : "no hitbox";
+  $("r-frame").textContent = hits.length ? "active" : proxboxesAt(action, frame).length ? "proximity" : "no hitbox";
   $("r-frame").className = "big " + (hits.length ? (onThisFrame ? "yes" : "no") : "");
   const at = here.x || here.y ? ` · origin ${round1(here.x)}u forward, ${round1(here.y)}u up` : "";
   $("r-frame-sub").textContent =
@@ -547,13 +418,13 @@ function updateReadouts() {
     ? `first contact on frame ${connects[0]} at ${state.distance}u`
     : `nothing reaches ${state.distance}u`;
 
-  const reach = maxReach(worldHitboxes(action).map((h) => h.box), opponent);
-  const closest = minDistance();
-  $("r-range").textContent = reach === null ? "—" : `${Math.round(closest)}-${round1(reach)}u`;
+  const far = reach(action, opponent) ?? null;
+  const closest = closestDistance();
+  $("r-range").textContent = far === null ? "—" : `${Math.round(closest)}-${round1(far)}u`;
   $("r-range-sub").textContent =
-    reach === null
+    far === null
       ? "no hitbox overlaps the opponent at any distance"
-      : `point blank is ${closest}u (pushboxes touching), so ${round1(Math.max(0, reach - closest))}u of usable spacing ` +
+      : `point blank is ${closest}u (pushboxes touching), so ${round1(Math.max(0, far - closest))}u of usable spacing ` +
         `against a ${state.stance === "crouch" ? "crouching" : "standing"} opponent`;
 
   $("r-frames").textContent = windows.length
@@ -571,13 +442,10 @@ function updateReadouts() {
 const round1 = (n) => Math.round(n * 10) / 10;
 
 /** What the action's first damaging hit does, from the game's outcome table. */
-function hitDataFor(action) {
-  const key = action.hit.find((h) => h.kind !== "proximity");
-  return key ? state.data.hitData?.[String(key.attackData)] : undefined;
-}
+const outcomeTable = (action) => hitDataFor(state.data, action);
 
 function updateHitData(action) {
-  const data = hitDataFor(action);
+  const data = outcomeTable(action);
   if (!data?.hit) {
     $("r-hit").textContent = "—";
     $("r-hit-sub").textContent = "this action deals no damage";
@@ -608,32 +476,17 @@ function updateHitData(action) {
  */
 const GUARD_RELEASE = 4;
 
-/**
- * The frame the attacker is free again, from the game's own data: MarginFrame
- * where the action has one, and where it ends in the air, the frame its motion
- * curve returns to the ground plus the landing action's margin. Null for an air
- * normal, which inherits the jump's arc and so has no single answer.
- * Mirrors `actionableFrame` in src/data/geometry.ts — see ADR-0012.
- */
-function actionableFrame(action) {
-  if (action.marginFrame > 0) return action.marginFrame + 1;
-  const y = action.motion?.y;
-  if (!action.lands || !y) return null;
-  for (let i = 1; i < y.length; i++) {
-    if (y[i] <= 0 && y[i - 1] > 0) return i + 1 + action.lands.margin + 1;
-  }
-  return null;
-}
-
 function outcomeAt(action, move, opponent, distance) {
-  const data = hitDataFor(action);
+  const data = outcomeTable(action);
   const guard = state.guard;
   const outcome = data?.[guard === "block" ? "block" : "hit"];
   const frames = connectFrames(action, opponent, distance);
   const first = activeWindows(action)[0];
   if (!outcome || !frames.length || !first || !move) return null;
-  const free = actionableFrame(action);
-  if (free === null) return null;
+  // The shared one now: this page carried a copy that was a frame out on an
+  // action ending in the air. See ADR-0012 for the rule itself.
+  const free = actionableFrame(action)?.frame;
+  if (free === undefined) return null;
 
   const depth = frames[0] - first.start;
   const defenderFree = outcome.stun - (guard === "block" ? GUARD_RELEASE : 0);
@@ -690,7 +543,7 @@ function drawStrip() {
   for (let f = 1; f <= total; f++) {
     const cell = document.createElement("div");
     if (windows.some((w) => f >= w.start && f <= w.end)) cell.className = "active";
-    else if (proxAt(action, f).length) cell.className = "prox";
+    else if (proxboxesAt(action, f).length) cell.className = "prox";
     if (f === state.frame) cell.classList.add("now");
     const cancel = state.move?.cancel;
     const cancellable = cancel && f >= cancel.start && f <= cancel.end;
@@ -725,7 +578,7 @@ function cancelCosts(move) {
   for (const group of move.cancel.groups) {
     for (const index of state.data.cancelGroups[group] ?? []) {
       const trigger = state.data.triggers[index];
-      const target = trigger && actionById(trigger.action);
+      const target = trigger && actionById(state.data, trigger.action);
       if (!trigger || !target || target.name.startsWith("ATK_")) continue;
       if (trigger.super) supers.add(trigger.super / BAR);
       else if (trigger.drive) drive.set(trigger.drive / BAR, (drive.get(trigger.drive / BAR) ?? new Set()).add(target.id));
@@ -771,11 +624,11 @@ function selectAction(action, move) {
     );
   }
   if (action.continues) {
-    const next = actionById(action.continues);
+    const next = actionById(state.data, action.continues);
     badges.append(badge(`spliced with ${next ? next.name : action.continues}`));
   }
   for (const b of action.branches ?? []) {
-    const target = actionById(b.action);
+    const target = actionById(state.data, b.action);
     if (target) badges.append(badge(`branches f${b.frame} → ${target.name}`));
   }
   if (move?.cancel) {
@@ -820,7 +673,7 @@ function buildNav() {
     head.textContent = label;
     nav.append(head);
     for (const move of moves) {
-      const action = actionById(move.action);
+      const action = actionById(state.data, move.action);
       if (!action) continue;
       nav.append(navButton(action, move, move.input, move.name));
     }
@@ -855,6 +708,7 @@ function navButton(action, move, primary, secondary) {
 async function loadCharacter(id) {
   const res = await fetch(`${id}.boxes.json`);
   state.data = await res.json();
+  state.radius = headRadius(state.data);
   const s = state.data.source;
   $("source").textContent = `${state.data.counts.actions} actions · ${state.data.counts.mapped} moves mapped · ${s.geometry}`;
   $("footer").innerHTML =
@@ -866,13 +720,13 @@ async function loadCharacter(id) {
     `Distance is measured from where the attacker stood when the move began, so a move that ` +
     `steps in covers more ground than its boxes alone suggest.`;
   buildNav();
-  const first = state.data.moves.find((m) => actionById(m.action));
-  selectAction(actionById(first.action), first);
+  const first = state.data.moves.find((m) => actionById(state.data, m.action));
+  selectAction(actionById(state.data, first.action), first);
 }
 
 /** Pushboxes make anything below point blank impossible, so the slider stops there. */
 function applyDistanceLimits() {
-  const closest = minDistance();
+  const closest = closestDistance();
   $("dist").min = String(closest);
   if (state.distance < closest) {
     state.distance = closest;
@@ -913,7 +767,7 @@ $("stance").onchange = (e) => {
   draw();
   updateReadouts();
 };
-const TOGGLES = [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"], ["push", "t-push"], ["path", "t-path"]];
+const TOGGLES = [["hurt", "t-hurt"], ["hit", "t-hit"], ["prox", "t-prox"], ["push", "t-push"], ["path", "t-path"], ["figure", "t-figure"]];
 for (const [key, id] of TOGGLES) {
   $(id).onchange = (e) => {
     state.show[key] = e.target.checked;
@@ -921,10 +775,9 @@ for (const [key, id] of TOGGLES) {
   };
 }
 $("fit").onclick = () => {
-  const boxes = state.action.hit.filter((h) => h.kind !== "proximity").flatMap((h) => h.boxes);
-  const reach = maxReach(boxes, opponentBoxes());
-  if (reach === null) return;
-  state.distance = clamp(reach - 1, minDistance(), Number($("dist").max));
+  const far = reach(state.action, opponentBoxes());
+  if (far === undefined) return;
+  state.distance = clamp(far - 1, closestDistance(), Number($("dist").max));
   $("dist").value = String(state.distance);
   $("distval").textContent = `${state.distance}u`;
   draw();

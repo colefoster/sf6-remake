@@ -1,6 +1,6 @@
 # 04 — The panel says what the engine knows
 
-Status: `ready-for-agent` — advantage and the input strip done (ADR-0049); punish window and stun counters remain
+Status: `done` — advantage and the input strip in ADR-0049, the rest in ADR-0052
 Depends on: `01-render-module.md`
 
 ## Why

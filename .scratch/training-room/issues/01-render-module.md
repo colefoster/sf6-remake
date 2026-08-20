@@ -1,6 +1,6 @@
 # 01 — A render module behind the bundle seam
 
-Status: `ready-for-agent` — `play.html` done (ADR-0049); `boxes.html` not yet ported
+Status: `done` — `play.html` in ADR-0049, `boxes.html` in ADR-0053
 
 ## Why
 
@@ -36,3 +36,25 @@ the better one), `boxes.html` second.
   their own
 - `npm run build:play` still reports a bundle size and the page still runs
 - The two pages look the same as before, by eye, on Ryu vs Ken
+
+## Outcome
+
+Done, ADR-0053. Bigger than the issue described: `boxes.html` was duplicating the
+*geometry* layer as well as the drawing — `hurtAt`, `originAt`, `pushAt`,
+`minDistance`, `activeWindows`, `maxReach`, `connectFrames`, `hitDataFor` and a
+private `actionableFrame` that was a frame out from the real one. All of it now
+comes through `./play.js`.
+
+Three things the port needed:
+
+- **A second camera, not a second renderer.** `viewForAction` frames one action's
+  own bounds where `viewFor` follows two fighters; both return the same `View`,
+  so `drawBox` and `drawFigure` are shared.
+- **One palette**, since there is now one `drawBox`. The viewer's won — it had to
+  tell a throw box from a proximity box from a leg. `play.html`'s pushboxes went
+  purple.
+- **`Posed`**, the shape `poseOf` actually wanted. Naming it is what let the
+  viewer draw the figure with no match running.
+
+`outcomeAt` stays duplicated on purpose: it plays advantage out from the boxes so
+that comparing it against FAT is a check, not a restatement.

@@ -17,16 +17,31 @@ export { Advantage, punishes } from "./training.js";
 export type { PunishOption } from "./training.js";
 export type { Contact, Hit, MatchOptions, Projectile, Result } from "./match.js";
 export {
+  actionById,
+  actionableFrame,
   activeWindows,
+  connectFrames,
+  hitDataFor,
+  hitKeysAt,
   hitboxesAt,
   hurtboxesAt,
   hurtPartsAt,
+  idleHurtboxes,
+  idlePushboxes,
+  minDistance,
+  mirrored,
+  proxboxesAt,
+  throwboxesAt,
   originAt,
+  pushHalfWidth,
   pushboxesAt,
+  reach,
   shift,
 } from "../data/geometry.js";
 // The view, shared by the two pages that draw a fighter. See ADR-0049.
 export {
+  boundsOf,
+  drawBox,
   drawBoxes,
   drawFigure,
   drawGauges,
@@ -36,7 +51,8 @@ export {
   placeBox,
   poseOf,
   viewFor,
+  viewForAction,
   worldBoxes,
 } from "./render.js";
-export type { Point, Pose, View, WorldBoxes } from "./render.js";
+export type { BoxKind, Point, Posed, Pose, View, WorldBoxes } from "./render.js";
 export type { GeometryAction, GeometryFile } from "../data/geometry.js";

@@ -26,7 +26,7 @@ import {
 import type { ArmorWindow, AtemiRow, GeometryFile } from "../src/data/geometry.js";
 import type { GeometryAction } from "../src/data/geometry.js";
 import type { Fighter } from "../src/game/index.js";
-import { headRadius, poseOf } from "../src/game/render.js";
+import { boundsOf, headRadius, poseOf, viewForAction } from "../src/game/render.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -724,6 +724,24 @@ describe("a pose derived from the boxes", () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it("frames one action's own bounds, travel included", () => {
+    // The box viewer's camera. It has to hold still while the frame is scrubbed,
+    // so the bounds are the action's and not the frame's — and a move that steps
+    // in sweeps its boxes forward with it.
+    const dash = geo.actions.find((a) => a.name === "ATK_2MK_Y2")!;
+    const bounds = boundsOf(dash);
+    const travel = dash.motion?.travel;
+    expect(bounds.maxX).toBeGreaterThanOrEqual(160);
+    if (travel?.maxX) expect(bounds.maxX).toBeGreaterThan(travel.maxX);
+
+    const view = viewForAction({ width: 1200, height: 620 }, bounds);
+    // The ground is pinned and the content fits inside the padding.
+    expect(view.y(0)).toBe(view.ground);
+    expect(view.x(bounds.minX)).toBeGreaterThanOrEqual(0);
+    expect(view.x(bounds.maxX)).toBeLessThanOrEqual(1200);
+    expect(view.y(bounds.maxY)).toBeGreaterThanOrEqual(0);
   });
 
   it("mirrors with the fighter", () => {
