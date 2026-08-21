@@ -659,8 +659,12 @@ describe("a pose derived from the boxes", () => {
       expect(p.hips.x).toBe(0);
       expect(p.neck.x).toBe(0);
       expect(p.head!.x).toBe(0);
-      // The standing foot inset on the pushbox's half-width, not the leg union's.
-      expect(p.legs[0]!.tip.x).toBe(-15.84);
+      // The standing foot inset on the pushbox's half-width, not the leg
+      // union's. ADR-0060 widened the inset from 0.48 of the half-width to 0.78:
+      // the old stance was 32 units on a fighter 166 tall and the two legs came
+      // out of one hip point, so they drew as one thick zigzag rather than as a
+      // pair. The foot is still on the pushbox and still symmetric about it.
+      expect(p.legs[0]!.tip.x).toBeCloseTo(-25.74, 5);
       expect(p.legs[0]!.derived).toBe(false);
       expect(p.hips.y).toBe(frames[0]!.hips.y);
       expect(p.neck.y).toBe(frames[0]!.neck.y);
@@ -672,7 +676,7 @@ describe("a pose derived from the boxes", () => {
     expect(frames[1]!.limbs).toEqual([]);
     expect(frames[1]!.legs[1]!.derived).toBe(true);
     expect(frames[1]!.legs[1]!.tip.x).toBeGreaterThan(60);
-    expect(frames[1]!.legs[0]!.tip.x).toBe(-15.84);
+    expect(frames[1]!.legs[0]!.tip.x).toBeCloseTo(-25.74, 5);
   });
 
   it("holds a part at its distance from the one above, not at an absolute height", () => {
@@ -969,6 +973,53 @@ describe("a pose derived from the boxes", () => {
       }
     });
 
+    it("puts the pelvis at half stature, not on the top of the leg hurtbox", () => {
+      // ADR-0060. The leg/body hurtbox boundary is 54 of Ryu's 166-unit stack
+      // standing and 41 of 119 crouching — 32.5% and 34.5%, the same fraction of
+      // a smaller body, which is what a hit-height convention does and not what a
+      // hip joint does. Read as a hip it drew a tower of torso on two stumps.
+      const stack = 166;
+      const p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+      const hip = p.hips.y - p.legs[0]!.tip.y;
+      expect(hip / stack).toBeGreaterThan(0.5);
+      expect(hip / stack).toBeLessThan(0.56);
+      // The pelvis is inside the *body* box (54-138), which is what makes it
+      // honest to draw there: the thigh above the leg key is still hittable.
+      expect(p.hips.y).toBeGreaterThan(54);
+      expect(p.hips.y).toBeLessThan(138);
+      // Crouching, the same rule folds the hips down with the neck.
+      const crouch = poseOf(stub(named("BAS_CRH_Loop"), 1), radius);
+      expect(crouch.hips.y).toBeLessThan(p.hips.y * 0.75);
+      // The legs are rooted on a pelvis rather than on one point.
+      expect(p.legs[0]!.root.x).toBeLessThan(p.hips.x);
+      expect(p.legs[1]!.root.x).toBeGreaterThan(p.hips.x);
+      expect(p.arms[0]!.root.x).toBeLessThan(p.legs[0]!.root.x);
+    });
+
+    it("cages an invented hand or foot inside the fighter's own hurtboxes", () => {
+      // This is a training room, so what is drawn has to be hittable. A limb the
+      // boxes place is on a box already; an invented one is placed by a
+      // proportion, and a proportion put a resting hand or a striding foot
+      // outside every live hurtbox on 102,831 of 1,344,077 limb-frames across the
+      // roster (7.7%), by as much as 52 units. Caged it is 283 (0.02%), all of
+      // them frames whose every box is out on a limb so there is no cage to use.
+      for (const name of ["BAS_STD_Loop", "BAS_FORWARD_Loop", "5010_GRD_STD_Loop", "0010_DMG_HL_ST"]) {
+        const action = named(name);
+        let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+        for (let f = 1; f <= 20; f++) {
+          p = poseOf(stub(action, f), radius, p);
+          const live = hurtboxesAt(action, f);
+          if (!live.length) continue;
+          const lo = Math.min(...live.map((b) => b.x));
+          const hi = Math.max(...live.map((b) => b.x + b.width));
+          for (const limb of [...p.arms, ...p.legs].filter((l) => !l.derived)) {
+            expect(limb.tip.x).toBeGreaterThanOrEqual(lo - 0.5);
+            expect(limb.tip.x).toBeLessThanOrEqual(hi + 0.5);
+          }
+        }
+      }
+    });
+
     it("carries the arms differently guarding, recoiling and standing", () => {
       // The three cases the dump distinguishes and ADR-0058 drew identically.
       const hands = (name: string, f: number): number[] => {
@@ -985,6 +1036,15 @@ describe("a pose derived from the boxes", () => {
       expect(Math.min(...hands("5000_GRD_STD_START", 3))).toBeGreaterThan(0);
       // Struck: both hands behind, thrown away from the opponent.
       expect(Math.max(...hands("0010_DMG_HL_ST", 4))).toBeLessThan(0);
+      // And they are two arms, not one. ADR-0059 sent both hands the same way
+      // with a 7% vertical nudge between them, so a guard and a reaction each
+      // drew one arm and a smear on top of it; ADR-0060 gives the lead and the
+      // rear arm their own offsets. A head's radius apart is the bar.
+      for (const name of ["BAS_STD_Loop", "5000_GRD_STD_START", "0010_DMG_HL_ST"]) {
+        const p = poseOf(stub(named(name), 3), radius);
+        const [a, b] = p.arms;
+        expect(Math.hypot(a!.tip.x - b!.tip.x, a!.tip.y - b!.tip.y)).toBeGreaterThan(radius);
+      }
     });
   });
 

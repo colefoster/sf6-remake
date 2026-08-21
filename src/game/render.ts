@@ -298,8 +298,18 @@ export function placeBox(fighter: Posed, box: Box): Box {
 export interface Build {
   /** Resting arm length, x the roster median. */
   arm: number;
-  /** Stance width, x the roster median. */
+  /** Leg length and hip height, x the roster median. */
   leg: number;
+  /**
+   * The fighter's own idle hurtbox stack, in game units — 166 on 21 of the 24,
+   * 172 on Dee Jay, 178 on JP, Marisa and Zangief.
+   *
+   * Derived, and it is here because a bone length is a property of the *body*
+   * and not of how the body is standing. Measured against the current frame's
+   * stature a crouching fighter grows short arms, which is the same mistake
+   * ADR-0058 had to back out of in `pose:audit`. 0 means "no geometry to hand".
+   */
+  stature: number;
 }
 
 /** Roster medians of `arm / height` and `leg / height` over all 24 characters. */
@@ -307,12 +317,16 @@ const MEDIAN_ARM = 0.5391;
 const MEDIAN_LEG = 0.652;
 
 /** The neutral build, for a caller with no geometry to hand. */
-export const EVEN_BUILD: Build = { arm: 1, leg: 1 };
+export const EVEN_BUILD: Build = { arm: 1, leg: 1, stature: 0 };
 
 export function buildOf(geo: GeometryFile): Build {
+  const stand = geo.actions.find((a) => a.id === geo.calibration?.standAction);
+  const parts = stand ? hurtPartsAt(stand, 1) : null;
+  const stack = parts ? union([...parts.head, ...parts.body, ...parts.leg]) : null;
+  const stature = stack ? stack[3] - Math.min(0, stack[1]) : 0;
   const p = geo.fighter?.physique;
-  if (!p?.height) return EVEN_BUILD;
-  return { arm: p.arm / p.height / MEDIAN_ARM, leg: p.leg / p.height / MEDIAN_LEG };
+  if (!p?.height) return { ...EVEN_BUILD, stature };
+  return { arm: p.arm / p.height / MEDIAN_ARM, leg: p.leg / p.height / MEDIAN_LEG, stature };
 }
 
 /**
@@ -328,6 +342,40 @@ export function headRadius(geo: GeometryFile): number {
 }
 
 /**
+ * Where a human body's joints sit, as fractions of its standing height.
+ *
+ * **These are not in either dump, and they are not measurements of SF6.** The
+ * hip and the shoulder are the ordinary anthropometric ratios — the hip joint
+ * (greater trochanter) at 0.53 of stature, the shoulder joint at 0.83 — and they
+ * are here because the boxes do not carry a skeleton and ADR-0059 proved nothing
+ * else in the dump does either. Every joint they place is invention, stated as
+ * such in ADR-0060, and they are named constants rather than numbers buried in
+ * expressions so that the invention can be *seen*.
+ *
+ * The **arm is deliberately not** its anthropometric length. Shoulder-to-wrist
+ * is 0.37 of stature, and a 61-unit arm on Ryu cannot be drawn: the honesty cage
+ * keeps an invented hand inside his own hurtboxes, which are ±40 at chest
+ * height, so an arm that long is always folded double and its elbow sticks out
+ * further than his torso. 0.25 is the longest arm that folds to a guard without
+ * a wing, and it is a compromise with the box, not a reading of a body.
+ *
+ * What they replace is not data. It was the claim that **the top of the leg
+ * hurtbox is the hip joint**, which put the hips at 32.5% of stature and drew a
+ * tower of torso on two stumps. The crouch refutes it: standing, the leg/body
+ * boundary sits at 54 of a 166 stack (32.5%); crouching, at 41 of 119 (34.5%).
+ * A hit-height convention keeps its fraction of the body when the body folds. A
+ * hip joint does not — a crouching fighter's hips drop to about half their
+ * standing height while their head drops by a third.
+ */
+const HIP_OF_STATURE = 0.53;
+/** The hip as a fraction of the neck's own height, which is what a frame has. */
+const HIP_OF_NECK = 0.638;
+/** Shoulder to wrist. Short of the 0.37 a body has — see above. */
+const ARM_OF_STATURE = 0.25;
+/** How much of a leg's own length is spare when standing, so the knee reads. */
+const LEG_SLACK = 1.02;
+
+/**
  * How a fighter with no extended-limb box is *carrying* itself.
  *
  * ADR-0058 gave every one of those frames the same hanging arms and the same
@@ -336,34 +384,43 @@ export function headRadius(geo: GeometryFile): number {
  * and the action says which it is without any geometry being invented for it.
  *
  * `stance` is the action's own `StatusKey.PoseStatus` (ADR-0059) where it has
- * one — 1,482 of the 2,622 reactions do — and the name carries the rest. The
- * *numbers* are invented: `fold` is how much of a full arm's length the hand sits
- * from the shoulder, `tilt` the angle below horizontal it sits at, `lead` whether
- * both hands go towards the opponent or each stays on its own side, and `stance`
- * the stance width against ADR-0050's baseline.
+ * one — 1,482 of the 2,622 reactions do — and the name carries the rest.
+ *
+ * The *numbers* are invented. `lead` and `rear` are where each hand sits
+ * relative to its own shoulder, as fractions of arm length: `+x` towards the
+ * opponent, `+y` up. **The two arms are given separate offsets**, which is the
+ * point — ADR-0059 sent both hands the same way with a 7% vertical nudge, so a
+ * struck fighter drew one arm and a smear. `width` is the stance against
+ * ADR-0050's baseline and `sink` drops the hips towards the floor.
  */
 interface Attitude {
-  fold: number;
-  tilt: number;
-  lead: boolean;
-  stance: number;
+  lead: readonly [number, number];
+  rear: readonly [number, number];
+  width: number;
+  sink: number;
 }
 
-const deg = (d: number): number => (d * Math.PI) / 180;
-
-/** Arms down and slightly forward: what ADR-0058 drew on every frame. */
-const READY: Attitude = { fold: 0.87, tilt: deg(82), lead: false, stance: 1 };
+/**
+ * The fighting stance: lead fist out at the front of the chest, rear fist
+ * tucked back near its own shoulder. Not hanging arms — a fighter at rest in
+ * this game has their hands up, and hands up is also what stops the arms
+ * reading as longer than the legs.
+ */
+const READY: Attitude = { lead: [0.46, -0.5], rear: [0.33, -0.72], width: 1, sink: 0 };
 
 function attitudeOf(name: string, stance: 1 | 2 | 3 | null): Attitude {
-  // Guarding and Drive-guarding: hands up and in front, both of them, because a
-  // block is the one pose where the arms are unambiguously between the fighter
-  // and the opponent. `5000_GRD_STD_START` and its Drive twin `DRD`.
-  if (/(^|_)(GRD|DRD)_/.test(name)) return { fold: 0.72, tilt: deg(38), lead: true, stance: 0.95 };
-  // Being hit: the arms trail *away* from the opponent. Past 90 degrees the
-  // horizontal component flips, which is what puts them behind the body.
-  if (/(^|_)DMG_/.test(name)) return { fold: 0.9, tilt: deg(104), lead: true, stance: 1.1 };
-  if (stance === 2) return { fold: 0.78, tilt: deg(60), lead: false, stance: 1.15 };
-  if (stance === 3) return { fold: 0.8, tilt: deg(55), lead: false, stance: 0.9 };
+  // Guarding and Drive-guarding: both hands in front, because a block is the one
+  // pose where the arms are unambiguously between the fighter and the opponent.
+  // `5000_GRD_STD_START` and its Drive twin `DRD`. Stacked rather than side by
+  // side — a high hand and a low one is what a guard looks like from the side.
+  if (/(^|_)(GRD|DRD)_/.test(name)) return { lead: [0.44, -0.35], rear: [0.62, -0.6], width: 0.95, sink: 0.02 };
+  // Being hit: both arms thrown away from the opponent, and *not* on top of each
+  // other — the lead arm flails high and the rear one drops behind the hip.
+  if (/(^|_)DMG_/.test(name)) return { lead: [-0.75, -0.55], rear: [-0.35, -0.95], width: 1.1, sink: 0.03 };
+  if (stance === 2) return { lead: [0.46, -0.44], rear: [0.26, -0.68], width: 1.2, sink: 0 };
+  // Airborne: the guard opens and the hands come up, which is the only thing a
+  // jump does that a hurtbox never records.
+  if (stance === 3) return { lead: [0.38, 0.1], rear: [-0.33, 0.18], width: 0.9, sink: 0 };
   return READY;
 }
 
@@ -470,8 +527,8 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   const spine = last ? last.neck.y - last.hips.y : null;
   const stood = last?.legs.find((l) => !l.derived) ?? last?.legs[0];
   const drop = last?.stand ?? (stood ? last!.hips.y - stood.tip.y : 0);
-  const hipY = leg ? toHead(leg) : body ? (spine === null ? toFeet(body) : toHead(body) - spine) : last!.hips.y;
-  const neckY = body ? toHead(body) : hipY + (spine ?? 0);
+  const held = leg ? toHead(leg) : body ? (spine === null ? toFeet(body) : toHead(body) - spine) : last!.hips.y;
+  const neckY = body ? toHead(body) : held + (spine ?? 0);
 
   // The skull hangs off the head box's far edge, but stays on the neck. The head
   // key is often much taller than a head — Ryu's crouch carries two boxes over 50
@@ -483,11 +540,38 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
     : neckY + gap;
   const skull = head || last?.head ? { x: axis, y: skullY, r: radius } : null;
 
+  // How the fighter is carrying itself. Read here rather than with the rest of
+  // the invention below because the hips are part of it: a guard settles and a
+  // reaction is knocked off its base, and both move the pelvis.
+  const stance = stanceAt(action, frame);
+  const attitude = attitudeOf(action.name, stance);
+
+  // -- The pelvis -----------------------------------------------------------
+  //
+  // **Invented, and it used to be invented while looking derived.** The hips
+  // were the top of the leg hurtbox: 54 of a 166-unit stack on 21 of the 24
+  // fighters, 32.5% of stature, which draws a tower of torso on two stumps and
+  // is the single thing the figure was most obviously wrong about.
+  //
+  // The crouch says that boundary is not a joint. Standing it is 54 of 166
+  // (32.5%); crouching it is 41 of 119 (34.5%) — the same fraction of a smaller
+  // body. That is what a *hit-height* convention does: the line between a low
+  // and a mid stays where it is on the silhouette. A hip joint does the
+  // opposite, dropping to about half its standing height while the head drops
+  // by a third. So the boxes do not carry a hip, in any pose, and the pelvis is
+  // placed by human proportion instead — 0.638 of the neck's own height, which
+  // is 0.53 of stature on a body whose neck sits at 0.83 (`HIP_OF_STATURE`).
+  //
+  // The one real thing in it is `build.leg`, ADR-0059's per-fighter leg ratio,
+  // damped by half because it is a bone chain and not a hip height: A.K.I.'s
+  // hips ride 5% higher than Zangief's rather than 16%.
+  const footY = leg ? toFeet(leg) : held - drop;
+  const legScale = 1 + (build.leg - 1) * 0.5;
+  const hipY = leg
+    ? footY + (neckY - footY) * HIP_OF_NECK * legScale * (1 - attitude.sink)
+    : held;
   const hips: Point = { x: axis, y: hipY };
   const neck: Point = { x: axis, y: neckY };
-  // Feet inset a fixed fraction of the pushbox's half-width, on the far end of
-  // the leg boxes. Not the leg union's own width: a kick doubles that.
-  const footY = leg ? toFeet(leg) : hipY - drop;
   const standing = Boolean(leg) || Boolean(last?.legs.length);
 
   // An active hitbox is a limb, and which limb the action's own name usually
@@ -503,14 +587,31 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   // a 524-wide hitbox with no hurtbox anywhere near it, and drawn as an arm it
   // was a yellow beam out of a man who was not there. Past the reach it is not a
   // limb; the hitbox is still drawn as a hitbox.
+  // -- The shoulder line and the pelvis line --------------------------------
+  //
   // The shoulders and the hips are the only joints an arm or a leg can hang off,
-  // and neither is in the dump. They are placed on the pushbox's width, which is
-  // the one authored width a body has (ADR-0050) — 20 units either side on Ryu's
-  // 66-wide box, 26 on Zangief's 86.
+  // and neither is in the dump. ADR-0059 hung both off *one point each*, the
+  // shoulders 18 units apart on Ryu — a hair wider than his own 34-unit skull —
+  // so the two arms and the spine met at the throat in a Y and the two legs met
+  // in a V, and a walk read as a stance opening and closing rather than as steps.
+  //
+  // They are spread across the **body hurtbox's** own width now, not the
+  // pushbox's. The body box is the authored width of the torso (±40 on Ryu, ±49
+  // on Zangief, ±46 on Marisa) where the pushbox is how close two fighters may
+  // stand; a shoulder belongs on the first. The fractions of it are invented.
+  const bodyHalf = body ? (body[2] - body[0]) / 2 : half * 1.2;
+  const shoulderHalf = Math.max(bodyHalf * 0.55, radius * 1.15);
+  const pelvisHalf = bodyHalf * 0.3;
   const shoulderY = neckY - gap * 0.3;
-  const shoulder = (s: 1 | -1): Point => ({ x: axis + s * half * 0.55, y: shoulderY });
+  const shoulder = (s: 1 | -1): Point => ({ x: axis + s * shoulderHalf, y: shoulderY });
 
   const stature = Math.abs((skull ? skullY + gap : neckY) - footY);
+  // A bone is as long as the body it is on, not as long as the pose it is in:
+  // measured against the current frame's stature a crouching fighter grows short
+  // arms. `build.stature` is the fighter's own idle stack (ADR-0060).
+  const frame0 = build.stature || stature || radius * 9.8;
+  const armLength = frame0 * ARM_OF_STATURE * build.arm;
+  const legLength = frame0 * HIP_OF_STATURE * legScale * LEG_SLACK;
   const reach = Math.max(
     stature * 1.1,
     ...[...parts.head, ...parts.body, ...parts.leg].map((b) => Math.abs(flip(b.x + b.width / 2) - axis) + b.width / 2),
@@ -521,7 +622,9 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
       const tip = { x: facing === 1 ? b.x + b.width : b.x, y: b.y + b.height / 2 };
       const kick = byName ?? tip.y < hips.y + (neck.y - hips.y) * 0.35;
       const root = kick ? hips : shoulder(facing);
-      return { root, joint: bendOf(root, tip, radius * 1.5), tip, kick, derived: true };
+      // Both joints fold *downwards* on a swing — an elbow under a punch, a knee
+      // under a kick — which is ADR-0057's rule and the one the tests pin.
+      return { root, joint: jointOf(root, tip, kick ? legLength : armLength, 0, -1), tip, kick, derived: true };
     })
     // Too far out is not a limb (ADR-0051) and neither is too close in: E.Honda's
     // `ATK_8LK` puts its box on the hip it would hang off, and a four-unit limb
@@ -608,38 +711,24 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   //   `physique`  per-fighter arm and leg proportion, as `build`.
   //   `stance`    the action's own standing / crouching / airborne label.
   //
-  // The base stance is still ADR-0050's 0.48 of the pushbox half-width, and the
-  // folds and tilts in `attitudeOf` are made up outright.
+  // The base stance is still ADR-0050's 0.48 of the pushbox half-width; the hand
+  // offsets in `attitudeOf` and the joint proportions are made up outright.
   const lead = facing;
-  const stance = stanceAt(action, frame);
-  const attitude = attitudeOf(action.name, stance);
 
-  // A nominal arm, in this fighter's own units: a fraction of its stature, scaled
-  // by how long its arms are against the roster's (`Build`). The fold and the tilt
-  // then say how a resting arm is *carried*, which is what differs between
-  // standing over an opponent and being knocked backwards by one.
-  const armLength = stature * 0.55 * build.arm;
-  const restingArm = (s: 1 | -1): { root: Point; tip: Point } => {
-    const root = shoulder(s);
-    const out = attitude.lead ? lead : s;
-    return {
-      root,
-      tip: {
-        // Both hands going the same way (a guard, a recoil) would land them on
-        // the same point and read as one arm, so the near one is carried a
-        // little lower than the far one.
-        x: root.x + Math.cos(attitude.tilt) * armLength * attitude.fold * out,
-        y:
-          root.y -
-          Math.sin(attitude.tilt) * armLength * attitude.fold * up +
-          (attitude.lead ? s * armLength * 0.07 * up : 0),
-      },
-    };
-  };
-  const restingLeg = (s: 1 | -1): { root: Point; tip: Point } => ({
-    root: hips,
-    tip: { x: axis + s * half * 0.48 * build.leg * attitude.stance, y: footY },
-  });
+  /**
+   * Keep an invented point inside the fighter's own hurtboxes.
+   *
+   * This is a training room: what is drawn has to be hittable. A derived limb
+   * gets this for free — it is *on* a box — but an invented hand is placed by a
+   * proportion, and a proportion that puts a fist a few units past the torso is
+   * drawing a body part nothing can hit. The span is the footprint-filtered core
+   * boxes, so an arm already out on its own hurtbox does not widen the cage.
+   */
+  const core = [body, leg, head].filter((b): b is [number, number, number, number] => Boolean(b));
+  const caged = core.length
+    ? [flip(Math.min(...core.map((b) => b[0]))), flip(Math.max(...core.map((b) => b[2])))].sort((a, b) => a - b)
+    : null;
+  const inside = (x: number): number => (caged ? clamp(x, caged[0]!, caged[1]!) : x);
 
   // -- The jump is keyed to its own arc -------------------------------------
   //
@@ -678,13 +767,49 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   const walking = standing && !airborne && Boolean(action.motion?.velocity?.x) && travel > nominal;
   const phase = walking ? (origin.x / stride) * Math.PI : null;
   // The *rate* is the grounded part: a step per stride of ground covered. How far
-  // the foot swings is not — a figure whose legs come out of a single hip point
-  // has no pelvis to widen the V, so a foot thrown the full half-stride reads as
-  // a lunge rather than a walk. 0.35 is picked by eye.
-  const swing = stride * 0.35;
+  // the foot swings is not. ADR-0059 held it to 0.35 of a stride because a figure
+  // whose legs came out of a single hip point had no pelvis to widen the V, and a
+  // foot thrown further read as a lunge; the legs are rooted on a pelvis now, so
+  // it goes to 0.5 and the gait is visible in motion rather than only on a sheet.
+  //
+  // How wide the stance is, and how far a foot may swing, are bounded by the
+  // same cage as the hands: Ryu's whole silhouette is inside ±40 on every frame
+  // of his walk, so a foot thrown to 59 is a foot nothing can hit. ADR-0059's
+  // 0.35 of a stride happened to fit; 0.5 does not, and clamped it pinned both
+  // feet to the box edge for most of the cycle and the gait stopped moving at
+  // all. So a walking fighter brings its feet **in** to make room to swing them,
+  // which is also what a walk looks like next to a planted stance.
+  const stanceX = half * 0.78 * build.leg * attitude.width * (walking ? 0.45 : 1);
+  const room = caged ? Math.max(8, Math.min(caged[1]! - axis, axis - caged[0]!) - stanceX) * 0.92 : stride;
+  const swing = Math.min(stride * 0.5, room);
   // A foot lifts by a fraction of the stride, but never past the hips: on a
   // fighter whose leg box is short the two are not far apart.
   const lift = Math.min(stride * 0.18, Math.abs(hipY - footY) * 0.5);
+
+  /**
+   * A resting arm: the hand where the attitude carries it, in this fighter's
+   * own units.
+   *
+   * The two arms are placed *separately* — the lead hand out at the front of the
+   * chest, the rear one tucked back — because a side-on figure whose arms are
+   * mirror images of each other draws a pair of parentheses, which is what made
+   * the old figure read as an ape rather than as a fighter.
+   */
+  const restingArm = (s: 1 | -1): { root: Point; tip: Point } => {
+    const root = shoulder(s);
+    const [dx, dy] = s === lead ? attitude.lead : attitude.rear;
+    return {
+      root,
+      tip: { x: root.x + dx * armLength * lead, y: root.y + dy * armLength * up },
+    };
+  };
+  // The feet keep ADR-0050's inset on the pushbox; what is new is that they no
+  // longer come out of a single point. A pelvis is what lets a stride read as a
+  // stride instead of as a stance opening.
+  const restingLeg = (s: 1 | -1): { root: Point; tip: Point } => ({
+    root: { x: axis + s * pelvisHalf, y: hipY },
+    tip: { x: axis + s * stanceX, y: footY },
+  });
 
   /**
    * Where a *resting* hand or foot ends up: the stance, plus the gait and the
@@ -695,10 +820,19 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
     let { x, y } = tip;
     if (phase !== null) {
       const th = phase + (s === lead ? 0 : Math.PI);
-      // The arms counter-swing at a third of the legs, and a foot only lifts on
-      // the half of the cycle it is swinging -- the other one is on the floor.
-      x += Math.cos(th) * swing * lead * (foot ? 1 : -0.35);
-      if (foot) y += Math.max(0, Math.sin(th)) * lift * up;
+      // A foot only lifts on the half of the cycle it is swinging -- the other
+      // one is on the floor. The hands do not counter-swing the way a walker's
+      // do: this is a fighter, who walks with the guard up, so the arms *bob*
+      // with the step (the vertical term) and drift only a little (the
+      // horizontal). ADR-0059's 0.35 horizontal counter-swing was invisible
+      // anyway, being 0.35 of a swing that was itself held back.
+      if (foot) {
+        x += Math.cos(th) * swing * lead;
+        y += Math.max(0, Math.sin(th)) * lift * up;
+      } else {
+        x += Math.cos(th) * swing * lead * -0.16;
+        y += Math.sin(th * 2) * lift * 0.35 * up;
+      }
     }
     if (tuck > 0) {
       // A tucked leg is folded, not retracted into the hips: an airborne leg box
@@ -718,18 +852,32 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
     s: 1 | -1,
     foot: boolean,
   ): Limb => {
-    const tip = reachedFor ?? carried(rest.tip, s, foot);
-    // A derived limb folds at the elbow or the knee like the hitbox limb does; a
-    // resting one is only slightly bent, and towards the opponent, because a
-    // fighting stance is not a straight line and `bendOf`'s perpendicular is
-    // undefined in direction for a limb hanging vertically.
-    const joint = reachedFor
-      ? bendOf(rest.root, tip, radius * 1.5)
-      : {
-          x: (rest.root.x + tip.x) / 2 + lead * Math.abs(rest.root.y - tip.y) * 0.12,
-          y: (rest.root.y + tip.y) / 2,
-        };
-    return { root: rest.root, joint, tip, derived: Boolean(reachedFor) };
+    // A resting hand or foot is caged inside the fighter's own hurtboxes: this
+    // is a training room, and an invented extremity a few units past the torso
+    // is a body part nothing can hit. It binds on a stride (the swinging foot
+    // wants to go 12 units past Ryu's box) and on a guard.
+    const swung = carried(rest.tip, s, foot);
+    const tip = reachedFor ?? { x: inside(swung.x), y: swung.y };
+    // Both cases fold the same way now: a two-bone chain of the fighter's own
+    // length, solved for where the elbow or the knee has to be. The old rule
+    // dropped the joint perpendicular by a *fraction of the reach*, which is
+    // backwards — a limb that reaches nowhere is a limb that is folded hard, and
+    // one at full stretch is straight. A resting hand sits about a third of an
+    // arm from its shoulder, and under the old rule that drew a nearly straight
+    // stick angled across the chest.
+    //
+    // A knee tracks forward, an elbow back and down: that is the way the two
+    // joints go, and it is also what tells them apart in silhouette.
+    const joint = jointOf(rest.root, tip, foot ? legLength : armLength, foot ? lead * 0.9 : -lead * 0.7, -1);
+    // A folded elbow is the one invented point that can leave the body sideways,
+    // so it is caged like the hand. A derived limb is left alone: its joint is
+    // between two points the boxes chose.
+    return {
+      root: rest.root,
+      joint: reachedFor ? joint : { x: inside(joint.x), y: joint.y },
+      tip,
+      derived: Boolean(reachedFor),
+    };
   };
 
   // A part with no box at all is invulnerable, not gone (ADR-0020), and the rule
@@ -789,27 +937,47 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
 }
 
 /**
- * The knee or elbow: the midpoint, dropped perpendicular to the limb.
+ * The knee or the elbow: where a two-bone chain of length `bone` has to fold to
+ * put its tip on `tip`, bending towards `(px, py)`.
  *
- * Always *below* the straight line, because that is the way both joints fold —
- * an elbow under a punch, a knee under a kick. The bend is a fraction of the
- * limb's own length, so a jab folds a little and a roundhouse folds a lot, up to
- * `cap`.
+ * This replaces ADR-0057's perpendicular droop, which offset the joint by a
+ * *fraction of the reach*. That is the wrong way round. A limb whose hand is
+ * near its shoulder is folded to nearly nothing; a limb at full stretch is
+ * straight. Under the old rule they came out the other way about, which is why a
+ * resting arm was a slightly-kinked stick and Dhalsim's 361-unit reach needed a
+ * cap bolted on to stop its elbow sagging 57 units off the line.
+ *
+ * The bones are equal halves. A real humerus is a shade shorter than the forearm
+ * and a femur a shade longer than the shin, and neither difference survives
+ * being drawn three pixels wide.
+ *
+ * Where the tip is further away than the chain is long — an extended limb read
+ * off a hurtbox, which is a real thing that happens on Dhalsim — the chain
+ * cannot reach and is drawn straight, with a token bend so it does not read as a
+ * beam.
  */
-function bendOf(root: Point, tip: Point, cap = Infinity): Point {
+function jointOf(root: Point, tip: Point, bone: number, px: number, py: number): Point {
   const dx = tip.x - root.x;
   const dy = tip.y - root.y;
-  const length = Math.hypot(dx, dy);
-  if (length < 1) return { x: (root.x + tip.x) / 2, y: (root.y + tip.y) / 2 };
-  // Of the two perpendiculars, the one pointing down.
-  const nx = dy / length;
-  const ny = -dx / length;
-  const sign = ny > 0 ? -1 : 1;
-  // Capped, because how far a joint sits off the line is a property of the body
-  // and not of how far the limb reaches: uncapped, Dhalsim's 361-unit 5HP reach
-  // put its elbow 57 units under the straight line and the arm read as a sag.
-  const drop = Math.min(length * 0.16, cap);
-  return { x: (root.x + tip.x) / 2 + nx * drop * sign, y: (root.y + tip.y) / 2 + ny * drop * sign };
+  const span = Math.hypot(dx, dy);
+  const mid = { x: (root.x + tip.x) / 2, y: (root.y + tip.y) / 2 };
+  if (span < 1) return mid;
+  // Of the two perpendiculars, the one the joint is supposed to fold towards.
+  let nx = -dy / span;
+  let ny = dx / span;
+  if (nx * px + ny * py < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const half = Math.max(bone, 1) / 2;
+  // Capped at a 55%-extended chain. A real elbow folds much tighter than that,
+  // and a guard's does; drawn as two sticks it becomes a wing sticking out
+  // further than the fighter's own torso, which is worse than a shallow fold.
+  const off =
+    span < bone
+      ? Math.min(Math.sqrt(half * half - (span / 2) ** 2), bone * 0.42)
+      : Math.max(2, Math.min(bone * 0.11, span * 0.06));
+  return { x: mid.x + nx * off, y: mid.y + ny * off };
 }
 
 const clamp = (v: number, a: number, b: number): number =>
@@ -1000,13 +1168,24 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash 
   // A limb the boxes describe is body-coloured; one this project invented keeps
   // the player tint, so the two players stay apart and the cyan reads as "the
   // dump did not say" rather than as decoration.
+  //
+  // The forearm and the shin are drawn thinner than the upper arm and the thigh.
+  // Uniform sticks give a limb no direction, so a bent one reads as a kink in a
+  // wire rather than as a joint.
   const chain = (limb: Limb, width: number, dim: boolean): void => {
     const ink = limb.derived ? "#e5e7eb" : tint;
     line(limb.root, limb.joint, ink, width, dim);
-    line(limb.joint, limb.tip, ink, width, dim);
+    line(limb.joint, limb.tip, ink, Math.max(1.2, width * 0.72), dim);
   };
 
   line(pose.neck, pose.hips, "#e5e7eb", body, pose.faded.body);
+  // The shoulder line and the pelvis, joining the roots of each pair. Both are
+  // torso, both are invented (ADR-0060 places them on the body hurtbox's own
+  // width), and without them the arms met the spine at the throat in a Y and the
+  // legs met it at the hips in a V — which is what a figure with no shoulders
+  // and no pelvis looks like.
+  if (pose.arms.length === 2) line(pose.arms[0]!.root, pose.arms[1]!.root, "#e5e7eb", body, pose.faded.body);
+  if (pose.legs.length === 2) line(pose.legs[0]!.root, pose.legs[1]!.root, "#e5e7eb", body, pose.faded.leg);
   for (const leg of pose.legs) chain(leg, body, pose.faded.leg);
   if (pose.head) {
     ctx.globalAlpha = pose.faded.head ? 0.35 : 1;
