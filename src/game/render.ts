@@ -854,7 +854,15 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   // Airborne travel is not a walk: a jumping fighter covers as much ground as a
   // walking one and has no floor to step off.
   const walking = standing && !airborne && Boolean(action.motion?.velocity?.x) && travel > nominal;
-  const phase = walking ? (origin.x / stride) * Math.PI : null;
+  // **The phase runs off the distance covered, and the *direction* is separate.**
+  // `origin.x` is signed — negative through a back walk — and `Math.cos` is an
+  // even function, so feeding it a signed phase changed nothing at all: a
+  // fighter walking backwards traced exactly the same leg cycle as one walking
+  // forwards, which is the forward gait played while retreating. The magnitude
+  // advances the cycle; `way` mirrors it.
+  const phase = walking ? (Math.abs(origin.x) / stride) * Math.PI : null;
+  /** Which way the action itself travels: +1 forwards, -1 on a back walk. */
+  const way = Math.sign(action.motion?.velocity?.x ?? 1) || 1;
   // The *rate* is the grounded part: a step per stride of ground covered. How far
   // the foot swings is not. ADR-0059 held it to 0.35 of a stride because a figure
   // whose legs came out of a single hip point had no pelvis to widen the V, and a
@@ -932,10 +940,15 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
       // horizontal). ADR-0059's 0.35 horizontal counter-swing was invisible
       // anyway, being 0.35 of a swing that was itself held back.
       if (foot) {
-        x += Math.cos(th) * swing * lead;
-        y += Math.max(0, Math.sin(th)) * lift * up;
+        x += Math.cos(th) * swing * lead * way;
+        // **The lifted foot is the one swinging with the travel, not against
+        // it.** A foot's horizontal speed here is proportional to `-sin(th)`, so
+        // lifting on `sin(th) > 0` lifted the foot that was moving *backwards*
+        // and planted the one moving forwards — the planted foot slid forward
+        // under a fighter walking forward, which is a moonwalk. Half a cycle out.
+        y += Math.max(0, -Math.sin(th)) * lift * up;
       } else {
-        x += Math.cos(th) * swing * lead * -0.16;
+        x += Math.cos(th) * swing * lead * way * -0.16;
         y += Math.sin(th * 2) * lift * 0.35 * up;
       }
     }

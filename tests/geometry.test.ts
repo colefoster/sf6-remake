@@ -952,6 +952,57 @@ describe("a pose derived from the boxes", () => {
       expect(Math.sign(spread(feet(1 + step)))).not.toBe(Math.sign(spread(start)));
     });
 
+    it("runs the gait the other way round when the walk is backwards", () => {
+      // Reported from play: "the walk forward animation plays when I walk
+      // backwards and vice versa." The action choice and the travel were both
+      // right — `origin.x` is signed, but the phase went through `Math.cos`,
+      // which is *even*, so the sign did nothing and a retreating fighter traced
+      // the identical leg cycle to an advancing one. See ADR-0059's `way`.
+      const track = (name: string): number[] => {
+        const a = named(name);
+        let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+        const xs: number[] = [];
+        for (let f = 1; f <= 24; f++) {
+          p = poseOf(stub(a, f), radius, p);
+          xs.push(p.legs[0]!.tip.x);
+        }
+        return xs;
+      };
+      const drift = (xs: number[]) => xs[xs.length - 1]! - xs[0]!;
+      // The same leg sweeps one way through a forward walk and the other way
+      // through a back walk.
+      expect(Math.sign(drift(track("BAS_FORWARD_Loop")))).not.toBe(
+        Math.sign(drift(track("BAS_BACKWARD_Loop"))),
+      );
+    });
+
+    it("plants the foot that is travelling against the walk, not with it", () => {
+      // The other half of the same bug, and not the one that was reported: a
+      // foot's horizontal speed here goes as `-sin(th)`, so lifting on
+      // `sin(th) > 0` lifted the foot moving backwards and planted the one
+      // moving forwards. The planted foot slid forwards under a fighter walking
+      // forwards — a moonwalk, in both directions.
+      const walk = named("BAS_FORWARD_Loop");
+      let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+      const floor = p.legs[0]!.tip.y;
+      let checked = 0;
+      let prev = poseOf(stub(walk, 1), radius, p);
+      for (let f = 2; f <= 24; f++) {
+        p = poseOf(stub(walk, f), radius, prev);
+        for (let i = 0; i < 2; i++) {
+          const now = p.legs[i]!, was = prev.legs[i]!;
+          // Planted on both frames, and actually moving.
+          if (now.tip.y > floor + 1 || was.tip.y > floor + 1) continue;
+          if (Math.abs(now.tip.x - was.tip.x) < 0.5) continue;
+          // Walking forward (+x), a planted foot must slide back under the body.
+          expect(now.tip.x).toBeLessThan(was.tip.x);
+          checked++;
+        }
+        prev = p;
+      }
+      expect(checked).toBeGreaterThan(10);
+    });
+
     it("gives a slow walker a slower gait at the same frame", () => {
       // The cadence is a property of the fighter, not of the animation's length.
       const gait = (id: string): number => {
