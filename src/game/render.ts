@@ -100,6 +100,22 @@ export interface Pose {
    * allowed to feed itself.
    */
   stand: number;
+  /**
+   * How the figure is carrying itself *this* frame — the target attitude eased
+   * from the last one, not the target itself.
+   *
+   * Carried on the pose for the same reason `stand` and `footprint` are: it is
+   * the one piece of state a settle needs. Every number in it is invented
+   * (ADR-0060), which is the whole licence for easing it; nothing a hurtbox
+   * places is routed through here. See ADR-0065.
+   */
+  attitude: Attitude;
+  /**
+   * Which action drew this pose, so the next frame can tell a change of
+   * animation from a change of classification inside one. The first is a cut and
+   * the game cuts too; only the second settles. See ADR-0065.
+   */
+  action: number;
 }
 
 /** The screen transform: game units in, canvas pixels out. */
@@ -399,7 +415,7 @@ const AIR_LEAD_TUCK = 0.5;
  * struck fighter drew one arm and a smear. `width` is the stance against
  * ADR-0050's baseline and `sink` drops the hips towards the floor.
  */
-interface Attitude {
+export interface Attitude {
   lead: readonly [number, number];
   rear: readonly [number, number];
   width: number;
@@ -428,6 +444,99 @@ function attitudeOf(name: string, stance: 1 | 2 | 3 | null): Attitude {
   // jump does that a hurtbox never records.
   if (stance === 3) return { lead: [0.38, 0.1], rear: [-0.33, 0.18], width: 0.9, sink: 0 };
   return READY;
+}
+
+/**
+ * How much of the way an attitude closes on its target in one frame.
+ *
+ * **A named constant, and it had to be.** `MergeKey` carries a `_StartFrame`
+ * and an `_EndFrame` on 6,867 of the roster's 9,487 actions — 8,451 entries,
+ * 75.9% of which begin at or after the action's own `MarginFrame` — and that
+ * really is the game's return-to-neutral blend window. It is not *this* window.
+ * Of the 855 pairs `pose:motion` flags, 400 are on actions with no `MergeKey` at
+ * all and only **28 of the remaining 455 (6.2%)** fall inside one; 365 are
+ * before every window the action has. The game blends at the end of a move; the
+ * figure's classifiers flip wherever the boxes and the labels happen to change.
+ * So there is no per-action duration in the dump for this, and a constant that
+ * says so is more honest than a per-action number that does not mean what its
+ * name suggests. ADR-0065.
+ *
+ * 0.34 settles half the distance in two frames and 90% in six. It is fast
+ * enough that a jumping fighter has its guard up well before the apex, and slow
+ * enough that the largest step in `attitudeOf` — the rear hand's 0.9 of an arm
+ * between the grounded guard and the airborne one, 46 units on Ryu — lands
+ * inside the 0.30-of-stature-per-frame bound the dump's own limbs keep.
+ */
+const SETTLE = 0.34;
+
+/**
+ * How far a frame's travel may miss the action's own speed and still be a walk.
+ *
+ * Float slop, not a threshold: across the 362 actions the gait fires on, the
+ * per-frame deviation from `velocity.x` is 0.00 on every walk, 0.01 on Kimberly's
+ * four super dashes, and then nothing at all until 0.80.
+ */
+const PACE_SLOP = 0.05;
+
+/** Memoised, because the answer is a property of the action and not of a frame. */
+const pacing = new WeakMap<object, boolean>();
+
+/**
+ * Whether an action's travel curve *is* its own walking speed.
+ *
+ * A walk is authored as constant translation — every frame of `motion.x` steps
+ * by `velocity.x` — where a dive, a roll-out or a landing is a keyframed arc
+ * that merely happens to cover ground. That distinction is the one thing
+ * separating `BAS_FORWARD_Loop` from `SPA_CANNONSTRIKE_LAND`, and without it the
+ * walk gait ran on a touchdown. See the comment at its use, and ADR-0065.
+ */
+function paced(action: GeometryAction): boolean {
+  const known = pacing.get(action);
+  if (known !== undefined) return known;
+  const v = action.motion?.velocity?.x ?? 0;
+  const xs = action.motion?.x;
+  let ok = Boolean(v) && Boolean(xs) && xs!.length > 1;
+  if (ok)
+    for (let i = 1; i < xs!.length; i++)
+      if (Math.abs(xs![i]! - xs![i - 1]! - v) > PACE_SLOP) {
+        ok = false;
+        break;
+      }
+  pacing.set(action, ok);
+  return ok;
+}
+
+/**
+ * The attitude actually drawn: last frame's, moved towards this frame's target.
+ *
+ * `attitudeOf` is a step function of a classification — the stance label, the
+ * action's name, whether the figure reads as airborne — and every number it
+ * returns is invented (ADR-0060). So when the classification flips, an invented
+ * hand teleports for no reason in the dump. Easing it is allowed for exactly
+ * that reason and no other: **nothing here is derived.** The hand is still caged
+ * inside the fighter's own hurtboxes afterwards, and a limb the boxes place
+ * never passes through an attitude at all.
+ *
+ * **`sink` is taken outright and does not settle**, which is the one piece of
+ * care this needs. It drops the pelvis, and the pelvis is read back: the height
+ * test that calls a hitbox a kick rather than a punch measures against
+ * `hips.y`, and `extremity` picks which end of a tall hurtbox is the tip by
+ * which end is further from the limb's root. Easing `sink` would let a settling
+ * invention change what the boxes are read *as* — 1.2 units of it, measured, on
+ * Ryu's specials — and that is the feedback ADR-0065 forbids outright. It costs
+ * nothing: `sink` is 0.02 on a guard and 0.03 on a reaction, both picked from
+ * the action's name, and every stance the label distinguishes has it at 0. It
+ * never steps inside an action.
+ */
+function settle(from: Attitude | undefined, to: Attitude, rate = SETTLE): Attitude {
+  if (!from) return to;
+  const k = (a: number, b: number): number => a + (b - a) * rate;
+  return {
+    lead: [k(from.lead[0], to.lead[0]), k(from.lead[1], to.lead[1])],
+    rear: [k(from.rear[0], to.rear[0]), k(from.rear[1], to.rear[1])],
+    width: k(from.width, to.width),
+    sink: to.sink,
+  };
 }
 
 /**
@@ -540,6 +649,8 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
       faded,
       footprint,
       stand: 0,
+      attitude: READY,
+      action: action.id,
     };
   }
 
@@ -636,7 +747,24 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   // tagged, and never once on a plain jump, which is not: every neutral jump in
   // the game was drawn holding the grounded guard. The arc says so where the
   // label is missing. ADR-0063.
-  const attitude = attitudeOf(action.name, airborne ? 3 : stance);
+  // The target, and then the settle. `attitudeOf` is a step function of a
+  // classification and every number in it is invented, so a classifier that
+  // flips — the stance label stepping, `PoseStatus` running out, the arc
+  // crossing the height that reads as airborne — teleported an invented hand.
+  // The rear hand alone travels 0.9 of an arm between the grounded guard and the
+  // airborne one, 46 units on Ryu, which is past what the dump's own limbs do in
+  // a frame. It settles instead. ADR-0065.
+  //
+  // **A new action is a cut, and takes its attitude outright.** The game cuts
+  // to a new animation clip there and so does the figure; easing across the
+  // boundary would soften the one transition that has to read instantly, which
+  // is the frame a fighter starts being hit (ADR-0057). Nothing in
+  // `pose:motion` grades that pair either — it walks each action from the idle
+  // pose and never compares the entry.
+  const attitude = settle(
+    last?.action === action.id ? last.attitude : undefined,
+    attitudeOf(action.name, airborne ? 3 : stance),
+  );
 
   // -- The pelvis -----------------------------------------------------------
   //
@@ -853,7 +981,28 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   const stride = travel > nominal ? travel / Math.round(travel / nominal) : nominal;
   // Airborne travel is not a walk: a jumping fighter covers as much ground as a
   // walking one and has no floor to step off.
-  const walking = standing && !airborne && Boolean(action.motion?.velocity?.x) && travel > nominal;
+  //
+  // Nor is a landing, and that is what `plant-slide` was: 165 frames over 18
+  // actions, every one an airborne special touching down — Cammy's
+  // `SPA_CANNONSTRIKE_LAND` x6, Akuma's `SPA_HYAKKI` dive x3, Kimberly's
+  // `SPA_SpraySmoke_M` x4. **No single term above was wrong.** `standing` is
+  // true (the fighter is on the floor), `!airborne` is true (it has landed),
+  // `velocity.x` is non-zero (ADR-0040: it is the speed left over past the
+  // authored frames, and a dive has plenty), and `travel > nominal` is true
+  // because a dive covers a great deal of ground. What was missing is a term
+  // that asks whether the travel is a **walk** rather than merely a distance.
+  //
+  // It is in the dump, exactly. A walk's `motion.x` advances by its own
+  // `velocity.x` on **every** frame: all 185 `BAS_FORWARD`/`BACKWARD` actions on
+  // the roster have a maximum per-frame deviation of 0.00, and so do Blanka's
+  // rolls and Kimberly's super dash (0.01, float noise). Every one of the 18
+  // offenders deviates by 1.0 to 3.5 times its own speed, and 15 of them reverse
+  // direction inside the action — Cammy's landing runs `motion.x` out to +16 and
+  // then back through zero to −339, and since the phase is keyed to
+  // `Math.abs(origin.x)` her legs ran the gait *backwards* for four frames. The
+  // gap between the walks and the rest is 0.01 to 0.80, so the tolerance below
+  // is float slop and not a threshold. ADR-0065.
+  const walking = standing && !airborne && travel > nominal && paced(action);
   // **The phase runs off the distance covered, and the *direction* is separate.**
   // `origin.x` is signed — negative through a back walk — and `Math.cos` is an
   // even function, so feeding it a signed phase changed nothing at all: a
@@ -1058,7 +1207,19 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   if (faded.body) faded.body = !over((neckY + hipY) / 2);
   if (faded.leg && shin) faded.leg = !over((hipY + shin.tip.y) / 2);
 
-  return { head: skull, neck, hips, legs, arms, limbs, faded, footprint, stand: hipY - footY };
+  return {
+    head: skull,
+    neck,
+    hips,
+    legs,
+    arms,
+    limbs,
+    faded,
+    footprint,
+    stand: hipY - footY,
+    attitude,
+    action: action.id,
+  };
 }
 
 /**

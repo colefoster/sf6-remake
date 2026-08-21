@@ -29,23 +29,29 @@ describe("the figure walked over time", () => {
     expect(frames).toBe(456993);
   });
 
-  it("holds the residuals ADR-0064 named", () => {
+  it("holds the residuals ADR-0065 named", () => {
+    // ADR-0064's baseline was 1,399 over six categories. ADR-0065 settled the
+    // invented attitude and took the walk gait off a landing; every category
+    // fell and `plant-slide` went to nothing.
     expect(report.counts).toEqual({
-      "stance-snap": 497,
-      "limb-jerk": 379,
-      "stand-snap": 170,
-      "plant-slide": 165,
-      "limb-teleport": 137,
-      "fade-snap": 51,
+      "stance-snap": 208,
+      "limb-jerk": 171,
+      "stand-snap": 155,
+      "fade-snap": 38,
+      "limb-teleport": 5,
     });
+    expect(report.counts["plant-slide"]).toBeUndefined();
   });
 
   it("has no gait that cannot tell forwards from backwards", () => {
     // The fault of 5abdb75: `phase` came off the signed `origin.x` through
-    // `Math.cos`, which is even, so all 362 gaited actions traced one cycle
+    // `Math.cos`, which is even, so every gaited action traced one cycle
     // whichever way they travelled. Reverting it flags every one of them.
     expect(report.counts["gait-blind"]).toBeUndefined();
-    expect(report.gaited).toBe(362);
+    // 362 before ADR-0065. A walk is now an action whose travel curve *is* its
+    // own walking speed, which drops the 154 dives, rolls and landings that
+    // merely covered ground.
+    expect(report.gaited).toBe(208);
   });
 
   it("charges the honest snap onto a hitbox to nobody", () => {
