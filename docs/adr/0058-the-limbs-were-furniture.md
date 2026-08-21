@@ -155,8 +155,12 @@ live roundhouse and a resting arm were the same colour.
   crouching low read as overlong on 140 frames purely because crouching shortens
   the ruler. This moves counts without improving anything, and `limb-overlong`
   159 → 119 is that change rather than a fix.
-- `figure-sheet` takes its camera band per *move* rather than per sheet, so one
-  jump no longer shrinks the grounded moves beside it.
+- `figure-sheet` can shoot an airborne move at last. `window.play.frame` takes a
+  `band`, the sheet measures one per *move* rather than per sheet so a jump does
+  not shrink the grounded moves beside it, and each cell crops the tallest
+  cell-shaped window anchored on the floor instead of a fixed 600 rows off the
+  bottom — which was throwing away the top of the stage, which is where a
+  jumping fighter is.
 - Two new tests; two updated where the fade's meaning changed. 257 pass.
 
 ## Not settled
