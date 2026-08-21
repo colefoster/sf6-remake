@@ -374,6 +374,12 @@ const HIP_OF_NECK = 0.638;
 const ARM_OF_STATURE = 0.25;
 /** How much of a leg's own length is spare when standing, so the knee reads. */
 const LEG_SLACK = 1.02;
+/**
+ * How far up the hip-to-sole gap the *leading* foot rides in the air, so the
+ * two legs are a stagger and not a mirror. Invented outright (ADR-0063); what
+ * is not invented is the sole the trailing foot sits on, which is the box's.
+ */
+const AIR_LEAD_TUCK = 0.5;
 
 /**
  * How a fighter with no extended-limb box is *carrying* itself.
@@ -491,6 +497,36 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   const faded = { head: !parts.head.length, body: !parts.body.length, leg: !parts.leg.length };
   const torso = body ?? leg ?? null;
 
+  // **One box that is the whole fighter.**
+  //
+  // Airborne, the game stops boxing a head and a leg. A neutral jump's entire
+  // hurt key is `BodyList` — one rect, `65..185`, byte-identical on all 24
+  // fighters and unchanged across all 40 frames of the leap. That rect is not a
+  // torso with a head above it and legs below it: it is 120 units on a fighter
+  // whose idle stack is 166 (0.67–0.72 of stature across the roster), sitting
+  // 0.37–0.39 of a stature off the floor. It is the tucked figure, entire.
+  //
+  // Read as a torso it drew Ryu's skull at 202 and his feet at 47 — 17 units
+  // above and 18 below the only hurtbox there was — so the head faded on every
+  // airborne frame of every jump, honestly, because nothing in the game could
+  // reach a head drawn up there. ADR-0063.
+  //
+  // The box also has to be the shape of a body — taller than it is wide, the
+  // same aspect test ADR-0058 used to read a limb's segments. Blanka's back roll
+  // is a single `body` key too, but at 116 x 72 it is a ball, and a figure
+  // fitted into it stands 72 units tall wearing a 34-unit skull; left in, it put
+  // 288 extra frames into `pose:audit`'s `spine-squashed`. The roll keeps the
+  // held-over stance.
+  //
+  // The signature is exact and it is the dump's, not a guess. 36,080 frames of
+  // 456,993 have `body` as their only hurt key; 29,622 of those (6.5%, over 854
+  // actions) are also taller than wide, and **96.8% of them are on an action
+  // that leaves the ground**. The 948 that are not are Ed's flight (box 65-185,
+  // the jump rect exactly), Blanka's Thunder and a handful of hop kicks —
+  // bodies that really are one box.
+  const wholeBox = !head && !leg && body ? body : null;
+  const whole = wholeBox && wholeBox[3] - wholeBox[1] > wholeBox[2] - wholeBox[0] ? wholeBox : null;
+
   // Nothing to stand on and nothing held over: the fighter is not drawable this
   // frame (a projectile's own action, an intro). Callers skip it.
   if (!torso && !last) {
@@ -528,23 +564,79 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   const stood = last?.legs.find((l) => !l.derived) ?? last?.legs[0];
   const drop = last?.stand ?? (stood ? last!.hips.y - stood.tip.y : 0);
   const held = leg ? toHead(leg) : body ? (spine === null ? toFeet(body) : toHead(body) - spine) : last!.hips.y;
-  const neckY = body ? toHead(body) : held + (spine ?? 0);
+  const gap = radius * (up === 1 ? 1 : -1);
+
+  // Where a single box is the whole fighter (`whole`, above) its far edge is the
+  // **crown**, not the neck: there is no head key sitting above it to make it a
+  // shoulder line. So the skull is read off it first — one radius inside the box
+  // — and the neck hangs under the skull at the same offset the grounded figure
+  // already uses (the `0.6` below, which is the floor its clamp measures to; on
+  // Ryu standing the skull sits 0.65 of a radius over the neck).
+  //
+  // This is the whole of the airborne fade. A skull placed at 202 against a box
+  // that ends at 185 is a head nothing in the game can reach, and `over()` at
+  // the foot of this function said so, correctly, on every frame of every jump.
+  // Drawn at the crown less a radius it is inside the box and the fade stops
+  // firing — the rule is untouched, the head moved. ADR-0063.
+  const crown = whole ? toHead(whole) - gap : null;
+  const neckY =
+    crown !== null ? crown - gap * 0.6 : body ? toHead(body) : held + (spine ?? 0);
 
   // The skull hangs off the head box's far edge, but stays on the neck. The head
   // key is often much taller than a head — Ryu's crouch carries two boxes over 50
   // units — which left a bare neck as long as the skull, and A.K.I.'s command
   // grab has a head box *below* the torso, which buried the skull in the chest.
-  const gap = radius * (up === 1 ? 1 : -1);
   const skullY = head
     ? clamp(toHead(head) - gap, neckY + gap * 0.6, neckY + gap * 1.5)
-    : neckY + gap;
-  const skull = head || last?.head ? { x: axis, y: skullY, r: radius } : null;
+    : (crown ?? neckY + gap);
+  const skull = head || whole || last?.head ? { x: axis, y: skullY, r: radius } : null;
 
   // How the fighter is carrying itself. Read here rather than with the rest of
   // the invention below because the hips are part of it: a guard settles and a
   // reaction is knocked off its base, and both move the pelvis.
   const stance = stanceAt(action, frame);
-  const attitude = attitudeOf(action.name, stance);
+
+  // -- The jump is keyed to its own arc -------------------------------------
+  //
+  // `motion.y` is the leap, and how fast it is climbing says where in it the
+  // fighter is: full speed at the launch and at the landing, nothing at the apex.
+  // Where the box says nothing more (`whole`, above, gives the airborne figure
+  // its envelope but is identical on every frame of the leap) this is the only
+  // thing that says a jump is in progress at all, and the legs tuck in
+  // proportion — inside the box, never past it.
+  //
+  // The speed is taken from the curve rather than from `motion.velocity`, which
+  // is only the speed *left over* where the authored frames run out (ADR-0040)
+  // and is absent on a jump that lands inside its own action — Dhalsim's does,
+  // and read from `velocity` his legs never tucked at all.
+  //
+  // It is the *backward* difference, and it has to be: `originAt` puts frame `f`
+  // at `y[f-1]`, so the climb into `f` is `y[f-1] - y[f-2]`. Read forwards, the
+  // last frame of the leap had no next sample, fell back to its own, and read a
+  // climb of zero — a **full apex tuck on the touchdown frame** of every jump in
+  // the game. Ryu's arc is still falling at 21.6 units there. The first frame is
+  // the mirror of it and takes the forward difference, which is the same number
+  // on a curve whose ends are the fastest part. ADR-0063.
+  const arc = action.motion?.y;
+  const height = (i: number): number => (arc ? (arc[clamp(i, 0, arc.length - 1)] ?? 0) : 0);
+  const step = Math.max(frame, 2);
+  // A fighter drawn as one box that starts 0.37 of a stature off the floor is
+  // off the floor, so `whole` is an airborne signal in its own right — and the
+  // one that covers the first frame of `_AIR`, where the boxes have already left
+  // the ground but `motion.y` is still reading 0.
+  const airborne = stance === 3 || Boolean(whole) || Boolean(arc && (arc[frame - 1] ?? 0) > radius);
+  const climb = arc ? Math.abs(height(step - 1) - height(step - 2)) : 0;
+  const launch = arc ? Math.max(...arc.map((v, i) => (i ? Math.abs(v - arc[i - 1]!) : 0))) : 0;
+  const tuck = airborne && launch > 0 ? clamp(1 - climb / launch, 0, 1) : 0;
+
+  // `stance` is the action's own `PoseStatus`, and a basic jump does not carry
+  // one: `BAS_JUMP_N_AIR`'s whole key list is `DamageCollisionKey` `MotionKey`
+  // `PushCollisionKey` `SteerKey` `TriggerKey` `VfxKey` — no `StatusKey` at all.
+  // So the airborne attitude fired on the 478 jumping *normals*, which are
+  // tagged, and never once on a plain jump, which is not: every neutral jump in
+  // the game was drawn holding the grounded guard. The arc says so where the
+  // label is missing. ADR-0063.
+  const attitude = attitudeOf(action.name, airborne ? 3 : stance);
 
   // -- The pelvis -----------------------------------------------------------
   //
@@ -565,14 +657,20 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   // The one real thing in it is `build.leg`, ADR-0059's per-fighter leg ratio,
   // damped by half because it is a bone chain and not a hip height: A.K.I.'s
   // hips ride 5% higher than Zangief's rather than 16%.
-  const footY = leg ? toFeet(leg) : held - drop;
+  //
+  // With one box for the whole fighter the near edge is the **sole**: the lowest
+  // point of the leaping body, which is where the game says a low can still
+  // catch it. Held over from the grounded stance instead, Ryu's feet hung 18
+  // units out of the bottom of his own hurtbox for the length of every jump.
+  const footY = leg ? toFeet(leg) : whole ? toFeet(whole) : held - drop;
   const legScale = 1 + (build.leg - 1) * 0.5;
-  const hipY = leg
-    ? footY + (neckY - footY) * HIP_OF_NECK * legScale * (1 - attitude.sink)
-    : held;
+  const hipY =
+    leg || whole
+      ? footY + (neckY - footY) * HIP_OF_NECK * legScale * (1 - attitude.sink)
+      : held;
   const hips: Point = { x: axis, y: hipY };
   const neck: Point = { x: axis, y: neckY };
-  const standing = Boolean(leg) || Boolean(last?.legs.length);
+  const standing = Boolean(leg) || Boolean(whole) || Boolean(last?.legs.length);
 
   // An active hitbox is a limb, and which limb the action's own name usually
   // says: `ATK_5MK` is a kick, `ATK_5HP` a punch. Where the name does not say —
@@ -689,8 +787,16 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
           y: Math.abs(lo - from.y) >= Math.abs(hi - from.y) ? lo : hi,
         };
   };
-  const armBoxes = limbs.some((l) => !l.kick) ? [] : outboard(["head", "body"]);
-  const legBoxes = limbs.some((l) => l.kick) ? [] : outboard(["leg"]);
+  // ADR-0058's rule is that the part tag names the limb. On a `whole` frame it
+  // cannot: airborne there is no `leg` key at all, so a jumping kick's own
+  // hurtbox is tagged `body` like everything else, and it was drawn as an arm on
+  // **748 frames over 114 actions** — every jumping kick in the game. Ryu's
+  // `ATK_8MK` reached a hand out to 127 while the same box was already being
+  // drawn as an orange kick. Where there is no tag to read, the name picks the
+  // limb, which is the test the hitbox above already uses.
+  const kicking = Boolean(whole) && byName === true;
+  const armBoxes = limbs.some((l) => !l.kick) || kicking ? [] : outboard(["head", "body"]);
+  const legBoxes = limbs.some((l) => l.kick) ? [] : kicking ? outboard(["head", "body"]) : outboard(["leg"]);
 
   // -- Everything below here is invented ------------------------------------
   //
@@ -729,23 +835,6 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
     ? [flip(Math.min(...core.map((b) => b[0]))), flip(Math.max(...core.map((b) => b[2])))].sort((a, b) => a - b)
     : null;
   const inside = (x: number): number => (caged ? clamp(x, caged[0]!, caged[1]!) : x);
-
-  // -- The jump is keyed to its own arc -------------------------------------
-  //
-  // `motion.y` is the leap, and how fast it is climbing says where in it the
-  // fighter is: full speed at the launch and at the landing, nothing at the apex.
-  // The legs tuck in proportion, which is the one thing every jump does and no
-  // hurtbox records -- a neutral jump keeps the same body box the whole way up.
-  //
-  // The speed is taken from the curve rather than from `motion.velocity`, which
-  // is only the speed *left over* where the authored frames run out (ADR-0040)
-  // and is absent on a jump that lands inside its own action — Dhalsim's does,
-  // and read from `velocity` his legs never tucked at all.
-  const arc = action.motion?.y;
-  const airborne = stance === 3 || Boolean(arc && (arc[frame - 1] ?? 0) > radius);
-  const climb = arc ? Math.abs((arc[frame] ?? arc[frame - 1] ?? 0) - (arc[frame - 1] ?? 0)) : 0;
-  const launch = arc ? Math.max(...arc.map((v, i) => (i ? Math.abs(v - arc[i - 1]!) : 0))) : 0;
-  const tuck = airborne && launch > 0 ? clamp(1 - climb / launch, 0, 1) : 0;
 
   // -- The walk is keyed to the ground it covers ----------------------------
   //
@@ -806,10 +895,26 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   // The feet keep ADR-0050's inset on the pushbox; what is new is that they no
   // longer come out of a single point. A pelvis is what lets a stride read as a
   // stride instead of as a stance opening.
-  const restingLeg = (s: 1 | -1): { root: Point; tip: Point } => ({
-    root: { x: axis + s * pelvisHalf, y: hipY },
-    tip: { x: axis + s * stanceX, y: footY },
-  });
+  const restingLeg = (s: 1 | -1): { root: Point; tip: Point } => {
+    const root = { x: axis + s * pelvisHalf, y: hipY };
+    // **Airborne the pair is staggered, and this is invented.** The box gives a
+    // band and not a pose, so both feet placed by the same rule land at the same
+    // height either side of the axis — an exact mirror, two straight lines in a V
+    // that only opens and closes, which is the "zigzag" ADR-0060 left standing.
+    // It is worse than a mirror, in fact: the hips are only a third of a leg
+    // above the sole, so a two-bone chain has to fold past a right angle, and
+    // both knees pushed the same way crossed each other over the axis.
+    //
+    // A tucked leap has a leading knee up and a trailing leg hanging. That is
+    // the same argument, and the same class of invention, ADR-0060 made for the
+    // two hands. Both feet stay inside the box: the trailing one is *at* the
+    // sole the box gives and the leading one is above it.
+    if (!airborne || !whole) return { root, tip: { x: axis + s * stanceX, y: footY } };
+    const fold = Math.abs(hipY - footY);
+    return s === lead
+      ? { root, tip: { x: axis + stanceX * 0.95 * lead, y: footY + fold * AIR_LEAD_TUCK * up } }
+      : { root, tip: { x: axis - stanceX * 0.8 * lead, y: footY } };
+  };
 
   /**
    * Where a *resting* hand or foot ends up: the stance, plus the gait and the
@@ -868,7 +973,14 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
     //
     // A knee tracks forward, an elbow back and down: that is the way the two
     // joints go, and it is also what tells them apart in silhouette.
-    const joint = jointOf(rest.root, tip, foot ? legLength : armLength, foot ? lead * 0.9 : -lead * 0.7, -1);
+    //
+    // Airborne, only the *leading* knee comes forward. A tucked leg spans about
+    // a third of its own length, and a chain folded that hard puts its joint 40
+    // units off the line — so with both knees pushed the same way the two legs
+    // crossed the axis and drew one thick zigzag. The trailing knee folds back,
+    // behind the hip, which is where a trailing leg's is.
+    const knee = airborne && whole && s !== lead ? -lead * 0.9 : lead * 0.9;
+    const joint = jointOf(rest.root, tip, foot ? legLength : armLength, foot ? knee : -lead * 0.7, -1);
     // A folded elbow is the one invented point that can leave the body sideways,
     // so it is caged like the hand. A derived limb is left alone: its joint is
     // between two points the boxes chose.
