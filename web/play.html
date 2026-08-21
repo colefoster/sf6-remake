@@ -342,9 +342,13 @@ function draw() {
     // ...and rock away from it. The figure cannot do this out of the boxes —
     // every reaction action freezes them — so the lean is drawn on top of the
     // derived pose rather than found in it. See ADR-0057.
+    // Not once they are on the floor: `recoiled` pivots the spine about the
+    // hips, and a prone figure pivoted that way lifts its head out of the
+    // downed pushbox. A light knockdown can put the fighter down while the
+    // recoil is still running. See ADR-0066.
     const rock = recoils.find((r) => r.victim === i);
     let pose = poses[i];
-    if (pose && rock) {
+    if (pose && rock && !pose.prone) {
       const age = match.frame - rock.born;
       const lean = Math.min(1, age / 2) * (1 - age / rock.frames) ** 1.4 * rock.peak;
       pose = recoiled(pose, lean, fighter.state.facing === 1 ? -1 : 1);
