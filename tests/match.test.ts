@@ -62,6 +62,37 @@ describe("two fighters", () => {
     expect(clean.match.health[1]).toBeLessThan(10000);
   });
 
+  it("reports where the boxes met, and freezes both sides while it shows", () => {
+    // The view draws the spark at `at` and shakes for `hitstop`. Neither is
+    // decoration: a spark over the middle of the defender lies about which end
+    // of them got hit, and a hitstop the view cannot see is a freeze that reads
+    // as a dropped frame. See ADR-0057.
+    const low = fight({ p1: [[2, ["MK"], 3]], p2: 3, distance: 150 });
+    const high = fight({ p1: [[5, ["HP"], 3]], p2: 6, distance: 110 });
+    const [lowHit] = low.match.hits;
+    const [highHit] = high.match.hits;
+    expect(lowHit?.at).toBeDefined();
+    expect(highHit?.at).toBeDefined();
+    // A sweep lands at shin height and a standing heavy at the chest.
+    expect(lowHit!.at.y).toBeLessThan(highHit!.at.y);
+    // Between the two of them, not off in the scenery.
+    for (const hit of [lowHit!, highHit!]) {
+      expect(hit.at.x).toBeGreaterThan(0);
+      expect(hit.at.x).toBeLessThan(300);
+      expect(hit.at.y).toBeGreaterThan(0);
+    }
+
+    // Hitstop runs from the frame of contact and is what the shake lasts for.
+    const match = matchFor("Ryu", "Ken", { distance: 110 });
+    let peak = 0;
+    for (let i = 0; i < 40; i++) {
+      match.advance(hold(5, i < 3 ? ["HP"] : []), hold(6));
+      peak = Math.max(peak, match.hitstop);
+    }
+    expect(peak).toBeGreaterThan(0);
+    expect(match.hitstop).toBe(0);
+  });
+
   it("connects once per swing, not once per frame of hitstop", () => {
     // The hitbox is out for three frames and hitstop is eleven. Anything that
     // deduplicates on time re-hits forever, and health drains to nothing off one

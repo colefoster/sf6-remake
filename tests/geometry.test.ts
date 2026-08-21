@@ -26,7 +26,7 @@ import {
 import type { ArmorWindow, AtemiRow, GeometryFile } from "../src/data/geometry.js";
 import type { GeometryAction } from "../src/data/geometry.js";
 import type { Fighter } from "../src/game/index.js";
-import { boundsOf, headRadius, poseOf, viewForAction } from "../src/game/render.js";
+import { CAMERA_FLOOR, Camera, boundsOf, headRadius, poseOf, shakeAt, viewFor, viewForAction } from "../src/game/render.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -586,6 +586,22 @@ describe("a pose derived from the boxes", () => {
     expect(kick.limbs[0]!.root).toEqual(kick.hips);
   });
 
+  it("bends a limb at a joint below the straight line, so a kick is not a beam", () => {
+    // A limb drawn root-to-tip as one line reads as a laser fired through the
+    // opponent: Ryu's roundhouse ran from his hip, across his own torso, to a
+    // hitbox at head height. The joint is the knee.
+    const kick = poseOf(stub(named("ATK_5HK"), 13), radius);
+    const limb = kick.limbs[0]!;
+    const straight = {
+      x: (limb.root.x + limb.tip.x) / 2,
+      y: (limb.root.y + limb.tip.y) / 2,
+    };
+    expect(limb.joint.y).toBeLessThan(straight.y);
+    // On the limb, not off in space: the bend is a fraction of its own length.
+    const length = Math.hypot(limb.tip.x - limb.root.x, limb.tip.y - limb.root.y);
+    expect(Math.hypot(limb.joint.x - straight.x, limb.joint.y - straight.y)).toBeLessThan(length * 0.3);
+  });
+
   it("holds a part whose hurtbox has gone, because that means invulnerable", () => {
     // ADR-0020: full invulnerability *is* the absence of a hurtbox. A rising
     // Shoryuken has no head or body box at all, and a figure that dropped them
@@ -748,5 +764,53 @@ describe("a pose derived from the boxes", () => {
     const right = poseOf(stub(named("ATK_5HP"), 13), radius, undefined);
     const left = poseOf(stub(named("ATK_5HP"), 13, -1), radius, undefined);
     expect(left.limbs[0]!.tip.x).toBeCloseTo(-right.limbs[0]!.tip.x, 5);
+  });
+
+  /**
+   * The stage camera. See ADR-0057: it used to frame a fixed 330 units of sky
+   * whatever was happening, which on a wide canvas spent nearly half the frame
+   * on air nobody was in.
+   */
+  describe("the camera that follows the action", () => {
+    const canvas = { clientWidth: 1140, clientHeight: 820 };
+
+    it("keeps both fighters and the ground in frame", () => {
+      const view = viewFor(canvas, [-110, 110], 700, CAMERA_FLOOR);
+      expect(view.y(0)).toBe(view.ground);
+      for (const x of [-110, 110]) {
+        expect(view.x(x)).toBeGreaterThan(0);
+        expect(view.x(x)).toBeLessThan(canvas.clientWidth);
+      }
+      // The band it was asked for fits above the floor.
+      expect(view.y(CAMERA_FLOOR)).toBeGreaterThanOrEqual(0);
+    });
+
+    it("zooms out as the fighters separate, and in as they close", () => {
+      const near = viewFor(canvas, [-60, 60], 700, CAMERA_FLOOR);
+      const far = viewFor(canvas, [-500, 500], 700, CAMERA_FLOOR);
+      expect(far.scale).toBeLessThan(near.scale);
+    });
+
+    it("opens for a jump at once and closes behind it slowly", () => {
+      const camera = new Camera();
+      expect(camera.follow(120)).toBe(CAMERA_FLOOR);
+      const open = camera.follow(400);
+      expect(open).toBeGreaterThan(CAMERA_FLOOR * 2);
+      // Landing does not snap the zoom back: that reads as a cut, not a camera.
+      const next = camera.follow(120);
+      expect(next).toBeLessThan(open);
+      expect(next).toBeGreaterThan(open * 0.9);
+    });
+
+    it("shakes only while the hitstop runs, and the same way twice", () => {
+      expect(shakeAt(0, 40)).toEqual({ x: 0, y: 0 });
+      const a = shakeAt(9, 40, 900);
+      // The frame stepper draws a frame more than once and must get one picture.
+      expect(shakeAt(9, 40, 900)).toEqual(a);
+      expect(Math.hypot(a.x, a.y)).toBeGreaterThan(0);
+      expect(Math.abs(a.x)).toBeLessThanOrEqual(13);
+      // A jab does not shake the screen as hard as a Super.
+      expect(Math.abs(shakeAt(9, 40, 200).x)).toBeLessThan(Math.abs(shakeAt(9, 40, 4000).x));
+    });
   });
 });

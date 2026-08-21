@@ -111,8 +111,9 @@
 import {
   Match, hold, projectileBoxes, DRIVE_MAX,
   DUMMIES, Advantage, punishes,
-  viewFor, worldBoxes, poseOf, headRadius,
+  viewFor, worldBoxes, poseOf, headRadius, Camera,
   drawStage, drawBoxes, drawFigure, drawGauges, drawProjectile,
+  drawImpact, shakeAt, IMPACT_FRAMES,
 } from "./play.js";
 
 const canvas = document.getElementById("stage");
@@ -171,6 +172,10 @@ let radii = [14, 14];
 let posedAt = -1;
 /** Frame advantage and the punish it opens, both from `src/game/training.ts`. */
 const advantage = new Advantage();
+const camera = new Camera();
+/** Sparks still playing. Aged by the match clock, not by the frame rate. */
+let impacts = [];
+let sparked = 0;
 let punish = null;
 
 async function reset() {
@@ -181,6 +186,9 @@ async function reset() {
   poses = [null, null];
   posedAt = -1;
   advantage.reset();
+  camera.reset();
+  impacts = [];
+  sparked = 0;
   punish = null;
   logged = 0;
   document.getElementById("log").innerHTML = "";
@@ -216,6 +224,21 @@ function tick() {
   const mode = document.getElementById("mode").value;
   const dummy = DUMMIES[mode];
   match.advance(read(P1), dummy ? dummy(match, 1) : read(P2));
+
+  // A spark per contact the match reported, at the point the boxes met. Aged on
+  // the match clock so a paused page holds the frame it is on and `step` walks
+  // the burst one frame at a time.
+  for (const hit of match.hits.slice(sparked)) {
+    impacts.push({
+      at: hit.at,
+      born: match.frame,
+      type: hit.type,
+      weight: hit.damage,
+      victim: hit.attacker === 0 ? 1 : 0,
+    });
+  }
+  sparked = match.hits.length;
+  impacts = impacts.filter((i) => match.frame - i.born < IMPACT_FRAMES);
 
   const before = advantage.value;
   advantage.observe(match);
@@ -256,8 +279,26 @@ function draw() {
     ? [match.fighters[framing.side].position().x - framing.span / 2 + 210,
        match.fighters[framing.side].position().x + framing.span / 2 - 210]
     : [a.position().x, b.position().x];
-  const view = viewFor(canvas, eyes, match.half);
+  // The sky the camera frames follows the highest fighter, so a grounded pair is
+  // not looked at from across the room. A fixed framing is a fixed band: the
+  // point of it is that two screenshots compare.
+  const peak = Math.max(
+    ...match.fighters.map((f) => {
+      const hurt = worldBoxes(f).hurt;
+      return hurt.length ? Math.max(...hurt.map((b) => b.y + b.height)) : f.position().y + 150;
+    }),
+  );
+  const view = viewFor(canvas, eyes, match.half, framing ? 330 : camera.follow(peak));
   drawStage(ctx, view, match.half);
+
+  // Hitstop is the game's own freeze on contact and it is already in the dump.
+  // Frozen without moving reads as a dropped frame, so the shake goes here — on
+  // the world only, never on the HUD, which is why the translate is undone
+  // before the gauges. A fixed framing takes none of it: a screenshot has to
+  // compare with the last one.
+  const heaviest = impacts.reduce((m, i) => Math.max(m, i.weight), 0);
+  const jolt = framing ? { x: 0, y: 0 } : shakeAt(match.hitstop, match.frame, heaviest);
+  ctx.translate(jolt.x, jolt.y);
 
   // Poses advance with the match, not with the render: holding a vanished part
   // over needs the *previous frame's* pose, and draw runs while paused.
@@ -269,7 +310,10 @@ function draw() {
   for (const [i, fighter] of match.fighters.entries()) {
     if (framing?.solo && i !== framing.side) continue;
     if (showBoxes) drawBoxes(ctx, view, worldBoxes(fighter));
-    if (showFigures && poses[i]) drawFigure(ctx, view, poses[i], i);
+    // Struck this frame: white out for as long as the spark runs.
+    const struck = impacts.find((k) => k.victim === i && k.type !== "block");
+    const flash = struck ? 1 - (match.frame - struck.born) / IMPACT_FRAMES : 0;
+    if (showFigures && poses[i]) drawFigure(ctx, view, poses[i], i, flash);
     // origin marker and facing
     const ox = view.x(fighter.position().x);
     ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";
@@ -280,6 +324,13 @@ function draw() {
   for (const shot of match.projectiles) {
     for (const box of projectileBoxes(shot)) drawProjectile(ctx, view, box);
   }
+
+  for (const impact of impacts) {
+    drawImpact(ctx, view, { ...impact, age: match.frame - impact.born });
+  }
+
+  // The HUD does not shake with the world.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   for (const [i, fighter] of match.fighters.entries()) {
     drawGauges(ctx, view, i, {

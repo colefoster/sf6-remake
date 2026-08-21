@@ -53,8 +53,12 @@ export interface Pose {
   neck: Point;
   hips: Point;
   feet: Point[];
-  /** An active hitbox, drawn as the limb that carries it. */
-  limbs: { root: Point; tip: Point; kick: boolean }[];
+  /**
+   * An active hitbox, drawn as the limb that carries it. `joint` is the knee or
+   * elbow: a limb drawn as one straight line from hip to hitbox is a beam, and
+   * Ryu's roundhouse read as a laser fired through the opponent's chest.
+   */
+  limbs: { root: Point; joint: Point; tip: Point; kick: boolean }[];
   faded: { head: boolean; body: boolean; leg: boolean };
   /**
    * The pushbox's centre in action space — the axis the figure hangs on, kept so
@@ -85,23 +89,68 @@ const union = (boxes: Box[]): [number, number, number, number] | null => {
 };
 
 /**
+ * The shortest sky the camera will frame, in world units. A standing fighter is
+ * about 130 tall to the crown, so this is head height plus a little air.
+ */
+export const CAMERA_FLOOR = 210;
+
+/**
+ * How much room the camera keeps above the floor, following the fighters.
+ *
+ * A band framed for the tallest jump is a band that is mostly empty, because
+ * nobody is jumping on most frames — and the old fixed 330 spent 45% of the
+ * canvas on sky a standing pair never entered. So the band follows: it opens
+ * the instant someone leaves the ground and closes slowly behind them, which
+ * reads as a camera pulling back rather than as a zoom snapping about.
+ *
+ * Stateful on purpose. The smoothing *is* the feature, and a pure function
+ * handed the same peak twice cannot smooth anything.
+ */
+export class Camera {
+  private band = CAMERA_FLOOR;
+  /** How fast the band closes once the fighters are down, per frame. */
+  private readonly ease: number;
+
+  constructor(ease = 0.05) {
+    this.ease = ease;
+  }
+
+  /** Feed it the highest point in play; get the band to frame. */
+  follow(peak: number): number {
+    const want = Math.max(CAMERA_FLOOR, peak * 1.3);
+    this.band = want > this.band ? want : this.band + (want - this.band) * this.ease;
+    return this.band;
+  }
+
+  reset(): void {
+    this.band = CAMERA_FLOOR;
+  }
+}
+
+/**
  * The camera. Keeps both fighters and a margin on screen, stops at the walls so
  * a corner reads as one, and never shrinks the pair to nothing when they are far
  * apart.
+ *
+ * `band` is the sky to frame, in world units — {@link Camera} is what follows
+ * the action with it. The horizontal margin is deliberately tight: the vertical
+ * budget is the scarce one on a wide canvas, and a generous side margin was
+ * capping the zoom and paying for it in empty sky.
  */
 export function viewFor(
   canvas: { clientWidth: number; clientHeight: number },
   positions: [number, number],
   half: number,
+  band = 330,
 ): View {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
-  const span = Math.max(560, Math.abs(positions[1] - positions[0]) + 420);
+  const span = Math.max(340, Math.abs(positions[1] - positions[0]) + 170);
   const room = half - span / 2;
   const centre = (positions[0] + positions[1]) / 2;
   const mid = room <= 0 ? 0 : Math.max(-room, Math.min(room, centre));
-  const scale = Math.min(width / span, height / 330);
   const ground = height - 56;
+  const scale = Math.min(width / span, Math.max(1, ground - 16) / band);
   return {
     width,
     height,
@@ -343,11 +392,32 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
       const b = placeBox(fighter, raw);
       const tip = { x: facing === 1 ? b.x + b.width : b.x, y: b.y + b.height / 2 };
       const kick = byName ?? tip.y < hips.y + (neck.y - hips.y) * 0.35;
-      return { root: kick ? hips : { x: neck.x, y: neck.y - radius * 0.4 }, tip, kick };
+      const root = kick ? hips : { x: neck.x, y: neck.y - radius * 0.4 };
+      return { root, joint: bendOf(root, tip), tip, kick };
     })
     .filter((l) => Math.abs(l.tip.x - axis) <= reach + radius);
 
   return { head: skull, neck, hips, feet, limbs, faded, footprint };
+}
+
+/**
+ * The knee or elbow: the midpoint, dropped perpendicular to the limb.
+ *
+ * Always *below* the straight line, because that is the way both joints fold —
+ * an elbow under a punch, a knee under a kick. The bend is a fraction of the
+ * limb's own length, so a jab folds a little and a roundhouse folds a lot.
+ */
+function bendOf(root: Point, tip: Point): Point {
+  const dx = tip.x - root.x;
+  const dy = tip.y - root.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1) return { x: (root.x + tip.x) / 2, y: (root.y + tip.y) / 2 };
+  // Of the two perpendiculars, the one pointing down.
+  const nx = dy / length;
+  const ny = -dx / length;
+  const sign = ny > 0 ? -1 : 1;
+  const drop = length * 0.16;
+  return { x: (root.x + tip.x) / 2 + nx * drop * sign, y: (root.y + tip.y) / 2 + ny * drop * sign };
 }
 
 const clamp = (v: number, a: number, b: number): number =>
@@ -377,16 +447,56 @@ export interface Ctx {
 const P1 = "#38bdf8";
 const P2 = "#fb7185";
 
-/** The floor, its distance marks, and the walls the camera stops at. */
+/**
+ * The floor, its distance marks, and the walls the camera stops at.
+ *
+ * The floor is a *surface*, not a hairline: the fighters used to stand on a
+ * single grey pixel in the middle of a black field, and with nothing behind
+ * them there was no reading where the ground was until they landed on it. The
+ * bands below it and the receding grid above are drawn from flat rects rather
+ * than a gradient so the structural {@link Ctx} stays the small interface the
+ * tests can fake.
+ */
 export function drawStage(ctx: Ctx, view: View, half: number): void {
-  const { width, ground, scale } = view;
-  ctx.strokeStyle = "#20252e";
+  const { width, height, ground, scale } = view;
+
+  // The backdrop. The camera has to keep jump height in frame, so on most frames
+  // a third of the canvas is sky whatever the zoom — and sky drawn as #000 reads
+  // as a bug rather than as room. Banded rather than a gradient so the
+  // structural `Ctx` the tests fake stays small.
+  const sky = Math.max(1, ground);
+  for (let i = 0; i < 14; i++) {
+    const t = i / 13;
+    ctx.fillStyle = `rgba(${Math.round(18 + t * 22)},${Math.round(23 + t * 33)},${Math.round(34 + t * 47)},1)`;
+    ctx.fillRect(0, (sky * i) / 14, width, sky / 14 + 1);
+  }
+
+  // The apron: the floor seen edge-on, darkening away from the front.
+  const apron = height - ground;
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = `rgba(30,41,59,${0.5 - i * 0.07})`;
+    ctx.fillRect(0, ground + (apron * i) / 6, width, apron / 6 + 1);
+  }
+  // Depth lines running back from the front edge. Spaced by a square so they
+  // crowd towards the horizon the way a receding plane does.
+  for (let i = 1; i <= 4; i++) {
+    ctx.fillStyle = `rgba(148,163,184,${0.1 - i * 0.018})`;
+    ctx.fillRect(0, ground + apron * (1 - (1 - i / 5) ** 2), width, 1);
+  }
+  // A wash above the floor, so the fighters are lit from below rather than
+  // floating in a void.
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = `rgba(56,89,138,${0.05 - i * 0.009})`;
+    ctx.fillRect(0, ground - 26 * (i + 1), width, 26);
+  }
+
+  ctx.strokeStyle = "#3d4757";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, ground + 0.5);
   ctx.lineTo(width, ground + 0.5);
   ctx.stroke();
-  ctx.fillStyle = "#151920";
+  ctx.fillStyle = "#2b3341";
   const from = Math.ceil((-half) / 100) * 100;
   for (let x = from; x <= half; x += 100) {
     const px = view.x(x);
@@ -427,12 +537,12 @@ const PALETTE: Record<BoxKind, { ink: string; fill: number; dashed?: true }> = {
   hit: { ink: "#ff4d4d", fill: 0.3 },
   projectile: { ink: "#ff8a3d", fill: 0.3 },
   throw: { ink: "#26c99a", fill: 0.07, dashed: true },
-  hurt: { ink: "#4d8cff", fill: 0.18 },
-  head: { ink: "#6fa4ff", fill: 0.18 },
-  body: { ink: "#4d8cff", fill: 0.18 },
-  leg: { ink: "#3f74d8", fill: 0.18 },
+  hurt: { ink: "#4d8cff", fill: 0.09 },
+  head: { ink: "#6fa4ff", fill: 0.09 },
+  body: { ink: "#4d8cff", fill: 0.09 },
+  leg: { ink: "#3f74d8", fill: 0.09 },
   prox: { ink: "#d8b74a", fill: 0.1, dashed: true },
-  push: { ink: "#a06cff", fill: 0.14 },
+  push: { ink: "#a06cff", fill: 0.05 },
   opponent: { ink: "#6d7488", fill: 0.16, dashed: true },
 };
 
@@ -473,11 +583,19 @@ export function drawProjectile(ctx: Ctx, view: View, box: Box): void {
  * The figure. A faded part is one the fighter is invulnerable on: held over from
  * the last frame that had it, and drawn thin so the invulnerability reads.
  */
-export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1): void {
+export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash = 0): void {
   const tint = side === 0 ? P1 : P2;
+  // Struck: the whole figure blows out to white and thickens for the length of
+  // the hitstop. Without it a 900-damage roundhouse looked exactly like standing
+  // still, because the defender's reaction animation moves its boxes barely at
+  // all and the boxes are all the figure has.
+  const hot = flash > 0 ? Math.min(1, flash) : 0;
+  // Amber, not white: the figure is already near-white, so flashing it white is
+  // a change nobody sees.
+  const HOT = "#ffd27a";
   const line = (a: Point, b: Point, colour: string, width: number, dim: boolean): void => {
     ctx.globalAlpha = dim ? 0.35 : 1;
-    ctx.strokeStyle = colour;
+    ctx.strokeStyle = hot > 0 ? HOT : colour;
     ctx.lineWidth = width;
     ctx.beginPath();
     ctx.moveTo(view.x(a.x), view.y(a.y));
@@ -485,13 +603,13 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1): void 
     ctx.stroke();
     ctx.globalAlpha = 1;
   };
-  const body = Math.max(2, 3 * view.scale);
+  const body = Math.max(2, 3 * view.scale) * (1 + hot * 0.8);
 
   line(pose.neck, pose.hips, "#e5e7eb", body, pose.faded.body);
   for (const foot of pose.feet) line(pose.hips, foot, "#e5e7eb", body, pose.faded.leg);
   if (pose.head) {
     ctx.globalAlpha = pose.faded.head ? 0.35 : 1;
-    ctx.strokeStyle = "#e5e7eb";
+    ctx.strokeStyle = hot > 0 ? HOT : "#e5e7eb";
     ctx.lineWidth = body;
     ctx.beginPath();
     ctx.arc(view.x(pose.head.x), view.y(pose.head.y), pose.head.r * view.scale, 0, Math.PI * 2);
@@ -507,8 +625,115 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1): void 
     line(shoulder, { x: shoulder.x + s * 8, y: pose.hips.y + 6 }, tint, Math.max(1.5, body - 1), pose.faded.body);
   }
   for (const limb of pose.limbs) {
-    line(limb.root, limb.tip, limb.kick ? "#7dd3fc" : "#fcd34d", body + 1, false);
+    const ink = limb.kick ? "#7dd3fc" : "#fcd34d";
+    line(limb.root, limb.joint, ink, body + 1, false);
+    line(limb.joint, limb.tip, ink, body + 1, false);
   }
+}
+
+/* ---- impact -------------------------------------------------------------- */
+
+/** How long a spark is drawn for, in match frames. */
+export const IMPACT_FRAMES = 10;
+
+/**
+ * A contact, as the view needs it: where it happened and how hard.
+ *
+ * The match reports every hit with a world-space `at`; this is that plus a clock.
+ * Nothing here changes what happened — the sparks are drawn from the same record
+ * the contact log prints, so a spark that appears in the wrong place is a
+ * reading error, not decoration gone astray.
+ */
+export interface Impact {
+  at: Point;
+  /** Frames since it landed. */
+  age: number;
+  type: "hit" | "block" | "parry" | "counter" | "punishCounter";
+  /** Damage, which is what sizes it. A jab should not read like a Super. */
+  weight: number;
+}
+
+const IMPACT_INK: Record<Impact["type"], [string, string]> = {
+  hit: ["#fff6da", "#fbbf24"],
+  counter: ["#fff1f1", "#f87171"],
+  punishCounter: ["#ffe9e9", "#ef4444"],
+  block: ["#e8f6ff", "#38bdf8"],
+  parry: ["#e9fff5", "#34d399"],
+};
+
+/**
+ * The spark. A ring that opens and fades, with spokes for a strike and none for
+ * a block — a blocked hit is a stop, not a burst, and drawing the two the same
+ * made every exchange read as damage.
+ */
+export function drawImpact(ctx: Ctx, view: View, impact: Impact): void {
+  const t = impact.age / IMPACT_FRAMES;
+  if (t >= 1) return;
+  const [core, edge] = IMPACT_INK[impact.type];
+  const x = view.x(impact.at.x);
+  const y = view.y(impact.at.y);
+  // In world units, then scaled — a spark measured in pixels is a spark that
+  // changes size when the camera does. Damage spans 200 to 4000 across the
+  // roster, so it is read as a root: the difference between a jab and a heavy
+  // should show, and a Super should not swamp the screen.
+  const size = (5 + Math.sqrt(Math.max(impact.weight, 120)) * 0.32) * view.scale;
+  const grow = 0.35 + t * 0.9;
+  const fade = (1 - t) ** 1.6;
+
+  ctx.globalAlpha = fade * 0.85;
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(1.2, size * 0.14 * (1 - t));
+  ctx.beginPath();
+  ctx.arc(x, y, size * grow, 0, Math.PI * 2);
+  ctx.stroke();
+
+  if (impact.type !== "block") {
+    const spokes = 6;
+    ctx.strokeStyle = core;
+    ctx.lineWidth = Math.max(1, size * 0.1 * (1 - t));
+    for (let i = 0; i < spokes; i++) {
+      // Fanned off a fixed phase per spoke: a spark that reseeds every frame
+      // shimmers, and the frame stepper has to be able to look at one twice.
+      const a = (i / spokes) * Math.PI * 2 + (i % 2 ? 0.5 : 0);
+      const from = size * grow * 0.7;
+      const to = size * (grow + 0.55 + (i % 3) * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * from, y + Math.sin(a) * from);
+      ctx.lineTo(x + Math.cos(a) * to, y + Math.sin(a) * to);
+      ctx.stroke();
+    }
+  }
+
+  // The flash at the centre, gone in the first third.
+  if (t < 0.35) {
+    ctx.globalAlpha = (1 - t / 0.35) * 0.9;
+    ctx.fillStyle = core;
+    const r = size * 0.45;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillRect(x - r / 2, y - r / 2, r, r);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * How far to shove the camera this frame, in pixels.
+ *
+ * Hitstop is the game's own pause on contact and it is already in the dump —
+ * both sides freeze for `hitStop.owner` frames. Freezing without moving reads as
+ * a dropped frame, so the freeze is where the shake goes. Deterministic in the
+ * frame number: the stepper has to draw the same frame twice and get the same
+ * picture.
+ */
+export function shakeAt(hitstop: number, frame: number, weight = 1): Point {
+  if (hitstop <= 0) return { x: 0, y: 0 };
+  const amp = Math.min(9, hitstop * 0.8) * Math.min(1.4, 0.5 + weight / 1200);
+  const wobble = (n: number): number => {
+    const v = Math.sin(n * 12.9898) * 43758.5453;
+    return (v - Math.floor(v)) * 2 - 1;
+  };
+  return { x: wobble(frame) * amp, y: wobble(frame + 101) * amp * 0.55 };
 }
 
 /** Health, Drive in its six bars, super in three. */

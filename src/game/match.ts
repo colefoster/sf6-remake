@@ -139,6 +139,13 @@ export interface Hit {
   stun: number;
   action: string;
   reaction: string;
+  /**
+   * Where the boxes met, in world units — the centre of the overlap between the
+   * attacking box and what it landed on. The view draws the impact there; a hit
+   * spark over the middle of the defender is a hit spark that lies about which
+   * end of them got hit.
+   */
+  at: { x: number; y: number };
 }
 
 export interface MatchOptions {
@@ -180,6 +187,11 @@ export class Match {
   readonly hits: Hit[] = [];
   /** Frames of hitstop still owed. Both sides freeze together. */
   private freeze = 0;
+
+  /** Frames of hitstop left to run. What the view shakes for. */
+  get hitstop(): number {
+    return this.freeze;
+  }
   private knockback: ({ perFrame: number; left: number } | null)[] = [null, null];
   /**
    * `<side>:<action instance>:<HitID>` for contacts already made.
@@ -512,7 +524,7 @@ export class Match {
     // row (the hit row where there is none).
     if (type === "parry") {
       const guard = data.block ?? data.hit;
-      return guard ? this.parried(attacker, them, guard, attack) : false;
+      return guard ? this.parried(attacker, them, guard, attack, boxes) : false;
     }
     const outcome = data[type] ?? data.hit;
     if (!outcome) return false;
@@ -608,6 +620,7 @@ export class Match {
       stun,
       action: attack.name,
       reaction: reaction?.name ?? "?",
+      at: contactPoint(boxes, thrown ? worldThrowboxes(them) : worldHurtboxes(them)),
     });
     return true;
   }
@@ -622,7 +635,13 @@ export class Match {
    * `ParryStopOwner` where it states one, and the Drive it costs is
    * `DriveNorm`. See ADR-0054.
    */
-  private parried(attacker: 0 | 1, them: Fighter, outcome: HitOutcome, attack: GeometryAction): boolean {
+  private parried(
+    attacker: 0 | 1,
+    them: Fighter,
+    outcome: HitOutcome,
+    attack: GeometryAction,
+    boxes: Box[] = [],
+  ): boolean {
     const strength = outcome.reaction.strength;
     const letter = strength === "H" || strength === "S" ? "H" : strength === "M" ? "M" : "L";
     const reaction = actionByName(them.geo, `DPA_${letter}`) ?? actionByName(them.geo, "DPA_M");
@@ -640,6 +659,7 @@ export class Match {
       stun: 0,
       action: attack.name,
       reaction: reaction?.name ?? "?",
+      at: contactPoint(boxes, worldHurtboxes(them)),
     });
     return true;
   }
@@ -719,6 +739,7 @@ export class Match {
       stun: 0,
       action: attack.name,
       reaction: "ARMOR",
+      at: contactPoint(boxes, worldHurtboxes(them)),
     });
     return true;
   }
@@ -782,6 +803,9 @@ export class Match {
       stun: 0,
       action: me.state.action.name,
       reaction: "TECH",
+      // A tech has no box to point at: the two of them met between their
+      // origins, at about chest height.
+      at: { x: (me.position().x + them.position().x) / 2, y: me.position().y + 90 },
     });
     return true;
   }
@@ -924,6 +948,26 @@ function worldHurtboxes(f: Fighter): Box[] {
   const at = f.position();
   const origin = originAt(action, frame);
   return hurtboxesAt(action, frame).map((b) => place(shift(b, { x: 0, y: origin.y }), at.x, 0, facing));
+}
+
+/**
+ * Where an attack met a defender: the centre of the first overlapping pair of
+ * boxes, or the attacking box's leading edge when nothing overlaps (a throw
+ * tests a box array the caller did not pass, and a projectile can be resolved
+ * off its own boxes).
+ */
+function contactPoint(attack: Box[], target: Box[]): { x: number; y: number } {
+  for (const a of attack) {
+    for (const b of target) {
+      if (!overlaps(a, b)) continue;
+      return {
+        x: (Math.max(a.x, b.x) + Math.min(a.x + a.width, b.x + b.width)) / 2,
+        y: (Math.max(a.y, b.y) + Math.min(a.y + a.height, b.y + b.height)) / 2,
+      };
+    }
+  }
+  const a = attack[0];
+  return a ? { x: a.x + a.width / 2, y: a.y + a.height / 2 } : { x: 0, y: 0 };
 }
 
 function worldPush(f: Fighter): { left: number; right: number } | undefined {

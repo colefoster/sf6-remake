@@ -40,19 +40,24 @@ export {
 } from "../data/geometry.js";
 // The view, shared by the two pages that draw a fighter. See ADR-0049.
 export {
+  Camera,
+  CAMERA_FLOOR,
   boundsOf,
   drawBox,
   drawBoxes,
   drawFigure,
   drawGauges,
+  drawImpact,
   drawProjectile,
   drawStage,
+  IMPACT_FRAMES,
   headRadius,
   placeBox,
+  shakeAt,
   poseOf,
   viewFor,
   viewForAction,
   worldBoxes,
 } from "./render.js";
-export type { BoxKind, Point, Posed, Pose, View, WorldBoxes } from "./render.js";
+export type { BoxKind, Impact, Point, Posed, Pose, View, WorldBoxes } from "./render.js";
 export type { GeometryAction, GeometryFile } from "../data/geometry.js";
