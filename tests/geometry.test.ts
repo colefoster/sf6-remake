@@ -41,6 +41,7 @@ import {
   shakeAt,
   viewFor,
   viewForAction,
+  type Attitude,
   type Pose,
 } from "../src/game/render.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
@@ -1175,6 +1176,108 @@ describe("a pose derived from the boxes", () => {
         const [a, b] = p.arms;
         expect(Math.hypot(a!.tip.x - b!.tip.x, a!.tip.y - b!.tip.y)).toBeGreaterThan(radius);
       }
+    });
+
+    /**
+     * The line ADR-0065 draws and a later change must not quietly cross.
+     *
+     * The settle is allowed to move an invented hand because nothing in
+     * `attitudeOf` is in the dump. It is *not* allowed anywhere near a limb a
+     * hurtbox places: a tip eased towards its box is a body part drawn where no
+     * box is, which in a training room is a plausible lie and worse than a pop.
+     * The probe is the settle's own state — swap the carried attitude for
+     * nonsense and every derived tip has to come out bit-identical.
+     */
+    it("never lets the settle move a limb the boxes place", () => {
+      // The corners of what the settle can ever reach: it blends between
+      // `attitudeOf`'s five cases, so its whole range is their convex hull.
+      const corners: Attitude[] = [
+        { lead: [-0.75, -0.5], rear: [-0.33, -0.95], width: 0.9, sink: 0 },
+        { lead: [0.46, 0.1], rear: [0.62, 0.18], width: 1.2, sink: 0.03 },
+        { lead: [-0.75, 0.1], rear: [0.62, -0.95], width: 1.2, sink: 0 },
+        { lead: [0.46, -0.5], rear: [-0.33, 0.18], width: 0.9, sink: 0.03 },
+      ];
+      let derivedSeen = 0;
+      let inventedMoved = 0;
+      for (const action of geo.actions) {
+        if (!action.hurt.length) continue;
+        const end = Math.min(30, Math.max(...action.hurt.map((h) => h.end ?? h.start ?? 1)));
+        let last: Pose | undefined;
+        for (let f = 1; f <= end; f++) {
+          const real = poseOf(stub(action, f), radius, last);
+          const a = [...real.arms, ...real.legs];
+          for (const attitude of corners) {
+            const forged = last ? poseOf(stub(action, f), radius, { ...last, attitude }) : real;
+            const b = [...forged.arms, ...forged.legs];
+            for (let k = 0; k < Math.min(a.length, b.length); k++) {
+              expect(b[k]!.derived).toBe(a[k]!.derived);
+              if (a[k]!.derived) {
+                derivedSeen++;
+                expect(b[k]!.tip.x).toBe(a[k]!.tip.x);
+                expect(b[k]!.tip.y).toBe(a[k]!.tip.y);
+              } else if (a[k]!.tip.x !== b[k]!.tip.x || a[k]!.tip.y !== b[k]!.tip.y) inventedMoved++;
+            }
+          }
+          last = real;
+        }
+      }
+      // Both halves matter: the derived tips must not move, and the probe must
+      // have had teeth — an attitude that changed nothing would pass vacuously.
+      expect(derivedSeen).toBeGreaterThan(500);
+      expect(inventedMoved).toBeGreaterThan(10000);
+    });
+
+    it("settles the attitude inside an action and takes it outright on a cut", () => {
+      // `attitudeOf` is a step function of a classification and every number in
+      // it is invented, so a classifier flipping mid-action teleported a hand.
+      // The rear hand alone travels 0.9 of an arm between the grounded guard and
+      // the airborne one. It closes on the target instead — ADR-0065.
+      const jump = named("BAS_JUMP_N_AIR");
+      const grounded = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+      // A new action is a cut: the game changes clip and so does the figure, and
+      // the frame a fighter starts being hit has to read instantly (ADR-0057).
+      const cut = poseOf(stub(jump, 1), radius, grounded);
+      expect(cut.attitude).toEqual(poseOf(stub(jump, 1), radius).attitude);
+      // Inside one action it moves a fraction of the way, in the right
+      // direction, and gets there.
+      const drift = (p: Pose): number => p.attitude.rear[0];
+      const forced = poseOf(stub(jump, 2), radius, { ...cut, attitude: grounded.attitude });
+      expect(drift(forced)).toBeGreaterThan(drift(cut));
+      expect(drift(forced)).toBeLessThan(grounded.attitude.rear[0]);
+      let settled: Pose = { ...cut, attitude: grounded.attitude };
+      for (let f = 2; f <= 18; f++) settled = poseOf(stub(jump, f), radius, settled);
+      expect(settled.attitude.rear[0]).toBeCloseTo(cut.attitude.rear[0], 2);
+    });
+
+    it("does not run the walk gait on a landing", () => {
+      // `plant-slide`: 165 frames over 18 actions, every one an airborne special
+      // touching down, whose planted foot slid *with* the travel. No term of the
+      // old `walking` test was wrong — it just had none that asked whether the
+      // travel was a walk. A walk's `motion.x` advances by its own `velocity.x`
+      // on every frame; a dive's is an authored arc that reverses inside the
+      // action. ADR-0065.
+      const cam = loadGeometry("cammy")!;
+      const r = headRadius(cam);
+      const b = buildOf(cam);
+      const land = cam.actions.find((a) => a.name === "SPA_CANNONSTRIKE_LAND")!;
+      const walk = cam.actions.find((a) => a.name === "BAS_FORWARD_Loop")!;
+      const feet = (action: GeometryAction, upto: number): number[] => {
+        let p: Pose | undefined;
+        const xs: number[] = [];
+        for (let f = 1; f <= upto; f++) {
+          p = poseOf(stub(action, f), r, p, b);
+          xs.push(p.legs[0]!.tip.x);
+        }
+        return xs;
+      };
+      // The walk still steps: its trailing foot sweeps a whole stride.
+      const stepping = feet(walk, 24);
+      expect(Math.max(...stepping) - Math.min(...stepping)).toBeGreaterThan(20);
+      // The landing holds its stance. It covers 339 units of ground doing it,
+      // which is why the distance test alone could never have told them apart.
+      const planted = feet(land, 24);
+      expect(Math.max(...planted) - Math.min(...planted)).toBeLessThan(0.5);
+      expect(Math.abs(land.motion!.travel!.x)).toBeGreaterThan(300);
     });
   });
 
