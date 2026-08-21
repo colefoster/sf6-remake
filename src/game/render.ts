@@ -116,6 +116,24 @@ export interface Pose {
    * the game cuts too; only the second settles. See ADR-0065.
    */
   action: number;
+  /**
+   * How far down this frame is: 1 flat on the floor, 0 upright, between the two
+   * on the way up. Derived — it is the live pushbox's own doing. See ADR-0066.
+   */
+  prone: number;
+  /**
+   * The spine **before** the lay-down.
+   *
+   * A downed fighter has no hurtbox at all — `BAS_DN_STD_AO` carries none until
+   * frame 31 — so every part of the figure is held over from the last frame that
+   * had one, and holding over a body that is already lying down folds it flat
+   * again: `held` is the last hips' height and `spine` the last neck-to-hips
+   * gap, and on a prone pose those are 6 and 0. The figure sank 130 units in two
+   * frames and never came back. The invention is not allowed to feed itself
+   * (ADR-0063), so the hold reads *this* and the lay-down is applied fresh each
+   * frame on top of it.
+   */
+  upright: { neck: Point; hips: Point };
 }
 
 /** The screen transform: game units in, canvas pixels out. */
@@ -507,6 +525,100 @@ function paced(action: GeometryAction): boolean {
 }
 
 /**
+ * How far below the floor a pushbox has to reach, and how little of it may be
+ * left above, for the fighter on it to be lying down. Fractions of the
+ * fighter's own idle hurtbox stack.
+ *
+ * **Both terms are measured and both are needed.** The downed rect is the
+ * shared `BoxNo 6` of ADR-0046 and it is unmistakable: `-35,-117,70,130` on 20
+ * fighters, `-35,-119,80,134` on Blanka and E.Honda, `-40,-119,80,134` on
+ * Marisa and `-35,-119,86,134` on Zangief. It leaves **13 units above the floor
+ * (15 on the four)** where the standing box leaves 130, and it hangs **117 (119)
+ * below it**, which no other pushbox in the dump does.
+ *
+ * Taking only the above-floor term catches three things that are not knockdowns:
+ * A.K.I.'s `SPA_Kyosyutotu` (16 above), Dee Jay's `ATK_4HK` (14) and Marisa's
+ * `SAA2_NGS` (28). Taking only the below-floor term is very nearly enough on its
+ * own — the deepest non-downed rect on the roster is Lily's `SAA_THUNDERBIRD`
+ * at 76 — but that one is 358 tall and reaches 282 *above* the floor as well,
+ * which is a wall and not a body. With both terms the split is clean and wide:
+ * every downed frame is 13-15 above and 117-119 below; nothing else gets past 16
+ * above with more than 64 below. 2,452 frames over 24 action names, and every one
+ * of those names is a knockdown, a get-up, a quick-rise or a bound.
+ */
+const DOWN_BELOW = 0.5;
+const DOWN_ABOVE = 0.15;
+
+/** The downed window an action carries, if it carries one. */
+export interface Grounded {
+  /**
+   * The first frame the downed pushbox is live on.
+   *
+   * Not always 1. The get-up and the four quick-rises start on the floor, but
+   * Ed's `1200_BAS_DN_STUN_UT` stands for 159 frames and *then* falls over, and
+   * his `1150_DMG_KUZURE_STD` and `1160_DMG_KUZURE_AO` go down on their last 8
+   * and 6 frames. Without this the figure was drawn prone from frame 1 of all
+   * three, 65 frames of it, and `prone-above-box` said so.
+   */
+  from: number;
+  /** The last frame the downed pushbox is live on. */
+  until: number;
+  /** How much of that box stands above the floor. The only bound the dump gives. */
+  top: number;
+}
+
+/** Memoised: a property of the action, not of a frame. Actions belong to one file. */
+const grounding = new WeakMap<object, Grounded | null>();
+
+/**
+ * The frames an action spends on the shared downed pushbox, and how tall it is
+ * there.
+ *
+ * This is the whole of what the dump says about a fighter being on the ground.
+ * Every `BAS_DN_STD_AO` on the roster is 42 frames with `MarginFrame` 30, the
+ * downed box on frames 1-15, the standing box from 16, and **no hurtbox until
+ * 31** — identical on all 24. See ADR-0066.
+ */
+export function grounded(action: GeometryAction, stature: number): Grounded | null {
+  const known = grounding.get(action);
+  if (known !== undefined) return known;
+  let from = Infinity;
+  let until = 0;
+  let top = 0;
+  for (const e of action.push) {
+    const above = e.box.y + e.box.height;
+    const below = -e.box.y;
+    if (below <= stature * DOWN_BELOW || above >= stature * DOWN_ABOVE) continue;
+    from = Math.min(from, e.start ?? 1);
+    until = Math.max(until, e.end ?? e.start ?? 1);
+    top = Math.max(top, above);
+  }
+  const out = Number.isFinite(from) ? { from, until, top } : null;
+  grounding.set(action, out);
+  return out;
+}
+
+/**
+ * How flat the figure is this frame: 1 on the floor, 0 upright.
+ *
+ * The floor part is the dump's outright — the pushbox is either the downed rect
+ * or it is not. The **rise** is the dump's clock and this project's shape: the
+ * box steps back to standing on frame 16 in one frame, which no body does, and
+ * the fighter is not actionable until `MarginFrame + 1`. So the ramp runs from
+ * the frame the box lets go to the frame the game hands control back — 15 frames
+ * on every fighter — and it is linear, because nothing in the dump says it is
+ * anything else and a curve would be a second invention on top of the first.
+ */
+export function proneAt(action: GeometryAction, frame: number, stature: number): number {
+  const down = grounded(action, stature);
+  if (!down || frame < down.from) return 0;
+  if (frame <= down.until) return 1;
+  const margin = action.marginFrame ?? -1;
+  if (margin <= down.until) return 0;
+  return clamp(1 - (frame - down.until) / (margin - down.until), 0, 1);
+}
+
+/**
  * The attitude actually drawn: last frame's, moved towards this frame's target.
  *
  * `attitudeOf` is a step function of a classification — the stance label, the
@@ -651,6 +763,8 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
       stand: 0,
       attitude: READY,
       action: action.id,
+      prone: 0,
+      upright: { neck: { x: at.x, y: 0 }, hips: { x: at.x, y: 0 } },
     };
   }
 
@@ -671,10 +785,16 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   // A part with no usable box is held at its *distance* from the part above, not
   // at the height it last had: a jump keeps only its body box, and hips pinned to
   // an absolute height stay on the floor while the torso climbs 350 units away.
-  const spine = last ? last.neck.y - last.hips.y : null;
+  //
+  // Read off the last pose's *upright* record rather than off the last pose, so
+  // a knockdown does not compound: the whole of `BAS_DN_STD_AO` before frame 31
+  // is held over, and a body held over from a body already lying down lies down
+  // again. Identical to `last` on every frame that is not a knockdown.
+  const base = last?.upright ?? last;
+  const spine = base ? base.neck.y - base.hips.y : null;
   const stood = last?.legs.find((l) => !l.derived) ?? last?.legs[0];
   const drop = last?.stand ?? (stood ? last!.hips.y - stood.tip.y : 0);
-  const held = leg ? toHead(leg) : body ? (spine === null ? toFeet(body) : toHead(body) - spine) : last!.hips.y;
+  const held = leg ? toHead(leg) : body ? (spine === null ? toFeet(body) : toHead(body) - spine) : base!.hips.y;
   const gap = radius * (up === 1 ? 1 : -1);
 
   // Where a single box is the whole fighter (`whole`, above) its far edge is the
@@ -1207,7 +1327,8 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
   if (faded.body) faded.body = !over((neckY + hipY) / 2);
   if (faded.leg && shin) faded.leg = !over((hipY + shin.tip.y) / 2);
 
-  return {
+  const upright = { neck, hips };
+  const pose: Pose = {
     head: skull,
     neck,
     hips,
@@ -1219,6 +1340,109 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
     stand: hipY - footY,
     attitude,
     action: action.id,
+    prone: 0,
+    upright,
+  };
+
+  // -- The floor ------------------------------------------------------------
+  //
+  // Everything above this line draws a fighter standing up, and on the frames
+  // the game says are spent on the ground that is simply wrong: the figure drew
+  // a standing man through the knockdown, through the floor time and through the
+  // get-up, because `BAS_DN_STD_AO` carries no hurtbox at all before frame 31
+  // and `poseOf` held the last pose it had. See ADR-0066.
+  const prone = proneAt(action, frame, build.stature || radius * 9.8);
+  if (prone <= 0) return pose;
+  return laid(pose, prone, {
+    axis,
+    facing,
+    hipY,
+    top: (grounded(action, build.stature || radius * 9.8)?.top ?? 0) + origin.y,
+  });
+}
+
+/**
+ * How much of a prone figure's side-on spread survives as height.
+ *
+ * The stance width and the shoulder line are perpendicular to the spine, so a
+ * quarter turn would stand them up: Ryu's feet are 27 units either side of his
+ * axis, and turned bodily they would put one 27 units in the air. Flattened to
+ * a third and then **clamped into the box**, the pair comes out at 13 and 0 —
+ * one foot on the slab's ceiling and one on the floor — which is a stagger and
+ * not a mirror, and neither of them leaves the volume the game gave.
+ */
+const PRONE_FLAT = 0.35;
+
+/**
+ * How much shorter the trailing leg is drawn, so the two do not superimpose.
+ *
+ * Both resting feet sit at the same height upright, so a quarter turn maps them
+ * to the same point along the body and the legs come out as one line. Bending
+ * the trailing knee is the ordinary way a body lies; the number is invented.
+ */
+const PRONE_TRAIL = 0.82;
+
+/**
+ * Lay a standing figure on the floor.
+ *
+ * **The bound is derived and the arrangement is not.** What the dump gives is
+ * one number: the shared downed pushbox stands `top` units above the floor —
+ * 13 on 20 fighters and 15 on the other four, against 130 standing — and that
+ * is the whole of it. It says nothing about which way the fighter is pointing,
+ * where the limbs are, or how the body is folded, and it does **not** say the
+ * body got longer horizontally: the downed rect is 70 wide against a standing
+ * 66, four units, while a fighter lying down is a stature long. So the width is
+ * not read and the figure is laid out by its own proportions instead.
+ *
+ * The shape is a quarter turn about the hips, flattened towards the floor and
+ * clamped into the slab the box allows. Turning the pose rather than composing a
+ * new one is what keeps the fighter's own build in it — a long-legged figure
+ * lies long-legged — and it puts the head at the far end and the feet at the
+ * near one, which is `_AO`: the roster's only get-up is `BAS_DN_STD_AO`, face
+ * up, so the fighter went over backwards and their head is the end away from
+ * the opponent.
+ *
+ * **The skull is the one thing that leaves the box.** It is a circle of the
+ * fighter's own head radius — 17 on Ryu against a 13-unit slab — so a head
+ * whose *centre* obeys the bound still draws above it. There is no dishonesty
+ * in that and it is not the airborne head of ADR-0063: a pushbox is not a
+ * hurtbox, and on these frames the fighter has no hurtbox at all. Nothing in
+ * the game can reach any part of them, drawn high or drawn low.
+ */
+export function laid(
+  pose: Pose,
+  prone: number,
+  at: { axis: number; facing: 1 | -1; hipY: number; top: number },
+): Pose {
+  const { axis, facing, hipY, top } = at;
+  // The spine lies along the middle of the slab the box leaves above the floor.
+  const slab = top / 2;
+  const down = (p: Point, along = 1): Point => {
+    const dx = p.x - axis;
+    const dy = (p.y - hipY) * along;
+    return { x: axis - facing * dy, y: clamp(slab + facing * dx * PRONE_FLAT, 0, top) };
+  };
+  const mix = (a: Point, b: Point): Point => ({
+    x: a.x + (b.x - a.x) * prone,
+    y: a.y + (b.y - a.y) * prone,
+  });
+  const fall = (p: Point, along = 1): Point => mix(p, down(p, along));
+  // A limb the boxes placed is left where they placed it, here as everywhere:
+  // the lay-down is invention and invention does not move derived geometry.
+  // Nothing on the roster exercises it — no frame carrying the downed pushbox
+  // carries an extended-limb hurtbox — and the rule is stated so it stays true.
+  const limb = (l: Limb, along = 1): Limb =>
+    l.derived ? l : { ...l, root: fall(l.root, along), joint: fall(l.joint, along), tip: fall(l.tip, along) };
+  return {
+    ...pose,
+    prone,
+    head: pose.head ? { ...pose.head, ...fall({ x: pose.head.x, y: pose.head.y }) } : null,
+    neck: fall(pose.neck),
+    hips: fall(pose.hips),
+    arms: pose.arms.map((l) => limb(l)),
+    // `legs[0]` is the trailing leg (`poseOf` orders them so), and it is the one
+    // whose knee is bent.
+    legs: pose.legs.map((l, i) => limb(l, i === 0 ? PRONE_TRAIL : 1)),
   };
 }
 

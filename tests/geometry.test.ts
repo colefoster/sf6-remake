@@ -41,6 +41,8 @@ import {
   shakeAt,
   viewFor,
   viewForAction,
+  grounded,
+  proneAt,
   type Attitude,
   type Pose,
 } from "../src/game/render.js";
@@ -1443,5 +1445,161 @@ describe("a pose derived from the boxes", () => {
         expect(marks.length).toBeGreaterThan(1);
       }
     });
+  });
+});
+
+/**
+ * A fighter who has been knocked down. See ADR-0066.
+ *
+ * The bug these pin: the figure drew a standing man through the knockdown
+ * reaction, through the floor time and through the get-up, because
+ * `BAS_DN_STD_AO` carries no hurtbox at all before frame 31 and `poseOf` held
+ * the last pose it had. Nothing about the reported symptom — "I sweep and the
+ * enemy does not go down" — was in the state machine, which ADR-0061 already
+ * put right.
+ */
+describe("a fighter on the floor", () => {
+  const stubbed = (action: GeometryAction, frame: number, facing: 1 | -1 = 1) =>
+    ({ state: { action, frame, facing }, position: () => ({ x: 0, y: 0 }) }) as unknown as Fighter;
+  const roster = listCharacters()
+    .map((name) => ({ name, geo: loadGeometry(requireCharacter(name).id) }))
+    .filter((r): r is { name: string; geo: GeometryFile } => Boolean(r.geo))
+    .map(({ name, geo }) => ({ name, geo, radius: headRadius(geo), build: buildOf(geo) }));
+  const of = (g: GeometryFile, name: string) => g.actions.find((a) => a.name === name)!;
+
+  it("reads the downed pushbox and nothing else as being on the ground", () => {
+    // `BoxNo 6`, the shared rect of ADR-0046: 13 units above the floor against a
+    // standing 130, and 117 below it, which no other pushbox in the dump does.
+    for (const { geo, build } of roster) {
+      const down = grounded(of(geo, "BAS_DN_STD_AO"), build.stature)!;
+      expect(down).not.toBeNull();
+      expect(down.from).toBe(1);
+      expect(down.until).toBe(15);
+      expect([13, 15]).toContain(down.top);
+      expect(grounded(of(geo, "BAS_STD_Loop"), build.stature)).toBeNull();
+    }
+    // The near misses the below-floor term is there to exclude: A.K.I.'s command
+    // dash leaves 16 units above the floor, which is downed-looking, but hangs
+    // only 40-64 below it where the downed rect hangs 117.
+    const aki = loadGeometry("aki")!;
+    const akiStature = buildOf(aki).stature;
+    for (const n of ["SPA_Kyosyutotu", "SPA_Kyosyutotu(3)"])
+      expect(grounded(of(aki, n), akiStature)).toBeNull();
+  });
+
+  it("draws a downed fighter lower than a standing one", () => {
+    // The regression, stated at its plainest. Every fighter, every part.
+    for (const { name, geo, radius, build } of roster) {
+      const up = poseOf(stubbed(of(geo, "BAS_STD_Loop"), 1), radius, undefined, build);
+      const down = poseOf(stubbed(of(geo, "BAS_DN_STD_AO"), 1), radius, up, build);
+      expect(`${name} ${down.prone}`).toBe(`${name} 1`);
+      expect(down.head!.y).toBeLessThan(up.head!.y - 100);
+      expect(down.neck.y).toBeLessThan(up.neck.y - 100);
+      expect(down.hips.y).toBeLessThan(up.hips.y - 60);
+      // Flat: the spine runs along the floor, not up from it.
+      expect(Math.abs(down.neck.y - down.hips.y)).toBeLessThan(1);
+      // ...and it is a body lying out, not a body folded into a puddle: head to
+      // foot spans something like the fighter's own height, horizontally.
+      const ends = [down.head!.x, ...down.legs.map((l) => l.tip.x)];
+      expect(Math.max(...ends) - Math.min(...ends)).toBeGreaterThan(build.stature * 0.6);
+    }
+  });
+
+  it("keeps every part inside the volume the downed pushbox allows", () => {
+    // The one derived thing about the floor: the box stands 13 units above it
+    // (15 on Blanka, E.Honda, Marisa and Zangief) and nothing is drawn outside
+    // that slab. The skull is the stated exception — it is a circle of the
+    // fighter's own head radius, and only its *centre* obeys the bound.
+    for (const { name, geo, radius, build } of roster) {
+      const action = of(geo, "BAS_DN_STD_AO");
+      const top = grounded(action, build.stature)!.top;
+      let p = poseOf(stubbed(of(geo, "BAS_STD_Loop"), 1), radius, undefined, build);
+      for (let f = 1; f <= 15; f++) {
+        p = poseOf(stubbed(action, f), radius, p, build);
+        const points = [p.neck, p.hips, { x: p.head!.x, y: p.head!.y }, ...p.legs.map((l) => l.tip), ...p.arms.map((l) => l.tip)];
+        const outside = points.filter((q) => q.y < -0.001 || q.y > top + 0.001);
+        expect(`${name} f${f} outside=${outside.length}`).toBe(`${name} f${f} outside=0`);
+      }
+    }
+  });
+
+  it("does not fold the held-over body flat again each frame", () => {
+    // `BAS_DN_STD_AO` has no hurtbox before frame 31, so all thirty of those
+    // frames are held over from the last frame that had one. Held over from the
+    // *drawn* pose — already lying down — the spine reads 0 and the hips read 6,
+    // and the figure sank another 130 units every frame. `Pose.upright` is the
+    // record the hold reads instead.
+    const { geo, radius, build } = roster.find((r) => r.name === "Ryu")!;
+    const action = of(geo, "BAS_DN_STD_AO");
+    const standing = poseOf(stubbed(of(geo, "BAS_STD_Loop"), 1), radius, undefined, build);
+    let p = poseOf(stubbed(action, 1), radius, standing, build);
+    const first = p;
+    for (let f = 2; f <= 15; f++) {
+      p = poseOf(stubbed(action, f), radius, p, build);
+      expect(p.hips.y).toBeCloseTo(first.hips.y, 6);
+      expect(p.head!.x).toBeCloseTo(first.head!.x, 6);
+    }
+    // The upright record is what was held: unchanged from the standing pose.
+    expect(p.upright.neck.y).toBeCloseTo(standing.neck.y, 6);
+    expect(p.upright.hips.y).toBeCloseTo(standing.hips.y, 6);
+  });
+
+  it("gets up on the dump's own clock, and arrives standing", () => {
+    // The pushbox steps back to the standing rect on frame 16 in a single frame,
+    // which no body does, and the fighter is not actionable until `MarginFrame`
+    // + 1. So the rise runs frame 16 to 30 — fifteen frames on all 24 — and the
+    // figure is upright again exactly when control comes back.
+    for (const { name, geo, radius, build } of roster) {
+      const action = of(geo, "BAS_DN_STD_AO");
+      expect(`${name} ${action.marginFrame}`).toBe(`${name} 30`);
+      expect(proneAt(action, 15, build.stature)).toBe(1);
+      expect(proneAt(action, 30, build.stature)).toBe(0);
+      expect(proneAt(action, 31, build.stature)).toBe(0);
+      let previous = 1;
+      for (let f = 16; f <= 30; f++) {
+        const now = proneAt(action, f, build.stature);
+        expect(now).toBeLessThan(previous);
+        previous = now;
+      }
+      const standing = poseOf(stubbed(of(geo, "BAS_STD_Loop"), 1), radius, undefined, build);
+      let p = standing;
+      for (let f = 1; f <= 30; f++) p = poseOf(stubbed(action, f), radius, p, build);
+      expect(p.neck.y).toBeCloseTo(standing.neck.y, 6);
+      expect(p.hips.y).toBeCloseTo(standing.hips.y, 6);
+    }
+  });
+
+  it("never moves a limb the boxes placed", () => {
+    // The lay-down is invention, and ADR-0065's rule is that invention does not
+    // touch derived geometry. Nothing on the roster exercises the guard in
+    // `laid` — no frame carrying the downed pushbox carries an extended-limb
+    // hurtbox — and this is what says so.
+    let checked = 0;
+    for (const { geo, radius, build } of roster) {
+      for (const action of geo.actions) {
+        if (!action.hurt.length || !grounded(action, build.stature)) continue;
+        let p = poseOf(stubbed(of(geo, "BAS_STD_Loop"), 1), radius, undefined, build);
+        for (let f = 1; f <= Math.min(80, action.frames ?? 1); f++) {
+          p = poseOf(stubbed(action, f), radius, p, build);
+          if (p.prone <= 0) continue;
+          checked++;
+          expect([...p.arms, ...p.legs].some((l) => l.derived)).toBe(false);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(2000);
+  });
+
+  it("lays the fighter down with their head away from the opponent", () => {
+    // The roster's only get-up is `BAS_DN_STD_AO` — `AO` is face up — so the
+    // fighter went over backwards and the head is the end away from the blow.
+    const { geo, radius, build } = roster.find((r) => r.name === "Ryu")!;
+    const action = of(geo, "BAS_DN_STD_AO");
+    for (const facing of [1, -1] as const) {
+      const up = poseOf(stubbed(of(geo, "BAS_STD_Loop"), 1, facing), radius, undefined, build);
+      const down = poseOf(stubbed(action, 1, facing), radius, up, build);
+      expect(Math.sign(down.head!.x - down.hips.x)).toBe(-facing);
+      expect(Math.sign(down.legs[0]!.tip.x - down.hips.x)).toBe(facing);
+    }
   });
 });

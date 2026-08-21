@@ -10,6 +10,7 @@ import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHi
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { driveTickAt } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
+import { buildOf, headRadius, poseOf } from "../src/game/render.js";
 import { runScenario } from "../src/sim/index.js";
 import { verifyThrows } from "../src/verify/throws.js";
 import { verifyArmor } from "../src/verify/armor.js";
@@ -590,6 +591,45 @@ describe("knockdowns", () => {
     expect(actionableWhileDown).toBe(0);
     // `DownTime` 15 held on frame 1, then frames 1-15 of the get-up.
     expect(downed).toBe(15 + 15);
+  });
+
+  it("draws the swept fighter on the floor, not standing on it", () => {
+    // The bug as reported: "when I sweep I don't see the enemy get knocked
+    // down". The state machine was right — the two tests above pin it — and the
+    // *figure* was wrong: `BAS_DN_STD_AO` carries no hurtbox before frame 31,
+    // so `poseOf` held the last pose it had and drew a standing man through the
+    // whole knockdown. The floor is the live pushbox's, and it says 13 units.
+    // See ADR-0066.
+    const geo = loadGeometry("ken")!;
+    const radius = headRadius(geo);
+    const build = buildOf(geo);
+    const match = matchFor("Ryu", "Ken", { distance: 150, seconds: null });
+    const ken = match.fighters[1]!;
+    let pose = poseOf(ken, radius, undefined, build);
+    const standing = pose.head!.y;
+    let flat = 0;
+    let tallWhileDown = 0;
+    let rose = false;
+    for (let i = 0; i < 200; i++) {
+      match.advance(i < 3 ? hold(2, ["HK"]) : hold(5), hold(5));
+      pose = poseOf(ken, radius, pose, build);
+      if (ken.down && pose.prone === 1) {
+        flat++;
+        // Flat on the floor: the whole body inside the box's 13 units, and the
+        // head a stature away from the hips along the ground rather than above
+        // them.
+        if (pose.head!.y > 20) tallWhileDown++;
+        expect(Math.abs(pose.neck.y - pose.hips.y)).toBeLessThan(1);
+        expect(Math.abs(pose.head!.x - pose.hips.x)).toBeGreaterThan(50);
+      }
+      if (!ken.down && flat && pose.prone === 0) rose = true;
+    }
+    // `DownTime` 15 held on frame 1, then frames 1-15 of the get-up.
+    expect(flat).toBe(15 + 15);
+    expect(tallWhileDown).toBe(0);
+    expect(rose).toBe(true);
+    // ...and back to exactly the height they started at.
+    expect(pose.head!.y).toBeCloseTo(standing, 6);
   });
 
   it("does not knock down on block", () => {
