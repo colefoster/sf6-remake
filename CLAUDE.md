@@ -21,6 +21,23 @@ re-pin. It runs both ways — FAT lags the game on 49 rows. Run
 `docs/agents/refresh-the-dump.md`. Six fighters plus Yasmine cannot be dumped at
 all: MMDK's roster is a hardcoded table that stops at Terry.
 
+### Agent worktrees
+
+A worktree is branched from **`origin/main`**, not from local `main`. This repo
+pushes rarely, so `origin/main` is routinely months and dozens of commits behind
+— on 2026-08-21 it was 67 commits stale, at a tree that predated `src/game/`
+entirely, and all three agents launched that day started on it. Each noticed and
+reset, which cost them a chunk of their run before any work began.
+
+**First command in a worktree:**
+
+```
+git log --oneline -1 && git rev-list --count HEAD..main
+```
+
+A non-zero count means the worktree is stale. `git reset --hard main` onto the
+commit the brief names, then start. Say in your report which commit you reset to.
+
 ### Domain docs
 
 Single-context (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
