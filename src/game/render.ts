@@ -1008,41 +1008,183 @@ const P1 = "#38bdf8";
 const P2 = "#fb7185";
 
 /**
- * The floor, its distance marks, and the walls the camera stops at.
+ * Where the camera's eye sits, in world units — just under a standing fighter's
+ * crown (166), so the horizon runs through the head.
  *
- * The floor is a *surface*, not a hairline: the fighters used to stand on a
- * single grey pixel in the middle of a black field, and with nothing behind
- * them there was no reading where the ground was until they landed on it. The
- * bands below it and the receding grid above are drawn from flat rects rather
- * than a gradient so the structural {@link Ctx} stays the small interface the
- * tests can fake.
+ * `viewFor` pins the *ground*, not the eye, so the horizon lands `EYE * scale`
+ * above the floor line and slides down towards it as the camera pulls back.
+ * That slide is most of what makes a zoom read as a camera moving rather than
+ * as the figures being resized.
+ */
+const EYE = 156;
+
+/**
+ * Deterministic noise in [0,1). The stage's structure has to be a pure function
+ * of world position or it swims when the camera pans, and the frame stepper
+ * draws the same frame more than once and must get one picture — the same
+ * constraint {@link shakeAt} is written to.
+ */
+const jitter = (n: number): number => {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/** How many repeats of any one layer will be drawn, however far the camera is. */
+const LAYER_CAP = 96;
+
+/**
+ * The stage: a horizon, four planes of structure behind the fighters, the floor
+ * they stand on, its distance marks, and the walls the camera stops at.
+ *
+ * The floor is a *surface*, not a hairline (ADR-0057), and that was still not
+ * enough: everything drawn here used to be a full-width horizontal band, so it
+ * was identical at every camera position. A walk moved nothing, a zoom scaled
+ * nothing, and both read as the fighters being manipulated instead of as a
+ * camera. The fix is **parallax and a horizon**, from one number per layer —
+ * see {@link EYE} and `plane` below.
+ *
+ * Everything is a flat rect. The banding exists specifically so the structural
+ * {@link Ctx} stays the small interface the tests can fake: no gradient, no
+ * clip, no transform.
  */
 export function drawStage(ctx: Ctx, view: View, half: number): void {
   const { width, height, ground, scale } = view;
+  // What the camera is centred on, in world units. `view.x` is the only handle
+  // on it and inverting it is exact.
+  const mid = (width / 2 - view.x(0)) / scale;
+  const horizon = Math.max(8, ground - EYE * scale);
+
+  /**
+   * A plane parallel to the fighters' own, `p` of the way in from the horizon.
+   * `p = 1` is the floor they stand on; `p = 0` is infinitely far; `p > 1` is in
+   * front of them. One number gives a layer its parallax (it pans at `p` of the
+   * camera's rate), its size (`p` of the camera's scale) and its footing (`p` of
+   * the way down from the horizon to the floor). All three from the same place,
+   * which is why the layers stay consistent with each other at every zoom
+   * instead of needing a constant tuned per layer.
+   */
+  const plane = (p: number): { s: number; base: number; x: (u: number) => number; from: number; to: number } => {
+    const s = scale * p;
+    return {
+      s,
+      base: ground - (ground - horizon) * (1 - p),
+      x: (u) => width / 2 + (u - mid) * s,
+      from: mid - width / 2 / s,
+      to: mid + width / 2 / s,
+    };
+  };
 
   // The backdrop. The camera has to keep jump height in frame, so on most frames
   // a third of the canvas is sky whatever the zoom — and sky drawn as #000 reads
-  // as a bug rather than as room. Banded rather than a gradient so the
-  // structural `Ctx` the tests fake stays small.
+  // as a bug rather than as room. The ramp is anchored on the horizon rather
+  // than on the canvas, so it compresses and stretches with the zoom too.
   const sky = Math.max(1, ground);
-  for (let i = 0; i < 14; i++) {
-    const t = i / 13;
-    ctx.fillStyle = `rgba(${Math.round(18 + t * 22)},${Math.round(23 + t * 33)},${Math.round(34 + t * 47)},1)`;
-    ctx.fillRect(0, (sky * i) / 14, width, sky / 14 + 1);
+  for (let i = 0; i < 16; i++) {
+    const t = clamp((sky * (i + 0.5)) / 16 / horizon, 0, 1);
+    ctx.fillStyle = `rgba(${Math.round(13 + t * 31)},${Math.round(17 + t * 41)},${Math.round(27 + t * 55)},1)`;
+    ctx.fillRect(0, (sky * i) / 16, width, sky / 16 + 1);
+  }
+  // Ground haze: everything between the horizon and the fighters' own floor is
+  // distant ground, and it darkens towards the camera.
+  const deep = ground - horizon;
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = `rgba(30,40,58,${0.08 + i * 0.05})`;
+    ctx.fillRect(0, horizon + (deep * i) / 6, width, deep / 6 + 1);
   }
 
-  // The apron: the floor seen edge-on, darkening away from the front.
-  const apron = height - ground;
-  for (let i = 0; i < 6; i++) {
-    ctx.fillStyle = `rgba(30,41,59,${0.5 - i * 0.07})`;
-    ctx.fillRect(0, ground + (apron * i) / 6, width, apron / 6 + 1);
+  /** A run of blocky silhouettes on one plane, repeating every `period` units. */
+  const ridge = (
+    p: number,
+    period: number,
+    seed: number,
+    low: number,
+    high: number,
+    ink: string,
+    sill: string | null,
+  ): void => {
+    const L = plane(p);
+    const first = Math.floor(L.from / period) - 1;
+    const last = Math.min(first + LAYER_CAP, Math.ceil(L.to / period) + 1);
+    for (let i = first; i <= last; i++) {
+      const w = period * (0.5 + jitter(i * 3 + seed) * 0.42);
+      const h = low + (high - low) * jitter(i + seed);
+      const px = Math.round(L.x(i * period + (jitter(i * 7 + seed) - 0.5) * period * 0.24));
+      const pw = Math.max(2, Math.round(w * L.s));
+      const ph = h * L.s;
+      ctx.fillStyle = ink;
+      ctx.fillRect(px, L.base - ph, pw, ph + 1);
+      if (sill && ph > 26 && pw > 8) {
+        ctx.fillStyle = sill;
+        const rows = Math.min(6, Math.floor(ph / 16));
+        for (let k = 1; k <= rows; k++) {
+          ctx.fillRect(px + 2, Math.round(L.base - (ph * k) / (rows + 1)), pw - 4, 1);
+        }
+      }
+    }
+  };
+
+  // Aerial perspective, the usual way round: the further back a layer is, the
+  // closer it sits to the sky's own tone. So the strongest contrast in the
+  // background is the *darkest* thing on screen, and nothing back there can
+  // compete with a near-white figure or a saturated box.
+  // Cloud, barely moving, at a height no building reaches. Its job is that the
+  // upper sky is not perfectly dead: a ground-pinned camera at eye height puts
+  // every solid thing near the horizon, so at the widest separation the top two
+  // thirds of the canvas has nothing in it at all.
+  ridge(0.05, 2600, 71, 2600, 7600, "rgba(30,39,57,0.32)", null);
+  ridge(0.1, 300, 11, 100, 520, "rgba(27,35,51,1)", null);
+  ridge(0.24, 520, 29, 180, 760, "rgba(20,26,40,1)", "rgba(150,141,126,0.055)");
+
+  // The back wall: a low run with a lit coping, and a colonnade on it. Evenly
+  // spaced on purpose — a regular rhythm is the best ruler a lateral move has,
+  // where the jittered ridges behind it only have to say "far away".
+  const back = plane(0.45);
+  const wall = 52 * back.s;
+  ctx.fillStyle = "rgba(17,22,34,1)";
+  ctx.fillRect(0, back.base - wall, width, wall + 1);
+  ctx.fillStyle = "rgba(92,108,134,0.16)";
+  ctx.fillRect(0, Math.round(back.base - wall), width, 1);
+  // Where that plane's floor meets it. A horizontal line at a fixed fraction of
+  // the horizon-to-ground gap is a zoom cue on its own: it slides towards the
+  // floor line as the camera pulls back.
+  ctx.fillStyle = "rgba(120,138,168,0.06)";
+  ctx.fillRect(0, Math.round(back.base), width, 1);
+  {
+    const period = 210;
+    const first = Math.floor(back.from / period) - 1;
+    const last = Math.min(first + LAYER_CAP, Math.ceil(back.to / period) + 1);
+    for (let i = first; i <= last; i++) {
+      const h = (150 + jitter(i + 5) * 26) * back.s;
+      const px = Math.round(back.x(i * period));
+      const pw = Math.max(2, Math.round(44 * back.s));
+      ctx.fillStyle = "rgba(12,16,26,1)";
+      ctx.fillRect(px, back.base - h, pw, h + 1);
+      ctx.fillStyle = "rgba(98,114,142,0.12)";
+      ctx.fillRect(px, Math.round(back.base - h), pw, 1);
+    }
   }
-  // Depth lines running back from the front edge. Spaced by a square so they
-  // crowd towards the horizon the way a receding plane does.
-  for (let i = 1; i <= 4; i++) {
-    ctx.fillStyle = `rgba(148,163,184,${0.1 - i * 0.018})`;
-    ctx.fillRect(0, ground + apron * (1 - (1 - i / 5) ** 2), width, 1);
+
+  // A rail close behind the fighters, at 0.7 of the camera's rate — so a walk
+  // slides it past visibly faster than the colonnade, which is the whole cue.
+  // A rail rather than more blocks: this near the fighters, mass reads as a hole
+  // in the picture and its posts still give the fastest rhythm on screen.
+  {
+    const near = plane(0.7);
+    const period = 120;
+    const bar = Math.max(1, Math.round(6 * near.s));
+    ctx.fillStyle = "rgba(10,14,22,1)";
+    ctx.fillRect(0, Math.round(near.base - 58 * near.s), width, bar);
+    ctx.fillStyle = "rgba(102,118,146,0.09)";
+    ctx.fillRect(0, Math.round(near.base - 58 * near.s), width, 1);
+    const first = Math.floor(near.from / period) - 1;
+    const last = Math.min(first + LAYER_CAP, Math.ceil(near.to / period) + 1);
+    ctx.fillStyle = "rgba(10,14,22,1)";
+    for (let i = first; i <= last; i++) {
+      const h = 58 * near.s;
+      ctx.fillRect(Math.round(near.x(i * period)), near.base - h, Math.max(1, Math.round(9 * near.s)), h + 1);
+    }
   }
+
   // A wash above the floor, so the fighters are lit from below rather than
   // floating in a void.
   for (let i = 0; i < 5; i++) {
@@ -1050,18 +1192,114 @@ export function drawStage(ctx: Ctx, view: View, half: number): void {
     ctx.fillRect(0, ground - 26 * (i + 1), width, 26);
   }
 
-  ctx.strokeStyle = "#3d4757";
+  // Floor seams on the fighters' *own* plane: one per distance mark, running
+  // back towards the vanishing point. A horizontal band cannot show a pan and a
+  // flat floor cannot show a zoom; these do both, because they travel at the
+  // camera's full rate and their convergence is the perspective itself. Slanted,
+  // so they are the one thing here drawn with `moveTo`/`lineTo` rather than a
+  // rect — both already on {@link Ctx}, which is why it did not have to grow.
+  {
+    const reach = 0.28;
+    ctx.strokeStyle = "rgba(150,168,196,0.14)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const first = Math.max(Math.ceil(-half / 100), Math.floor((mid - width / 2 / scale) / 100) - 2);
+    const last = Math.min(Math.floor(half / 100), first + LAYER_CAP);
+    for (let i = first; i <= last; i++) {
+      const px = view.x(i * 100);
+      if (px < -600 || px > width + 600) continue;
+      ctx.moveTo(px, ground);
+      ctx.lineTo(px + (width / 2 - px) * reach, ground - deep * reach);
+    }
+    ctx.stroke();
+    ctx.fillStyle = "rgba(120,138,168,0.05)";
+    ctx.fillRect(0, Math.round(ground - deep * reach), width, 1);
+
+    // Scuffs on that floor, at three depths inside the same band. Without them
+    // the ground between the fighters and the rail is the one part of the
+    // picture a pan still cannot move, because seams alone are too sparse.
+    ctx.fillStyle = "rgba(150,168,196,0.055)";
+    for (const [p, period, seed] of [[0.79, 190, 61], [0.87, 150, 97], [0.94, 120, 131]] as const) {
+      const L = plane(p);
+      const one = Math.floor(L.from / period) - 1;
+      const end = Math.min(one + LAYER_CAP, Math.ceil(L.to / period) + 1);
+      for (let i = one; i <= end; i++) {
+        const w = (18 + jitter(i * 5 + seed) * 34) * L.s;
+        if (w < 1.5) continue;
+        ctx.fillRect(Math.round(L.x(i * period + jitter(i + seed) * period * 0.7)), L.base, w, 1);
+      }
+    }
+  }
+
+  // The apron: the floor seen edge-on, darkening away from the front. Opaque
+  // underneath, because everything drawn on it is a wash and a transparent
+  // canvas below the floor line lets the page through.
+  const apron = height - ground;
+  ctx.fillStyle = "rgba(9,12,19,1)";
+  ctx.fillRect(0, ground, width, apron);
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = `rgba(30,41,59,${0.5 - i * 0.07})`;
+    ctx.fillRect(0, ground + (apron * i) / 6, width, apron / 6 + 1);
+  }
+  // Floor panels, one per 100-unit mark, alternating. This is the only structure
+  // on the fighters' *own* plane, so it moves at exactly their rate and a walk
+  // shows up here first — and it is keyed to the marks, so it is the same ruler.
+  {
+    const first = Math.floor((mid - width / 2 / scale) / 100) - 1;
+    const last = Math.min(first + LAYER_CAP, Math.ceil((mid + width / 2 / scale) / 100) + 1);
+    ctx.fillStyle = "rgba(150,168,196,0.032)";
+    for (let i = first; i <= last; i++) {
+      if ((i & 1) === 0) continue;
+      const x0 = Math.round(view.x(i * 100));
+      ctx.fillRect(x0, ground + 1, Math.round(view.x((i + 1) * 100)) - x0, apron);
+    }
+  }
+  // Depth lines running back from the front edge. Spaced by a square so they
+  // crowd towards the horizon the way a receding plane does.
+  for (let i = 1; i <= 4; i++) {
+    ctx.fillStyle = `rgba(148,163,184,${0.1 - i * 0.018})`;
+    ctx.fillRect(0, ground + apron * (1 - (1 - i / 5) ** 2), width, 1);
+  }
+
+  ctx.strokeStyle = "#4a5567";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, ground + 0.5);
   ctx.lineTo(width, ground + 0.5);
   ctx.stroke();
-  ctx.fillStyle = "#2b3341";
-  const from = Math.ceil((-half) / 100) * 100;
+
+  // The distance marks. Functional, not decoration — spacing is read off them —
+  // so they are the brightest thing on the floor at every zoom, and every fifth
+  // is taller so 500 units can be counted without counting to five. The riser
+  // above the line is there because a tick *under* the floor is invisible the
+  // moment a fighter is standing on it.
+  const from = Math.ceil(-half / 100) * 100;
   for (let x = from; x <= half; x += 100) {
-    const px = view.x(x);
-    if (px >= 0 && px <= width) ctx.fillRect(px, ground + 4, 1, 10);
+    const px = Math.round(view.x(x));
+    if (px < -2 || px > width + 2) continue;
+    const major = x % 500 === 0;
+    ctx.fillStyle = major ? "rgba(176,192,214,0.72)" : "rgba(150,166,190,0.44)";
+    ctx.fillRect(px, ground + 3, major ? 2 : 1, major ? 18 : 11);
+    ctx.fillStyle = major ? "rgba(150,168,196,0.16)" : "rgba(150,168,196,0.09)";
+    const riser = (major ? 44 : 24) * scale;
+    ctx.fillRect(px, ground - riser, 1, riser);
   }
+
+  // The one thing in front of the fighters' plane, kept in the apron where it
+  // can never cover them: the front lip of the floor, notched so its motion is
+  // visible. At 1.55× the camera's rate it is the fastest cue a walk has.
+  {
+    const fore = plane(1.55);
+    const period = 26;
+    const first = Math.floor(fore.from / period) - 1;
+    const last = Math.min(first + LAYER_CAP, Math.ceil(fore.to / period) + 1);
+    ctx.fillStyle = "rgba(6,8,13,1)";
+    for (let i = first; i <= last; i++) {
+      const px = Math.round(fore.x(i * period));
+      ctx.fillRect(px, height - 8, Math.max(2, Math.round(period * 0.58 * fore.s)), 8);
+    }
+  }
+
   for (const side of [-1, 1]) {
     const x = view.x(side * half);
     if (x < -20 || x > width + 20) continue;

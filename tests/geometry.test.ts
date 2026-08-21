@@ -33,6 +33,8 @@ import {
   Camera,
   boundsOf,
   buildOf,
+  drawStage,
+  type Ctx,
   headRadius,
   poseOf,
   recoiled,
@@ -1093,6 +1095,122 @@ describe("a pose derived from the boxes", () => {
       expect(Math.abs(a.x)).toBeLessThanOrEqual(13);
       // A jab does not shake the screen as hard as a Super.
       expect(Math.abs(shakeAt(9, 40, 200).x)).toBeLessThan(Math.abs(shakeAt(9, 40, 4000).x));
+    });
+  });
+
+  /**
+   * The stage. See ADR-0062: everything it drew used to be a full-width
+   * horizontal band, so the picture was identical at every camera position and
+   * differed only in size at every zoom — a walk moved nothing and a zoom looked
+   * like the fighters being resized.
+   *
+   * This is the whole reason {@link Ctx} is a structural interface: a fake is
+   * five lines and it records what was asked for.
+   */
+  describe("the stage the camera moves over", () => {
+    const canvas = { clientWidth: 1140, clientHeight: 820 };
+
+    /** Records every call, in order. Nothing here needs a canvas. */
+    const recorder = (): { ops: string[]; ctx: Ctx } => {
+      const ops: string[] = [];
+      const ctx = {
+        fillStyle: "",
+        strokeStyle: "",
+        lineWidth: 1,
+        globalAlpha: 1,
+        font: "",
+        textAlign: "",
+        beginPath: () => ops.push("begin"),
+        moveTo: (x: number, y: number) => ops.push(`move ${x.toFixed(2)} ${y.toFixed(2)}`),
+        lineTo: (x: number, y: number) => ops.push(`line ${x.toFixed(2)} ${y.toFixed(2)}`),
+        arc: () => ops.push("arc"),
+        stroke: () => ops.push("stroke"),
+        fillRect: (x: number, y: number, w: number, h: number) =>
+          ops.push(`rect ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}`),
+        strokeRect: () => ops.push("strokeRect"),
+        setLineDash: () => ops.push("dash"),
+        fillText: () => ops.push("text"),
+      };
+      return { ops, ctx };
+    };
+
+    const painted = (positions: [number, number], band: number): string[] => {
+      const r = recorder();
+      drawStage(r.ctx, viewFor(canvas, positions, 765, band), 765);
+      return r.ops;
+    };
+
+    it("is a different picture from a different place on the same stage", () => {
+      // Same separation, so the same zoom: only the camera has moved.
+      const here = painted([-110, 110], CAMERA_FLOOR);
+      const there = painted([-30, 190], CAMERA_FLOOR);
+      expect(there.length).toBeGreaterThan(0);
+      expect(there).not.toEqual(here);
+      // Not a token difference either: most of what is drawn has moved.
+      const same = there.filter((op, i) => op === here[i]).length;
+      expect(same / here.length).toBeLessThan(0.5);
+    });
+
+    it("moves its layers at different rates, which is what makes a walk read", () => {
+      // Rects are grouped between the two cameras by their shape — height,
+      // width and how tall they are — and matched in order across x, so the
+      // shift each layer took can be read off. A shift only counts if two rects
+      // agree on it, which throws away the ones that scrolled off an edge.
+      const shapes = (positions: [number, number]): Map<string, number[]> => {
+        const by = new Map<string, number[]>();
+        for (const op of painted(positions, CAMERA_FLOOR)) {
+          if (!op.startsWith("rect")) continue;
+          const [, x, ...rest] = op.split(" ");
+          const key = rest.join(" ");
+          by.set(key, [...(by.get(key) ?? []), Number(x)]);
+        }
+        for (const xs of by.values()) xs.sort((a, b) => a - b);
+        return by;
+      };
+      const here = shapes([-110, 110]);
+      const tally = new Map<number, number>();
+      for (const [key, xs] of shapes([-190, 30])) {
+        const was = here.get(key);
+        if (!was || was.length !== xs.length) continue;
+        for (const [i, x] of xs.entries()) {
+          const dx = Math.round(Math.abs(x - was[i]!));
+          if (dx > 0) tally.set(dx, (tally.get(dx) ?? 0) + 1);
+        }
+      }
+      // One rate is a picture sliding; no rate at all is the treadmill ADR-0057
+      // left behind. Three is parallax.
+      expect([...tally.values()].filter((n) => n >= 2).length).toBeGreaterThan(2);
+    });
+
+    it("puts its horizon somewhere else at a different zoom, from the same place", () => {
+      // The full-width bands are the ones that used to come off `ground` and
+      // `height` alone — the canvas's numbers, not the camera's — so they were
+      // in the same place at every zoom. They are anchored on the horizon now,
+      // and the horizon is `EYE * scale` above a pinned floor.
+      const bands = (band: number): string =>
+        painted([-110, 110], band)
+          .filter((op) => op.startsWith("rect") && op.endsWith(` ${canvas.clientWidth.toFixed(2)} 1.00`))
+          .map((op) => op.split(" ")[2])
+          .join(",");
+      expect(bands(520)).not.toEqual(bands(CAMERA_FLOOR));
+    });
+
+    it("draws its distance marks at every zoom the camera reaches", () => {
+      // They are how spacing is read, so "legible" starts with "drawn at all":
+      // one 100-unit mark per 100 units of visible stage, at the floor line.
+      for (const [positions, band] of [
+        [[-33, 33], CAMERA_FLOOR],
+        [[-110, 110], CAMERA_FLOOR],
+        [[-110, 110], 520],
+        [[-750, 750], 520],
+      ] as [[number, number], number][]) {
+        const view = viewFor(canvas, positions, 765, band);
+        const marks = painted(positions, band).filter((op) => {
+          const [, , y, w] = op.split(" ");
+          return op.startsWith("rect") && Number(y) >= view.ground && Number(y) <= view.ground + 6 && Number(w) <= 2;
+        });
+        expect(marks.length).toBeGreaterThan(1);
+      }
     });
   });
 });
