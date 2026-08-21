@@ -18,6 +18,8 @@ data/geometry/
 # here. See docs/agents/refresh-the-dump.md.
 data/raw/mmdk-2024/
 .playwright-mcp/
+# Agent worktrees — whole checkouts of this repo, one per background agent.
+.claude/worktrees/
 
 # Local secrets
 .env
