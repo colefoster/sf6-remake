@@ -585,7 +585,16 @@ const surface = {
       head: p.head ? { x: round(p.head.x), y: round(p.head.y), r: round(p.head.r) } : null,
       neck: { x: round(p.neck.x), y: round(p.neck.y) },
       hips: { x: round(p.hips.x), y: round(p.hips.y) },
-      feet: p.feet.map((f) => ({ x: round(f.x), y: round(f.y) })),
+      legs: p.legs.map((l) => ({
+        root: { x: round(l.root.x), y: round(l.root.y) },
+        tip: { x: round(l.tip.x), y: round(l.tip.y) },
+        derived: l.derived,
+      })),
+      arms: p.arms.map((l) => ({
+        root: { x: round(l.root.x), y: round(l.root.y) },
+        tip: { x: round(l.tip.x), y: round(l.tip.y) },
+        derived: l.derived,
+      })),
       limbs: p.limbs.map((l) => ({
         root: { x: round(l.root.x), y: round(l.root.y) },
         tip: { x: round(l.tip.x), y: round(l.tip.y) },

@@ -41,6 +41,23 @@ export interface WorldBoxes {
 }
 
 /**
+ * An arm or a leg: where it starts, where it bends, where it ends.
+ *
+ * `derived` says whether the boxes put the extremity there or whether it is the
+ * invented resting pose. The distinction is worth carrying because most of the
+ * time it is the invention: across the roster only **9.2% of 456,993 frames**
+ * carry a hurtbox out past the footprint for a limb to be read from — 19.4% of
+ * `ATK_*` frames, 17.0% of `SPA_*`, 0.4% of `BAS_*` and **zero** of the 646
+ * reaction actions.
+ */
+export interface Limb {
+  root: Point;
+  joint: Point;
+  tip: Point;
+  derived: boolean;
+}
+
+/**
  * A stick figure in world units.
  *
  * `faded` marks a part whose hurtbox is not live this frame. The joints are
@@ -52,13 +69,20 @@ export interface Pose {
   head: { x: number; y: number; r: number } | null;
   neck: Point;
   hips: Point;
-  feet: Point[];
+  /**
+   * Hips to feet, and shoulders to hands. Two of each, trailing then leading.
+   * At most one of each pair is `derived`: the boxes are 2D and cannot tell a
+   * near limb from a far one, so the extension goes to the limb on the side it
+   * is on and the other keeps the invented resting pose.
+   */
+  legs: Limb[];
+  arms: Limb[];
   /**
    * An active hitbox, drawn as the limb that carries it. `joint` is the knee or
    * elbow: a limb drawn as one straight line from hip to hitbox is a beam, and
    * Ryu's roundhouse read as a laser fired through the opponent's chest.
    */
-  limbs: { root: Point; joint: Point; tip: Point; kick: boolean }[];
+  limbs: (Limb & { kick: boolean })[];
   faded: { head: boolean; body: boolean; leg: boolean };
   /**
    * The pushbox's centre in action space — the axis the figure hangs on, kept so
@@ -327,7 +351,16 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
   // Nothing to stand on and nothing held over: the fighter is not drawable this
   // frame (a projectile's own action, an intro). Callers skip it.
   if (!torso && !last) {
-    return { head: null, neck: { x: at.x, y: 0 }, hips: { x: at.x, y: 0 }, feet: [], limbs: [], faded, footprint };
+    return {
+      head: null,
+      neck: { x: at.x, y: 0 },
+      hips: { x: at.x, y: 0 },
+      legs: [],
+      arms: [],
+      limbs: [],
+      faded,
+      footprint,
+    };
   }
 
   // Which way is up for this body. Blanka's 5MK is a flip: the head key sits on
@@ -348,7 +381,8 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
   // at the height it last had: a jump keeps only its body box, and hips pinned to
   // an absolute height stay on the floor while the torso climbs 350 units away.
   const spine = last ? last.neck.y - last.hips.y : null;
-  const drop = last?.feet.length ? last.hips.y - last.feet[0]!.y : 0;
+  const stood = last?.legs.find((l) => !l.derived) ?? last?.legs[0];
+  const drop = stood ? last!.hips.y - stood.tip.y : 0;
   const hipY = leg ? toHead(leg) : body ? (spine === null ? toFeet(body) : toHead(body) - spine) : last!.hips.y;
   const neckY = body ? toHead(body) : hipY + (spine ?? 0);
 
@@ -367,7 +401,7 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
   // Feet inset a fixed fraction of the pushbox's half-width, on the far end of
   // the leg boxes. Not the leg union's own width: a kick doubles that.
   const footY = leg ? toFeet(leg) : hipY - drop;
-  const feet: Point[] = leg || last?.feet.length ? [-1, 1].map((s) => ({ x: axis + s * half * 0.48, y: footY })) : [];
+  const standing = Boolean(leg) || Boolean(last?.legs.length);
 
   // An active hitbox is a limb, and which limb the action's own name usually
   // says: `ATK_5MK` is a kick, `ATK_5HP` a punch. Where the name does not say —
@@ -382,6 +416,13 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
   // a 524-wide hitbox with no hurtbox anywhere near it, and drawn as an arm it
   // was a yellow beam out of a man who was not there. Past the reach it is not a
   // limb; the hitbox is still drawn as a hitbox.
+  // The shoulders and the hips are the only joints an arm or a leg can hang off,
+  // and neither is in the dump. They are placed on the pushbox's width, which is
+  // the one authored width a body has (ADR-0050) — 20 units either side on Ryu's
+  // 66-wide box, 26 on Zangief's 86.
+  const shoulderY = neckY - gap * 0.3;
+  const shoulder = (s: 1 | -1): Point => ({ x: axis + s * half * 0.55, y: shoulderY });
+
   const stature = Math.abs((skull ? skullY + gap : neckY) - footY);
   const reach = Math.max(
     stature * 1.1,
@@ -392,12 +433,109 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
       const b = placeBox(fighter, raw);
       const tip = { x: facing === 1 ? b.x + b.width : b.x, y: b.y + b.height / 2 };
       const kick = byName ?? tip.y < hips.y + (neck.y - hips.y) * 0.35;
-      const root = kick ? hips : { x: neck.x, y: neck.y - radius * 0.4 };
-      return { root, joint: bendOf(root, tip), tip, kick };
+      const root = kick ? hips : shoulder(facing);
+      return { root, joint: bendOf(root, tip), tip, kick, derived: true };
     })
     .filter((l) => Math.abs(l.tip.x - axis) <= reach + radius);
 
-  return { head: skull, neck, hips, feet, limbs, faded, footprint };
+  // The arms and the legs.
+  //
+  // ADR-0050 measured the boxes out past the footprint and threw them away so
+  // they would not corrupt the torso union. They are the only thing in the dump
+  // that says where a limb is, and ADR-0049 and ADR-0051 both left "the extended
+  // limb's hurtboxes are still discarded" open. This closes it.
+  //
+  // **The part the box was tagged to says arm or leg** — `leg` is a leg,
+  // `head`/`body` an arm. Height does not: of the 20,526 non-core `leg` boxes
+  // 15,700 sit below the hips but 535 sit above the neck, and 1,603 non-core
+  // `body` boxes are above the neck too. A box tagged to more than one part is
+  // skipped here for the same reason it is skipped for the torso — Akuma's air
+  // fireball hangs one box off all three and it names no limb either.
+  //
+  // **Which side of the body cannot be told.** The boxes are 2D, there is no
+  // near or far, and 54,208 of the 58,337 non-core boxes (93%) sit forward of
+  // the axis. So the extension is drawn as the *leading* limb and its partner
+  // keeps the resting pose, which is also why a frame carrying two non-core
+  // boxes for one part (Dee Jay's sweep tags both leg keys to the sweeping leg)
+  // unions them into one limb rather than splitting them into two.
+  //
+  // **An active hitbox wins.** On the 9,381 frames that have both, the hitbox
+  // and the matching non-core hurtbox are the same limb — 8 units between their
+  // centres at the median — so drawing both would draw it twice. That leaves
+  // the extension to the 32,820 wind-up and recovery frames, which is where it
+  // was wanted.
+  const outboard = (which: readonly (keyof typeof parts)[]): [number, number, number, number] | null => {
+    if (!push) return null;
+    const far = which
+      .flatMap((w) => parts[w])
+      .filter((b) => shared.get(id(b)) === 1 && Math.abs(b.x + b.width / 2 - middle) >= tolerance);
+    const u = union(far);
+    return u ? [u[0], u[1] + origin.y, u[2], u[3] + origin.y] : null;
+  };
+  /** The far end of an extended limb's boxes: the hand, or the foot. */
+  const extremity = (u: [number, number, number, number]): Point => ({
+    x: flip((u[0] + u[2]) / 2 > middle ? u[2] : u[0]),
+    y: (u[1] + u[3]) / 2,
+  });
+  const armBox = limbs.some((l) => !l.kick) ? null : outboard(["head", "body"]);
+  const legBox = limbs.some((l) => l.kick) ? null : outboard(["leg"]);
+
+  // Everything below is **invented**. An arm at rest has no box of its own, so
+  // the hanging hands and the stance are geometry this project made up. The
+  // stance is ADR-0050's ±0.48 of the pushbox's half-width, unchanged.
+  //
+  // A walk cannot be helped out of `action.motion` either: 3,306 of the 8,213
+  // actions carry one and it is a displacement curve for the *whole fighter* —
+  // where the body travels, never where a foot is. `BAS_FORWARD_Loop` moves no
+  // hurtbox at all, so the walking figure holds one pose, which is what the
+  // dump says.
+  const lead = facing;
+  const restingArm = (s: 1 | -1): { root: Point; tip: Point } => ({
+    root: shoulder(s),
+    tip: { x: axis + s * half * 0.7, y: hipY + gap * 0.35 },
+  });
+  const restingLeg = (s: 1 | -1): { root: Point; tip: Point } => ({
+    root: hips,
+    tip: { x: axis + s * half * 0.48, y: footY },
+  });
+
+  const limbFrom = (
+    rest: { root: Point; tip: Point },
+    reachedFor: Point | null,
+  ): Limb => {
+    const tip = reachedFor ?? rest.tip;
+    // A derived limb folds at the elbow or the knee like the hitbox limb does; a
+    // resting one is only slightly bent, and towards the opponent, because a
+    // fighting stance is not a straight line and `bendOf`'s perpendicular is
+    // undefined in direction for a limb hanging vertically.
+    const joint = reachedFor
+      ? bendOf(rest.root, tip)
+      : {
+          x: (rest.root.x + tip.x) / 2 + lead * Math.abs(rest.root.y - tip.y) * 0.12,
+          y: (rest.root.y + tip.y) / 2,
+        };
+    return { root: rest.root, joint, tip, derived: Boolean(reachedFor) };
+  };
+
+  // The extension goes to the limb on the side of the body the box is on, which
+  // is forward 93% of the time and behind on a sweep's bracing arm.
+  const armTip = armBox ? extremity(armBox) : null;
+  const legTip = legBox ? extremity(legBox) : null;
+  const side = (p: Point | null): number => (p ? (p.x >= axis ? 1 : -1) : 0);
+  const arms: Limb[] = [-1, 1].map((s) =>
+    limbFrom(restingArm(s as 1 | -1), s === side(armTip) ? armTip : null),
+  );
+  const legs: Limb[] = standing
+    ? [-1, 1].map((s) => limbFrom(restingLeg(s as 1 | -1), s === side(legTip) ? legTip : null))
+    : [];
+  // Trailing limb first, so `legs[0]` is the foot the fighter is standing on and
+  // the audit's stance measurements do not move when the other leg kicks.
+  if (lead === -1) {
+    arms.reverse();
+    legs.reverse();
+  }
+
+  return { head: skull, neck, hips, legs, arms, limbs, faded, footprint };
 }
 
 /**
@@ -605,8 +743,17 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash 
   };
   const body = Math.max(2, 3 * view.scale) * (1 + hot * 0.8);
 
+  // A limb the boxes describe is body-coloured; one this project invented keeps
+  // the player tint, so the two players stay apart and the cyan reads as "the
+  // dump did not say" rather than as decoration.
+  const chain = (limb: Limb, width: number, dim: boolean): void => {
+    const ink = limb.derived ? "#e5e7eb" : tint;
+    line(limb.root, limb.joint, ink, width, dim);
+    line(limb.joint, limb.tip, ink, width, dim);
+  };
+
   line(pose.neck, pose.hips, "#e5e7eb", body, pose.faded.body);
-  for (const foot of pose.feet) line(pose.hips, foot, "#e5e7eb", body, pose.faded.leg);
+  for (const leg of pose.legs) chain(leg, body, pose.faded.leg);
   if (pose.head) {
     ctx.globalAlpha = pose.faded.head ? 0.35 : 1;
     ctx.strokeStyle = hot > 0 ? HOT : "#e5e7eb";
@@ -616,16 +763,14 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash 
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
-  // Arms at rest, hanging off the shoulders. The dump says nothing about them —
-  // an arm with no hitbox has no box of its own — so they are drawn under the
-  // active limb rather than instead of it: a punching fighter still has a
-  // second arm.
-  for (const s of [-1, 1] as const) {
-    const shoulder = { x: pose.neck.x + s * 10, y: pose.neck.y - 6 };
-    line(shoulder, { x: shoulder.x + s * 8, y: pose.hips.y + 6 }, tint, Math.max(1.5, body - 1), pose.faded.body);
-  }
+  // Under the active limb rather than instead of it: a punching fighter still
+  // has a second arm.
+  for (const arm of pose.arms) chain(arm, Math.max(1.5, body - 1), pose.faded.body);
+  // Warm is the attack, cool is the body. The kick used to be cyan, which is
+  // also P1's tint — so on the left-hand fighter a live roundhouse and an
+  // invented resting arm were the same colour.
   for (const limb of pose.limbs) {
-    const ink = limb.kick ? "#7dd3fc" : "#fcd34d";
+    const ink = limb.kick ? "#fb923c" : "#fcd34d";
     line(limb.root, limb.joint, ink, body + 1, false);
     line(limb.joint, limb.tip, ink, body + 1, false);
   }
@@ -666,6 +811,14 @@ export function recoiled(pose: Pose, lean: number, away: 1 | -1): Pose {
     ...pose,
     neck,
     head: pose.head ? { ...pose.head, ...turn(pose.head, spine * 1.35) } : null,
+    // The arms hang off the shoulders, so they go with the spine; the legs do
+    // not, because the feet are planted.
+    arms: pose.arms.map((l) => ({
+      ...l,
+      root: turn(l.root, spine),
+      joint: turn(l.joint, spine),
+      tip: turn(l.tip, spine),
+    })),
     limbs: pose.limbs.map((l) => ({
       ...l,
       root: turn(l.root, spine),

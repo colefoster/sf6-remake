@@ -617,10 +617,10 @@ describe("a pose derived from the boxes", () => {
     // below the torso, so the whole figure leaves the ground together.
     expect(during.faded).toEqual({ head: true, body: false, leg: true });
     expect(during.head).not.toBeNull();
-    expect(during.feet).toHaveLength(before.feet.length);
-    expect(during.feet.map((f) => f.x)).toEqual(before.feet.map((f) => f.x));
-    expect(during.hips.y - during.feet[0]!.y).toBeCloseTo(before.hips.y - before.feet[0]!.y, 5);
-    expect(during.feet[0]!.y).toBeGreaterThan(before.feet[0]!.y + 100);
+    expect(during.legs).toHaveLength(before.legs.length);
+    expect(during.legs.map((l) => l.tip.x)).toEqual(before.legs.map((l) => l.tip.x));
+    expect(during.hips.y - during.legs[0]!.tip.y).toBeCloseTo(before.hips.y - before.legs[0]!.tip.y, 5);
+    expect(during.legs[0]!.tip.y).toBeGreaterThan(before.legs[0]!.tip.y + 100);
     expect(during.neck.y).toBeGreaterThan(before.neck.y + 100);
   });
 
@@ -634,13 +634,20 @@ describe("a pose derived from the boxes", () => {
       expect(p.hips.x).toBe(0);
       expect(p.neck.x).toBe(0);
       expect(p.head!.x).toBe(0);
-      // Feet inset on the pushbox's half-width, not the leg union's.
-      expect(p.feet.map((q) => q.x)).toEqual([-15.84, 15.84]);
+      // The standing foot inset on the pushbox's half-width, not the leg union's.
+      expect(p.legs[0]!.tip.x).toBe(-15.84);
+      expect(p.legs[0]!.derived).toBe(false);
       expect(p.hips.y).toBe(frames[0]!.hips.y);
       expect(p.neck.y).toBe(frames[0]!.neck.y);
     }
     // The kick still reaches: only the body stopped moving with it.
     expect(frames[2]!.limbs.some((l) => l.tip.x > 100)).toBe(true);
+    // And on the wind-up, before any hitbox is live, the leading leg is read off
+    // the leg hurtbox out past the footprint rather than left in the stance.
+    expect(frames[1]!.limbs).toEqual([]);
+    expect(frames[1]!.legs[1]!.derived).toBe(true);
+    expect(frames[1]!.legs[1]!.tip.x).toBeGreaterThan(60);
+    expect(frames[1]!.legs[0]!.tip.x).toBe(-15.84);
   });
 
   it("holds a part at its distance from the one above, not at an absolute height", () => {
@@ -663,7 +670,7 @@ describe("a pose derived from the boxes", () => {
     const zanku = akuma.actions.find((a) => a.name === "SPA_ZANKU_L")!;
     const p = poseOf(stub(zanku, 1), headRadius(akuma));
     expect(p.neck.y).toBeGreaterThan(p.hips.y + 20);
-    expect(p.hips.y).toBeGreaterThan(p.feet[0]!.y + 20);
+    expect(p.hips.y).toBeGreaterThan(p.legs[0]!.tip.y + 20);
     // The skull sits *on* the neck — its centre above it, its underside allowed
     // to overlap the shoulders rather than float clear of them.
     expect(p.head!.y).toBeGreaterThan(p.neck.y);
@@ -680,7 +687,7 @@ describe("a pose derived from the boxes", () => {
     const before = poseOf(stub(sweep, 1), r);
     const during = poseOf(stub(sweep, 20), r, before);
     expect(during.neck.y).toBeGreaterThan(during.hips.y);
-    expect(during.hips.y).toBeGreaterThan(during.feet[0]!.y);
+    expect(during.hips.y).toBeGreaterThan(during.legs[0]!.tip.y);
     // The leg keys are live, so this is not invulnerability — just no body in them.
     expect(during.faded.leg).toBe(false);
   });
@@ -692,7 +699,50 @@ describe("a pose derived from the boxes", () => {
     const flip = blanka.actions.find((a) => a.name === "ATK_5MK")!;
     const p = poseOf(stub(flip, 4), headRadius(blanka));
     expect(p.head!.y).toBeLessThan(p.hips.y);
-    expect(p.feet[0]!.y).toBeGreaterThan(p.hips.y);
+    expect(p.legs[0]!.tip.y).toBeGreaterThan(p.hips.y);
+  });
+
+  it("reads an extended limb off the hurtbox the footprint filter isolates", () => {
+    // The boxes out past the footprint are the only thing in the dump that says
+    // where an arm or a leg is (ADR-0050 measured them and threw them away). The
+    // part the box was tagged to is what names the limb: Dhalsim's 5HP hangs its
+    // reaching arm off the *body* key, so the arm goes where the box is and both
+    // legs stay in the stance.
+    const dhalsim = loadGeometry("dhalsim")!;
+    const reach = dhalsim.actions.find((a) => a.name === "ATK_5HP")!;
+    const rd = headRadius(dhalsim);
+    let p = poseOf(stub(reach, 1), rd);
+    // Frame 1 is the stance: nothing is out past the footprint yet, so every
+    // limb is the invented resting pose.
+    expect(p.arms.every((l) => !l.derived)).toBe(true);
+    expect(p.legs.every((l) => !l.derived)).toBe(true);
+    for (let f = 1; f <= 30; f++) p = poseOf(stub(reach, f), rd, p);
+    const out = p.arms.find((l) => l.derived)!;
+    expect(out).toBeDefined();
+    expect(out.tip.x).toBeGreaterThan(p.neck.x + 100);
+    // Only one of the pair: the boxes are 2D and cannot tell a near arm from a
+    // far one, so the other keeps the resting pose.
+    expect(p.arms.filter((l) => l.derived)).toHaveLength(1);
+    // And the elbow is off the straight line, so the arm is not a beam.
+    expect(Math.abs(out.joint.y - (out.root.y + out.tip.y) / 2)).toBeGreaterThan(1);
+  });
+
+  it("invents the whole stance when no box is out past the footprint", () => {
+    // Which is most of the time. Across the roster only 9.2% of 456,993 frames
+    // carry one — 19.4% of `ATK_*`, 0.4% of `BAS_*` and none at all of the 646
+    // reaction actions, whose boxes ADR-0057 measured as frozen for the whole
+    // duration. On those the arms and legs are this project's invention, and
+    // `derived` is what says so.
+    for (const name of ["BAS_STD_Loop", "BAS_CRH_Loop", "DMG_MH"]) {
+      const p = poseOf(stub(named(name), 1), radius);
+      expect([...p.arms, ...p.legs].map((l) => l.derived)).toEqual([false, false, false, false]);
+    }
+    // Invented is not absent: a figure still has two of each.
+    const idle = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+    expect(idle.arms).toHaveLength(2);
+    expect(idle.legs).toHaveLength(2);
+    expect(idle.arms[0]!.root.x).toBeLessThan(idle.neck.x);
+    expect(idle.arms[1]!.root.x).toBeGreaterThan(idle.neck.x);
   });
 
   it("does not draw a hitbox as a limb when no hurtbox reaches it", () => {
@@ -788,7 +838,7 @@ describe("a pose derived from the boxes", () => {
     const back = recoiled(pose, 1, -1);
     expect(recoiled(pose, 0, -1)).toBe(pose);
     expect(back.hips).toEqual(pose.hips);
-    expect(back.feet).toEqual(pose.feet);
+    expect(back.legs).toEqual(pose.legs);
     expect(back.neck.x).toBeLessThan(pose.neck.x);
     // The head carries further than the chest — the whiplash.
     expect(back.head!.x).toBeLessThan(back.neck.x);
