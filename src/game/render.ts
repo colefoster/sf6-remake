@@ -1242,7 +1242,7 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose, build: Build
  * cannot reach and is drawn straight, with a token bend so it does not read as a
  * beam.
  */
-function jointOf(root: Point, tip: Point, bone: number, px: number, py: number): Point {
+export function jointOf(root: Point, tip: Point, bone: number, px: number, py: number): Point {
   const dx = tip.x - root.x;
   const dy = tip.y - root.y;
   const span = Math.hypot(dx, dy);

@@ -1,6 +1,6 @@
 # 02 — The keyframe format and playback
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01
 
 Implement the format and the resolver in the spec: `data/poses/<char>/<move>.json`,
