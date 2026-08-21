@@ -47,10 +47,12 @@ Flip it:
 
 **One fighter, eleven moves.** Not a content pipeline — an afternoon.
 
-`5LP · 5MP · 5HP · 2LK · 2MK · 2HK · 5HK · j.HK · 236P · 623P · 214K`
+`5LP · 5MP · 5HP · 2LK · 2MK · 2HK · 5HK · j.HK · 236LP · 623LP · 214LK`
 
-At 3–6 keys each that is **~50 poses**. The three specials are not resolved by
-input in `geo.moves` and need their action names looked up first.
+At 3–6 keys each that is **~50 poses**. All eleven resolve `match: exact`
+through `geo.moves` — the specials need a **strength-qualified** input (`236LP`,
+not `236P`), which is why an earlier draft of this spec thought they were
+unmapped. Resolved actions are in issue 01.
 
 ## The joint model
 
@@ -64,9 +66,12 @@ draws, so `drawFigure`, both audits and the box overlay all keep working.
 - Seven points: `pelvis`, `chest`, `head`, `hands[2]`, `feet[2]`. Index **0 is
   the lead** limb, 1 the rear.
 - Elbows and knees are **not authored**. They are re-solved at playback by the
-  existing two-bone `jointOf`, so bone length stays constant and a keyframe
-  cannot stretch a limb. An optional `bend` hint per limb flips the solution
-  where the default reads wrong.
+  existing two-bone `jointOf`, so **a keyframe cannot stretch a limb** — which
+  is the property that matters. It does *not* hold bone length constant: a deep
+  fold is capped at 42% of the bone by design (ADR-0060), so a limb can come out
+  short, never long. Measured over the shipped 2MK: arm 54.1–57.4 against a
+  63.33 bone, leg 81.8–89.9 against 89.88. An optional `bend` hint per limb
+  flips the solution where the default reads wrong.
 
 14 authored numbers per keyframe, 4 optional.
 
@@ -101,6 +106,18 @@ Anchors resolve against **that action's own frame data**, never absolute frames:
 | `activeEnd` | the last active frame |
 | `["recovery", t]` | `round(activeEnd + t · (marginFrame − activeEnd))` |
 | `neutral` | `marginFrame` |
+
+### Where the anchors do not resolve — measured, not anticipated
+
+- **`marginFrame` is −1 on both airborne moves.** j.HK and shoryuken hand their
+  recovery to a *landing action* through a branch with `_InheritFrameX false` —
+  ADR-0056's restarting twin, two clocks. So `neutral` and `["recovery", t]`
+  have no frame to name **in the parent action**, and the resolver reports that
+  rather than inventing one. Authoring the landing is a second move file, not a
+  fudge in the first.
+- **Hadoken's caster has no `MainFrame` and no active window at all** — the
+  fireball is its own action (ADR-0022). `contact` therefore comes from
+  `shots[0].frame`, which agrees with the published startup.
 
 **`contact` is exact and is never interpolated across.** The authored pose sits
 *on* the frame the game says the move connects, so a strike reads on the right
@@ -143,10 +160,12 @@ it reuses the same bundle and the same renderer (ADR-0053, one renderer).
 
 ## Open questions
 
-- **Do normalised poses actually transfer between builds?** Blanka's arms are
-  1.37× the roster median and Zangief stands 14% wider. Ryu-authored poses may
-  need a per-fighter override rather than pure scaling. Answerable only after
-  the first few moves exist.
+- **Do normalised poses actually transfer between builds?** Heights transfer
+  exactly (Ryu 166 → Zangief 178 is ×1.0723), but **absolute x does not**: the
+  figure hangs on the pushbox axis, which is 0 on Ryu and 8 on Zangief.
+  Relative to the axis it is exact, so the resolver works in axis-relative x.
+  Whether the *shapes* read correctly on a 1.37× arm is still open, and issue 04
+  answers it.
 - **What happens on a cancel?** A move cancelled at frame 9 never reaches its
   recovery keys. Probably: cut to the new action's `start`, as ADR-0065 does for
   a new action. Needs deciding before the specials go in.
