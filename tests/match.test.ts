@@ -6,7 +6,7 @@ import { Advantage, punishes } from "../src/game/training.js";
 import { matchFor } from "../src/game/load.js";
 import { DRIVE_MAX } from "../src/game/index.js";
 import type { Button, Direction } from "../src/game/index.js";
-import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHitboxes, flightOrigin, hardKnockdown, hitDataFor } from "../src/data/geometry.js";
+import { BAR, actionFor, breaksArmor, driveRushCancelFrame, flightEnds, flightHitboxes, flightOrigin, hardKnockdown, hitDataFor, hurtboxesAt, pushboxesAt } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { driveTickAt } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -556,6 +556,40 @@ describe("knockdowns", () => {
     expect(up - down).toBe(15 + 30);
     expect(ken.down).toBe(false);
     expect(ken.actionable()).toBe(true);
+  });
+
+  it("keeps the downed boxes for the whole floor time and gives none back early", () => {
+    // Every frame of the floor is a frame the dump has boxes for, and they are
+    // the *downed* ones. `BAS_DN_STD_AO` is the get-up: no hurtbox until frame
+    // 31, the shared `BoxNo` 6 pushbox (ADR-0046) until 15, `MarginFrame` 30.
+    // So the `DownTime` is held on frame 1 and the animation runs after it.
+    // Spending it the other way round handed the fighter their standing
+    // hurtbox 15 frames before they could act — and on the 31% of knockdown
+    // rows whose `DownTime` is over 11, ran the action past its own last frame
+    // into frames with no hurtbox *and* no pushbox. See ADR-0061.
+    const match = matchFor("Ryu", "Ken", { distance: 150, seconds: null });
+    const ken = match.fighters[1];
+    let boxless = 0;
+    let vulnerable = 0;
+    let actionableWhileDown = 0;
+    let downed = 0;
+    for (let i = 0; i < 200; i++) {
+      match.advance(i < 3 ? hold(2, ["HK"]) : hold(5), hold(5));
+      if (!ken.down) continue;
+      const { action, frame } = ken.state;
+      const hurt = hurtboxesAt(action, frame);
+      const push = pushboxesAt(action, frame);
+      if (!hurt.length && !push.length) boxless++;
+      if (hurt.length) vulnerable++;
+      if (ken.actionable()) actionableWhileDown++;
+      // The shared downed pushbox is ±35; Ryu's own standing one is ±33.
+      if (push[0]?.width === 70) downed++;
+    }
+    expect(boxless).toBe(0);
+    expect(vulnerable).toBe(0);
+    expect(actionableWhileDown).toBe(0);
+    // `DownTime` 15 held on frame 1, then frames 1-15 of the get-up.
+    expect(downed).toBe(15 + 15);
   });
 
   it("does not knock down on block", () => {

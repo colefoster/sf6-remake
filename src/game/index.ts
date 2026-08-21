@@ -480,6 +480,7 @@ export class Fighter {
     this.state.action = action;
     this.state.frame = 1;
     this.state.stance = stance;
+    this.pinned = 0;
     this.contacted = null;
     this.instance++;
   }
@@ -530,14 +531,33 @@ export class Fighter {
     if (this.stun > 0) {
       // In a reaction. The clock still runs, but nothing is asked of the player.
       this.stun--;
-      this.state.frame++;
+      // Two things stop the animation's own clock here, and neither is the
+      // reaction's length:
+      //
+      //   `pinned` — frames the fighter spends on the frame they are on. The
+      //   floor time is spent this way; see the knockdown branch below.
+      //
+      //   the action's last frame — the hit table's stun wins over the
+      //   animation (ADR-0027), and on 365 of the roster's knockdown rows it
+      //   asks for more frames than the `DMG_*_DN` action has. A frame past the
+      //   last authored one carries no hurtbox, no pushbox and nothing to draw,
+      //   so the last frame is held instead. Same reading `flightOrigin` takes
+      //   for a projectile that outlives its own action. See ADR-0061.
+      if (this.pinned > 0) this.pinned--;
+      else if (this.state.frame < (this.state.action.frames ?? 1)) this.state.frame++;
       if (this.stun === 0) {
         // The reaction is over. A knocked-down fighter does not stand up into
         // idle — they lie in `BAS_DN_STD_AO` for the hit row's `DownTime` and
         // then for that action's own recovery, and are actionable on its
         // `MarginFrame + 1`. The chain carries no branches at all, so it is
         // walked by name like the jump chain. See ADR-0033.
-        if (this.floor > 0) {
+        // The reaction itself says whether the chain goes on to the floor:
+        // `reactionFor` names a `_DN` action only when the row knocks down, and
+        // `DMG_CH_DN`/`CM`/`HH`/`HM` are the only four actions on the roster
+        // whose name ends that way. Gating on `DownTime > 0` instead skipped the
+        // down state altogether on the 205 hit keys whose row states 0 — and
+        // `DownTime` 0 is half of what makes a knockdown *hard*. See ADR-0061.
+        if (this.state.action.name.endsWith("_DN")) {
           const down = actionByName(this.geo, "BAS_DN_STD_AO");
           const up = down ? actionableFrame(down) : undefined;
           if (down && up) {
@@ -548,9 +568,19 @@ export class Fighter {
             // *input* is asserted, because the dump has no down action for it —
             // there is one `BAS_DN_STD_AO` and it does not come in two lengths.
             // See ADR-0041.
+            //
+            // The floor time comes *first*. `BAS_DN_STD_AO` is the get-up and
+            // not the lie-down: it carries the shared downed pushbox until
+            // frame 15, no hurtbox at all until 31, and its `MarginFrame` of 30
+            // makes the fighter actionable on the frame the hurtbox returns.
+            // So the `DownTime` is spent held on frame 1 — lying, invulnerable,
+            // on the downed pushbox — and the animation runs after it. Adding
+            // it to the clock instead handed the fighter a standing hurtbox for
+            // `DownTime` frames while they still could not act. See ADR-0061.
             const rising = this.quickRisable && holdingDown(input.dir);
             this.enter(down, "stand");
-            this.stun = (rising ? 0 : this.floor) + up.frame - 1;
+            this.pinned = rising ? 0 : this.floor;
+            this.stun = this.pinned + up.frame - 1;
             this.floor = 0;
             this.quickRisable = false;
             return;
@@ -658,6 +688,13 @@ export class Fighter {
   private stun = 0;
   /** Frames still owed on the floor once the knockdown reaction ends. */
   private floor = 0;
+  /**
+   * Frames the animation stands still for before its own clock moves on.
+   *
+   * The floor time is the only thing that uses it: a fighter lying down is not
+   * playing frame `n` of anything, they are waiting on frame 1 of the get-up.
+   */
+  private pinned = 0;
   /** Is the floor time this knockdown owes refusable. See ADR-0041. */
   private quickRisable = false;
   private held: Button[] = [];
