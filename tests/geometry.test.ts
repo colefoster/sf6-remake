@@ -625,24 +625,31 @@ describe("a pose derived from the boxes", () => {
     const during = poseOf(stub(rising, 14), radius, before);
     expect(before.faded).toEqual({ head: false, body: false, leg: false });
     // Head and leg *keys* gone, body box still there and carried upward: the
-    // figure rises with the move, and the parts with no key of their own are
-    // held over from the last frame that had them rather than dropped — at their
-    // distance below the torso, so the whole figure leaves the ground together.
-    // Only the head reads as invulnerable, though: the body box covers where the
-    // legs are drawn, and the hit test merges the keys, so a leg inside the body
-    // box is hittable however it was tagged.
-    expect(during.faded).toEqual({ head: true, body: false, leg: false });
+    // figure rises with the move and leaves the ground whole.
+    //
+    // **Nothing reads as invulnerable here, and that changed in ADR-0063.** The
+    // body box is now the fighter's *only* key, so it is not a torso with parts
+    // held over above and below it — it is the whole rising body, and the head
+    // is drawn a radius inside its crown instead of a radius above the held-over
+    // neck. Drawn up there it was outside the only hurtbox in play, so the fade
+    // fired, correctly, on a head nothing could reach; drawn inside it, the same
+    // unchanged rule reports it hittable. The legs were always covered — the hit
+    // test merges the keys, so a leg inside the body box is hittable however it
+    // was tagged.
+    expect(during.faded).toEqual({ head: false, body: false, leg: false });
     expect(during.head).not.toBeNull();
     expect(during.legs).toHaveLength(before.legs.length);
     expect(during.legs[0]!.tip.y).toBeGreaterThan(before.legs[0]!.tip.y + 100);
     expect(during.neck.y).toBeGreaterThan(before.neck.y + 100);
-    // The stance is held at its *distance* below the hips, not at an absolute
-    // height — but the action states itself airborne from frame 9 (`stance` 3),
-    // so ADR-0059's tuck draws the legs in as well. Held over and then tucked:
-    // still under the hips, still symmetric about the axis, and narrower and
-    // shorter than the grounded stance rather than unchanged.
+    // Grounded the stance is a mirror pair about the axis. **Airborne it is
+    // staggered, and that is ADR-0063's one outright invention here**: the box
+    // gives a band and not a pose, so two feet placed by the same rule land at
+    // the same height either side of the axis and the tuck reads as a chevron.
+    // The trailing foot sits on the sole the box gives; the leading one rides
+    // above it. Narrower than the grounded stance either way.
     const span = (p: Pose): number => Math.abs(p.legs[1]!.tip.x - p.legs[0]!.tip.x);
-    expect(during.legs[0]!.tip.x + during.legs[1]!.tip.x).toBeCloseTo(2 * during.hips.x, 5);
+    expect(before.legs[0]!.tip.x + before.legs[1]!.tip.x).toBeCloseTo(2 * before.hips.x, 5);
+    expect(during.legs[0]!.tip.y).not.toBeCloseTo(during.legs[1]!.tip.y, 0);
     expect(span(during)).toBeLessThan(span(before));
     const drop = (p: Pose): number => p.hips.y - p.legs[0]!.tip.y;
     expect(drop(during)).toBeGreaterThan(drop(before) * 0.6);
@@ -679,20 +686,35 @@ describe("a pose derived from the boxes", () => {
     expect(frames[1]!.legs[0]!.tip.x).toBeCloseTo(-25.74, 5);
   });
 
-  it("holds a part at its distance from the one above, not at an absolute height", () => {
-    // A jump keeps only its body box. Hips pinned to the height they last had
-    // stay on the floor while the torso climbs three hundred units away.
+  it("fits the airborne figure into the one box the game gives it", () => {
+    // A jump keeps only its body box: `BAS_JUMP_N_AIR`'s whole hurt key is
+    // `BodyList`, one rect at 65..185, identical on all 24 fighters and on every
+    // frame of the leap. ADR-0063: that rect is not a torso with a head above it
+    // and legs below — it is 120 units on a fighter whose idle stack is 166, and
+    // it is the tucked figure entire. Read as a torso it drew Ryu's skull at 202
+    // and his feet at 47, 17 above and 18 below the only hurtbox there was.
     const air = named("BAS_JUMP_N_AIR");
     const grounded = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
-    const spine = grounded.neck.y - grounded.hips.y;
     let last = grounded;
     for (const f of [1, 5, 10, 16]) last = poseOf(stub(air, f), radius, last);
-    // The head is the only part nothing reaches — measured across the roster, a
-    // body box covers the shin on 28,857 of the 38,165 frames with no leg key,
-    // and the skull on 90 of 41,998 with no head key.
-    expect(last.faded).toEqual({ head: true, body: false, leg: false });
-    expect(last.neck.y - last.hips.y).toBeCloseTo(spine, 5);
+    // The whole figure is inside its own hurtbox, so nothing fades: the head is
+    // no longer drawn where nothing can hit it. The fade rule is untouched.
+    expect(last.faded).toEqual({ head: false, body: false, leg: false });
+    const lift = originAt(air, 16).y;
+    const box = hurtPartsAt(air, 16).body[0]!;
+    expect(box.y + lift).toBeCloseTo(65 + lift, 5);
+    for (const y of [last.head!.y + last.head!.r, last.neck.y, last.hips.y, ...last.legs.map((l) => l.tip.y)]) {
+      expect(y).toBeGreaterThanOrEqual(box.y + lift - 0.5);
+      expect(y).toBeLessThanOrEqual(box.y + box.height + lift + 0.5);
+    }
+    // Still carried up with the torso rather than pinned to an absolute height —
+    // hips pinned would stay on the floor while the box climbs 300 units away —
+    // but the airborne body is genuinely shorter than the standing one, so the
+    // spine is shorter too rather than held at the grounded length.
     expect(last.hips.y).toBeGreaterThan(grounded.hips.y + 200);
+    const spine = (p: Pose): number => p.neck.y - p.hips.y;
+    expect(spine(last)).toBeGreaterThan(spine(grounded) * 0.5);
+    expect(spine(last)).toBeLessThan(spine(grounded));
   });
 
   it("does not let a box tagged to every part decide which part it is", () => {
@@ -957,19 +979,74 @@ describe("a pose derived from the boxes", () => {
       const apex = jump.motion!.y!.indexOf(Math.max(...jump.motion!.y!)) + 1;
       expect(drop(apex)).toBeLessThan(drop(3));
       expect(drop(jump.motion!.y!.length - 2)).toBeGreaterThan(drop(apex));
+      // And it is *down* on the touchdown frame as well as the launch. The climb
+      // was read as a forward difference, so the last frame had no next sample,
+      // fell back to its own and read a climb of zero — a full apex tuck on the
+      // frame the fighter lands, when Ryu's arc is still falling at 21.6 units.
+      // ADR-0063: it is the backward difference now, and the ends of the leap
+      // are the two frames the legs are most extended on.
+      const last = jump.motion!.y!.length;
+      expect(drop(last)).toBeGreaterThan(drop(apex) * 1.4);
+      expect(drop(last)).toBeGreaterThan(drop(last - 3));
+    });
+
+    it("gives the airborne figure the airborne attitude, which no jump is labelled with", () => {
+      // `attitudeOf` reads `StatusKey.PoseStatus`, and a basic jump does not
+      // carry one: `BAS_JUMP_N_AIR`'s whole key list is `DamageCollisionKey`
+      // `MotionKey` `PushCollisionKey` `SteerKey` `TriggerKey` `VfxKey`, with no
+      // `StatusKey` at all. So the airborne guard fired on the jumping normals,
+      // which are labelled, and never once on a plain jump. ADR-0063 takes the
+      // arc and the one-box silhouette as airborne where the label is missing.
+      expect(stanceAt(named("BAS_JUMP_N_AIR"), 8)).toBeNull();
+      expect(stanceAt(named("ATK_8MK"), 8)).toBe(3);
+      const hands = (p: Pose): number => p.arms[1]!.tip.y - p.arms[1]!.root.y;
+      const grounded = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+      const leaping = poseOf(stub(named("BAS_JUMP_N_AIR"), 8), radius, grounded);
+      // Grounded the guard is up in front of the chest; airborne the hands open
+      // and come up above the shoulder. Same fighter, opposite sign.
+      expect(hands(grounded)).toBeLessThan(0);
+      expect(hands(leaping)).toBeGreaterThan(0);
+    });
+
+    it("does not draw a jumping kick's own hurtbox as an arm", () => {
+      // ADR-0058's rule is that the part tag names the limb. Airborne there is no
+      // `leg` key at all — the whole hurt key is `BodyList` — so a jumping kick's
+      // hurtbox is tagged `body` like the torso, and it was drawn as a hand out
+      // at 127 while the same box was already an orange kick. 748 frames over 114
+      // actions, every jumping kick in the game. ADR-0063: with no tag to read,
+      // the action's own name picks the limb, which is what the hitbox does.
+      const mk = named("ATK_8MK");
+      const reached = (which: "arms" | "legs") => {
+        let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+        let far = 0;
+        for (let f = 1; f <= 20; f++) {
+          p = poseOf(stub(mk, f), radius, p);
+          for (const l of p[which]) if (l.derived) far = Math.max(far, l.tip.x - p.hips.x);
+        }
+        return far;
+      };
+      expect(reached("legs")).toBeGreaterThan(100);
+      expect(reached("arms")).toBe(0);
     });
 
     it("does not let the tuck feed itself through the held-over stance", () => {
-      // The jump has no leg box, so the stance is held at the last frame's
-      // hip-to-foot distance. Reading that back off the *drawn* foot compounded
-      // the tuck and wound the legs into nothing; `Pose.stand` is the untucked
-      // distance, kept so the invention cannot eat itself.
+      // Reading the stance back off the *drawn* foot compounded the tuck and
+      // wound the legs into nothing; `Pose.stand` is the untucked distance, kept
+      // so the invention cannot eat itself. ADR-0063 makes that structural for a
+      // jump rather than a rule to obey: the airborne hips and the airborne sole
+      // both come off the one box, which does not move for the whole leap, so
+      // the untucked distance cannot drift no matter what the last frame drew.
+      // It is a *shorter* distance than the grounded one — 59 against 88 on Ryu
+      // — because the box says the leaping body is 120 tall and not 166.
       const jump = named("BAS_JUMP_N_AIR");
       let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
       const standing = p.stand;
-      for (let n = 1; n < jump.motion!.y!.length; n++) {
+      p = poseOf(stub(jump, 1), radius, p);
+      const leaping = p.stand;
+      expect(leaping).toBeLessThan(standing);
+      for (let n = 2; n < jump.motion!.y!.length; n++) {
         p = poseOf(stub(jump, n), radius, p);
-        expect(p.stand).toBeCloseTo(standing, 6);
+        expect(p.stand).toBeCloseTo(leaping, 6);
       }
     });
 
