@@ -372,6 +372,13 @@ export function authoredPoseOf(
     head: { x: skull.x, y: skull.y, r: radius },
     neck,
     hips,
+    // An authored pose is never prone. ADR-0066 lays the *derived* figure down
+    // on the frames the downed pushbox claims, and none of the eleven authored
+    // moves is a knockdown — a `*_DN` reaction would be authored as its own move
+    // file with its own keys, not folded in here. `upright` is the pre-fold
+    // record the hold-over reads, and with no fold it is just the spine.
+    prone: 0,
+    upright: { neck, hips },
     legs,
     arms,
     // The warm limb is the hitbox drawn as the limb that carries it — a derived
