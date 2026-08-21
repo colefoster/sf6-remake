@@ -23,11 +23,24 @@ import {
   atemiRow,
   BAR,
   hurtPartsAt,
+  stanceAt,
 } from "../src/data/geometry.js";
 import type { ArmorWindow, AtemiRow, GeometryFile } from "../src/data/geometry.js";
 import type { GeometryAction } from "../src/data/geometry.js";
 import type { Fighter } from "../src/game/index.js";
-import { CAMERA_FLOOR, Camera, boundsOf, headRadius, poseOf, recoiled, shakeAt, viewFor, viewForAction } from "../src/game/render.js";
+import {
+  CAMERA_FLOOR,
+  Camera,
+  boundsOf,
+  buildOf,
+  headRadius,
+  poseOf,
+  recoiled,
+  shakeAt,
+  viewFor,
+  viewForAction,
+  type Pose,
+} from "../src/game/render.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -621,10 +634,19 @@ describe("a pose derived from the boxes", () => {
     expect(during.faded).toEqual({ head: true, body: false, leg: false });
     expect(during.head).not.toBeNull();
     expect(during.legs).toHaveLength(before.legs.length);
-    expect(during.legs.map((l) => l.tip.x)).toEqual(before.legs.map((l) => l.tip.x));
-    expect(during.hips.y - during.legs[0]!.tip.y).toBeCloseTo(before.hips.y - before.legs[0]!.tip.y, 5);
     expect(during.legs[0]!.tip.y).toBeGreaterThan(before.legs[0]!.tip.y + 100);
     expect(during.neck.y).toBeGreaterThan(before.neck.y + 100);
+    // The stance is held at its *distance* below the hips, not at an absolute
+    // height — but the action states itself airborne from frame 9 (`stance` 3),
+    // so ADR-0059's tuck draws the legs in as well. Held over and then tucked:
+    // still under the hips, still symmetric about the axis, and narrower and
+    // shorter than the grounded stance rather than unchanged.
+    const span = (p: Pose): number => Math.abs(p.legs[1]!.tip.x - p.legs[0]!.tip.x);
+    expect(during.legs[0]!.tip.x + during.legs[1]!.tip.x).toBeCloseTo(2 * during.hips.x, 5);
+    expect(span(during)).toBeLessThan(span(before));
+    const drop = (p: Pose): number => p.hips.y - p.legs[0]!.tip.y;
+    expect(drop(during)).toBeGreaterThan(drop(before) * 0.6);
+    expect(drop(during)).toBeLessThanOrEqual(drop(before));
   });
 
   it("hangs the body on the pushbox axis, not on the drifting hurtbox unions", () => {
@@ -851,6 +873,119 @@ describe("a pose derived from the boxes", () => {
     // Leaning is not shrinking: the spine keeps its length.
     const spine = (p: typeof pose) => Math.hypot(p.neck.x - p.hips.x, p.neck.y - p.hips.y);
     expect(spine(back)).toBeCloseTo(spine(pose), 6);
+  });
+
+  /**
+   * The invented pose, and the three things in the dump it is keyed to.
+   *
+   * 90.8% of frames carry no extended-limb hurtbox (ADR-0058), so on almost all
+   * of them the arms and legs are invention. ADR-0059 verified there is no pose
+   * data anywhere in the dump to replace it with, and keyed the invention to what
+   * *is* there: `motion.x`, `motion.y` and `PlData.Physique`.
+   */
+  describe("the invented pose, keyed to what the dump does say", () => {
+    it("labels a jumping normal airborne and a crouching one crouching", () => {
+      // `StatusKey.PoseStatus`, which the extractor threw away until ADR-0059.
+      expect(stanceAt(named("ATK_8HK"), 1)).toBe(3);
+      expect(stanceAt(named("ATK_2HK"), 1)).toBe(2);
+      expect(stanceAt(named("ATK_5HK"), 1)).toBe(1);
+      // The idle and the walk state no stance at all — 4,120 actions do not.
+      expect(stanceAt(named("BAS_FORWARD_Loop"), 1)).toBeNull();
+    });
+
+    it("ranks the roster by the only proportions the dump carries", () => {
+      // The idle hurtbox stack is 166 tall on 21 of the 24, so nothing else tells
+      // Lily from Zangief. `Physique` does, and it agrees with how they look.
+      const arm = (id: string) => buildOf(loadGeometry(id)!).arm;
+      expect(arm("blanka")).toBeGreaterThan(arm("zangief"));
+      expect(arm("zangief")).toBeGreaterThan(arm("ryu"));
+      expect(arm("ryu")).toBeGreaterThan(arm("chunli"));
+      // A ratio against the roster median, so the middle of the roster is ~1.
+      expect(arm("ryu")).toBeCloseTo(1, 1);
+      expect(buildOf(loadGeometry("chunli")!).leg).toBeGreaterThan(buildOf(loadGeometry("zangief")!).leg);
+    });
+
+    it("steps the walk off the ground it covers, not off a frame counter", () => {
+      // `BAS_FORWARD_Loop` moves no hurtbox on any of its 114 frames, so the
+      // figure held one pose. `motion.x` is the only thing in the action that
+      // changes, and it is per-fighter: Ryu 4.7 units a frame, Dhalsim 2.8.
+      const walk = named("BAS_FORWARD_Loop");
+      const feet = (f: number): number[] => {
+        let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+        for (let n = 1; n <= f; n++) p = poseOf(stub(walk, n), radius, p);
+        return p.legs.map((l) => l.tip.x);
+      };
+      const start = feet(1);
+      expect(feet(6)).not.toEqual(start);
+      // The legs swap over: one stride is half the cycle.
+      const spread = (xs: number[]) => xs[1]! - xs[0]!;
+      const stride = walk.motion!.travel.x / Math.round(Math.abs(walk.motion!.travel.x) / (149 * 0.42));
+      const step = Math.round(Math.abs(stride) / 4.7);
+      expect(Math.sign(spread(feet(1 + step)))).not.toBe(Math.sign(spread(start)));
+    });
+
+    it("gives a slow walker a slower gait at the same frame", () => {
+      // The cadence is a property of the fighter, not of the animation's length.
+      const gait = (id: string): number => {
+        const g = loadGeometry(id)!;
+        const walk = g.actions.find((a) => a.name === "BAS_FORWARD_Loop")!;
+        const r = headRadius(g), b = buildOf(g);
+        const at = (f: number) =>
+          ({ state: { action: walk, frame: f, facing: 1 as const }, position: () => ({ x: 0, y: 0 }) }) as unknown as Fighter;
+        let p = poseOf(at(1), r, undefined, b);
+        for (let n = 1; n <= 8; n++) p = poseOf(at(n), r, p, b);
+        return Math.abs(p.legs[1]!.tip.x - p.legs[0]!.tip.x);
+      };
+      // Eight frames in, Akuma (5.2 a frame) is further through his stride than
+      // Dhalsim (2.8), so his feet have closed further from the opening spread.
+      expect(gait("akuma")).toBeLessThan(gait("dhalsim"));
+    });
+
+    it("tucks the legs at the top of a jump and puts them down for the landing", () => {
+      // Keyed to `motion.y`: a neutral jump carries only a body box the whole way
+      // up, so nothing in the hurtboxes says a jump is happening at all.
+      const jump = named("BAS_JUMP_N_AIR");
+      const drop = (f: number): number => {
+        let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+        for (let n = 1; n <= f; n++) p = poseOf(stub(jump, n), radius, p);
+        return p.hips.y - p.legs[0]!.tip.y;
+      };
+      const apex = jump.motion!.y!.indexOf(Math.max(...jump.motion!.y!)) + 1;
+      expect(drop(apex)).toBeLessThan(drop(3));
+      expect(drop(jump.motion!.y!.length - 2)).toBeGreaterThan(drop(apex));
+    });
+
+    it("does not let the tuck feed itself through the held-over stance", () => {
+      // The jump has no leg box, so the stance is held at the last frame's
+      // hip-to-foot distance. Reading that back off the *drawn* foot compounded
+      // the tuck and wound the legs into nothing; `Pose.stand` is the untucked
+      // distance, kept so the invention cannot eat itself.
+      const jump = named("BAS_JUMP_N_AIR");
+      let p = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+      const standing = p.stand;
+      for (let n = 1; n < jump.motion!.y!.length; n++) {
+        p = poseOf(stub(jump, n), radius, p);
+        expect(p.stand).toBeCloseTo(standing, 6);
+      }
+    });
+
+    it("carries the arms differently guarding, recoiling and standing", () => {
+      // The three cases the dump distinguishes and ADR-0058 drew identically.
+      const hands = (name: string, f: number): number[] => {
+        const idle = poseOf(stub(named("BAS_STD_Loop"), 1), radius);
+        let p = idle;
+        for (let n = 1; n <= f; n++) p = poseOf(stub(named(name), n), radius, p);
+        return p.arms.map((l) => l.tip.x);
+      };
+      const idle = hands("BAS_STD_Loop", 1);
+      // Idle: a hand on each side of the axis.
+      expect(Math.min(...idle)).toBeLessThan(0);
+      expect(Math.max(...idle)).toBeGreaterThan(0);
+      // Guarding: both hands in front, between the fighter and the opponent.
+      expect(Math.min(...hands("5000_GRD_STD_START", 3))).toBeGreaterThan(0);
+      // Struck: both hands behind, thrown away from the opponent.
+      expect(Math.max(...hands("0010_DMG_HL_ST", 4))).toBeLessThan(0);
+    });
   });
 
   /**

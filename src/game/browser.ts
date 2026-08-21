@@ -52,6 +52,7 @@ export {
   drawStage,
   IMPACT_FRAMES,
   headRadius,
+  buildOf,
   placeBox,
   shakeAt,
   poseOf,

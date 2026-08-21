@@ -224,7 +224,7 @@ import {
   actionById, actionableFrame, activeWindows, connectFrames, hitDataFor, hitKeysAt,
   idleHurtboxes, idlePushboxes, minDistance, mirrored, originAt, proxboxesAt,
   pushboxesAt, hurtPartsAt, reach, shift, throwboxesAt,
-  boundsOf, drawBox, drawFigure, headRadius, poseOf, viewForAction,
+  boundsOf, drawBox, drawFigure, headRadius, buildOf, poseOf, viewForAction,
 } from "./play.js";
 
 const state = {
@@ -233,6 +233,7 @@ const state = {
   show: { hurt: true, hit: true, prox: false, push: true, path: true, figure: true },
   /** The pose chain, rebuilt from frame 1 whenever the frame moves. See ADR-0049. */
   radius: 14,
+  build: { arm: 1, leg: 1 },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -344,7 +345,7 @@ function draw() {
   if (state.show.figure) {
     let pose;
     for (let f = 1; f <= frame; f++) {
-      pose = poseOf({ ...subject(), state: { action, frame: f, facing: 1 } }, state.radius, pose);
+      pose = poseOf({ ...subject(), state: { action, frame: f, facing: 1 } }, state.radius, pose, state.build);
     }
     if (pose) drawFigure(ctx, view, pose, 0);
   }
@@ -709,6 +710,7 @@ async function loadCharacter(id) {
   const res = await fetch(`${id}.boxes.json`);
   state.data = await res.json();
   state.radius = headRadius(state.data);
+  state.build = buildOf(state.data);
   const s = state.data.source;
   $("source").textContent = `${state.data.counts.actions} actions · ${state.data.counts.mapped} moves mapped · ${s.geometry}`;
   $("footer").innerHTML =

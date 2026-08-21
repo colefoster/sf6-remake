@@ -366,7 +366,41 @@ function extractAction(action, rect, unresolvedPush) {
   if (branches.length) out.branches = dedupeBranches(branches);
   if (freezes.length) out.freeze = Math.max(...freezes);
   if (gauge.length) out.gauge = gauge;
+  const stance = extractStance(action);
+  if (stance.length) out.stance = stance;
   if (action.mot_name) out.mot = action.mot_name;
+  return out;
+}
+
+/**
+ * Standing, crouching or airborne, as the action itself states it.
+ *
+ * `StatusKey.PoseStatus` is the game's own stance label and it is the one thing
+ * in `StatusKey` that describes the body rather than the state machine. It reads
+ * true against the actions whose stance is already known from their names: of
+ * the 1,524 `ATK_*` actions carrying one, the 478 tagged `3` are the jumping
+ * normals and the 393 tagged `2` are the crouching ones.
+ *
+ *   1 standing   2 crouching   3 airborne   0 unset (214 actions lead with it)
+ *
+ * It is worth having because the *reactions* carry it — 1,482 of 2,622 — and
+ * reactions are exactly where the figure has no extended-limb box to read and
+ * has to fall back on an invented pose (ADR-0058). 695 actions change stance
+ * part way through, a jumping attack landing being the usual case, so this is a
+ * range list like every other key and not one value per action.
+ */
+function extractStance(action) {
+  const out = [];
+  for (const key of ordered(action.StatusKey)) {
+    const pose = key.PoseStatus ?? 0;
+    if (!pose) continue;
+    const start = (key._StartFrame ?? 0) + 1;
+    const end = key._EndFrame ?? 0;
+    if (end < start) continue;
+    const last = out[out.length - 1];
+    if (last && last.pose === pose && last.end >= start - 1) last.end = Math.max(last.end, end);
+    else out.push({ start, end, pose });
+  }
   return out;
 }
 
@@ -742,6 +776,28 @@ function extractFighter(file) {
     armor: { point: pl.ArmorPoint ?? 0, timer: pl.ArmorTimer ?? 0 },
     /** Body size in game units — `SizeU` is the standing height the boxes agree with. */
     size: { up: pl.SizeU ?? 0, front: pl.SizeF ?? 0, back: pl.SizeB ?? 0 },
+    /**
+     * The only per-fighter *proportions* anywhere in the dump: arm, leg and
+     * overall height. `SizeU` is 210 on all 24 characters and the idle hurtbox stack is
+     * 166 tall on 21 of them, so nothing else here tells Lily from Zangief —
+     * these do (135.7 against 194.3), and they rank the way the roster looks:
+     * Blanka and Zangief the long arms, Chun-Li and Kimberly the short ones.
+     *
+     * What the numbers *mean* absolutely is not settled. `Leg / Height` runs
+     * 0.61-0.71, which is too high for a hip joint, so these are bone-chain
+     * lengths in some rest pose rather than standing heights, and `Height` sits
+     * between the idle stack's neck (138) and its crown (166) on Ryu. Only the
+     * ratios between fighters are used downstream. `AdjustRatio` and
+     * `ConvertRatio` sit beside these in `PlData` and are 1 on every axis of
+     * every fighter, so they are dropped rather than carried. See ADR-0059.
+     */
+    physique: pl.Physique
+      ? {
+          arm: pl.Physique.Arm ?? 0,
+          leg: pl.Physique.Leg ?? 0,
+          height: pl.Physique.Height ?? 0,
+        }
+      : undefined,
     driveRecover: { normal: pl.RecoverDrvNorm ?? 0, just: pl.RecoverDrvJust ?? 0 },
     scales: basic
       ? {

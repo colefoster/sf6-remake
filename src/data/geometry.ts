@@ -221,6 +221,12 @@ export interface GeometryAction {
     actionFrame?: number;
   }[];
   continues?: number;
+  /**
+   * Standing, crouching or airborne, from the action's own `StatusKey.PoseStatus`
+   * — `1` standing, `2` crouching, `3` airborne. The stance can change part way
+   * through (a jumping attack lands), so it is a range list. See ADR-0059.
+   */
+  stance?: { start: number; end: number; pose: 1 | 2 | 3 }[];
   mot?: string;
 }
 
@@ -283,6 +289,13 @@ export interface FighterInfo {
   weight: number;
   armor: { point: number; timer: number };
   size: { up: number; front: number; back: number };
+  /**
+   * Arm, leg and overall height in game units — the only per-fighter body
+   * proportions in the dump. Their absolute meaning is unresolved (`leg /
+   * height` runs 0.61-0.71, too high to be a hip joint), so only the ratios
+   * *between* fighters are used. See ADR-0059.
+   */
+  physique?: { arm: number; leg: number; height: number };
   driveRecover: { normal: number; just: number };
   scales?: {
     offensive: number;
@@ -810,6 +823,18 @@ export function inFatFrames(action: GeometryAction, frame: number): number {
 }
 
 /** Where the character origin is on this frame, relative to where it started. */
+/**
+ * The action's own stance on this frame: standing, crouching or airborne.
+ *
+ * `null` where the action never states one — 4,120 of the 9,487 actions across
+ * the roster carry no `StatusKey.PoseStatus` at all, the idle and the walk among
+ * them. A caller wanting a stance for every frame has to fall back on the boxes.
+ */
+export function stanceAt(action: GeometryAction, frame: number): 1 | 2 | 3 | null {
+  for (const r of action.stance ?? []) if (frame >= r.start && frame <= r.end) return r.pose;
+  return null;
+}
+
 export function originAt(action: GeometryAction, frame: number): { x: number; y: number } {
   const motion = action.motion;
   if (!motion) return { x: 0, y: 0 };

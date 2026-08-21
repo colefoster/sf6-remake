@@ -111,7 +111,7 @@
 import {
   Match, hold, projectileBoxes, DRIVE_MAX,
   DUMMIES, Advantage, punishes,
-  viewFor, worldBoxes, poseOf, headRadius, Camera,
+  viewFor, worldBoxes, poseOf, headRadius, buildOf, Camera,
   drawStage, drawBoxes, drawFigure, drawGauges, drawProjectile,
   drawImpact, shakeAt, recoiled, IMPACT_FRAMES,
 } from "./play.js";
@@ -169,6 +169,7 @@ let logged = 0;
 /** Last frame's pose per side, so a part with no hurtbox can be held over. */
 let poses = [null, null];
 let radii = [14, 14];
+let builds = [{ arm: 1, leg: 1 }, { arm: 1, leg: 1 }];
 let posedAt = -1;
 /** Frame advantage and the punish it opens, both from `src/game/training.ts`. */
 const advantage = new Advantage();
@@ -185,6 +186,7 @@ async function reset() {
   const b = await geometry(document.getElementById("p2").value);
   match = new Match(a, b, { distance: 220 });
   radii = [headRadius(a), headRadius(b)];
+  builds = [buildOf(a), buildOf(b)];
   poses = [null, null];
   posedAt = -1;
   advantage.reset();
@@ -317,7 +319,7 @@ function draw() {
   // Poses advance with the match, not with the render: holding a vanished part
   // over needs the *previous frame's* pose, and draw runs while paused.
   if (match.frame !== posedAt) {
-    poses = match.fighters.map((f, i) => poseOf(f, radii[i], poses[i] ?? undefined));
+    poses = match.fighters.map((f, i) => poseOf(f, radii[i], poses[i] ?? undefined, builds[i]));
     posedAt = match.frame;
   }
 
@@ -515,13 +517,13 @@ const surface = {
     const was = f.state.action;
     f.state.action = f.geo.actions.find((a) => a.id === f.geo.calibration?.standAction) ?? was;
     f.state.frame = 1;
-    let pose = poseOf(f, radii[side]);
+    let pose = poseOf(f, radii[side], undefined, builds[side]);
     f.state.action = found;
     // Replay from frame 1: a part with no hurtbox is held over from the frame
     // before it, so the pose at frame n is not a function of frame n alone.
     for (let n = 1; n <= frame; n++) {
       f.state.frame = n;
-      pose = poseOf(f, radii[side], pose ?? undefined);
+      pose = poseOf(f, radii[side], pose ?? undefined, builds[side]);
     }
     poses[side] = pose;
     posedAt = match.frame;

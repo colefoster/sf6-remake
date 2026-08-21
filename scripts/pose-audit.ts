@@ -14,7 +14,7 @@
  */
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { listCharacters } from "../src/data/index.js";
-import { headRadius, poseOf, type Pose } from "../src/game/render.js";
+import { buildOf, headRadius, poseOf, type Pose } from "../src/game/render.js";
 import type { Fighter } from "../src/game/index.js";
 
 const filter = process.argv[2] ? new RegExp(process.argv[2], "i") : null;
@@ -37,8 +37,9 @@ for (const entry of listCharacters() as unknown[]) {
   const geo = loadGeometry(id);
   if (!geo) continue;
   const radius = headRadius(geo);
+  const build = buildOf(geo);
   const stand = geo.actions.find((a) => a.id === geo.calibration?.standAction) ?? geo.actions[0]!;
-  const idle = poseOf(stub(stand, 1), radius);
+  const idle = poseOf(stub(stand, 1), radius, undefined, build);
   const idleSpine = idle.neck.y - idle.hips.y;
   const idleLeg = idle.hips.y - (idle.legs[0]?.tip.y ?? 0);
   // How long a limb may be is a property of the body, not of how it is standing:
@@ -53,7 +54,7 @@ for (const entry of listCharacters() as unknown[]) {
     const end = Math.min(80, Math.max(...action.hurt.map((h) => h.end ?? h.start ?? 1)));
     let last: Pose = idle;
     for (let f = 1; f <= end; f++) {
-      const p = poseOf(stub(action, f), radius, last);
+      const p = poseOf(stub(action, f), radius, last, build);
       const at = `${id} ${action.name} f${f}`;
       const spine = p.neck.y - p.hips.y;
       const legs = planted(p) ? p.hips.y - planted(p)!.tip.y : idleLeg;
