@@ -302,7 +302,7 @@ function draw() {
       return hurt.length ? Math.max(...hurt.map((b) => b.y + b.height)) : f.position().y + 150;
     }),
   );
-  const view = viewFor(canvas, eyes, match.half, framing ? 330 : camera.follow(peak));
+  const view = viewFor(canvas, eyes, match.half, framing ? framing.band : camera.follow(peak));
   drawStage(ctx, view, match.half);
 
   // Hitstop is the game's own freeze on contact and it is already in the dump.
@@ -569,9 +569,13 @@ const surface = {
     return showFigures;
   },
 
-  /** Draw one fighter at a fixed zoom, so a screenshot is comparable. */
-  frame(side, span = 560, solo = true) {
-    framing = side === null ? null : { side, span, solo };
+  /**
+   * Draw one fighter at a fixed zoom, so a screenshot is comparable. `band` is
+   * the sky to frame: fixed rather than following, for the same reason the zoom
+   * is, and raised by the caller when the move it is shooting leaves the ground.
+   */
+  frame(side, span = 560, solo = true, band = 330) {
+    framing = side === null ? null : { side, span, solo, band };
     draw();
     return framing;
   },

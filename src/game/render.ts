@@ -434,9 +434,12 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
       const tip = { x: facing === 1 ? b.x + b.width : b.x, y: b.y + b.height / 2 };
       const kick = byName ?? tip.y < hips.y + (neck.y - hips.y) * 0.35;
       const root = kick ? hips : shoulder(facing);
-      return { root, joint: bendOf(root, tip), tip, kick, derived: true };
+      return { root, joint: bendOf(root, tip, radius * 1.5), tip, kick, derived: true };
     })
-    .filter((l) => Math.abs(l.tip.x - axis) <= reach + radius);
+    // Too far out is not a limb (ADR-0051) and neither is too close in: E.Honda's
+    // `ATK_8LK` puts its box on the hip it would hang off, and a four-unit limb
+    // is a dot, not a knee. The box is still drawn as a box.
+    .filter((l) => Math.abs(l.tip.x - axis) <= reach + radius && Math.hypot(l.tip.x - l.root.x, l.tip.y - l.root.y) > radius);
 
   // The arms and the legs.
   //
@@ -454,31 +457,50 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
   //
   // **Which side of the body cannot be told.** The boxes are 2D, there is no
   // near or far, and 54,208 of the 58,337 non-core boxes (93%) sit forward of
-  // the axis. So the extension is drawn as the *leading* limb and its partner
-  // keeps the resting pose, which is also why a frame carrying two non-core
-  // boxes for one part (Dee Jay's sweep tags both leg keys to the sweeping leg)
-  // unions them into one limb rather than splitting them into two.
+  // the axis. So the extension goes to the limb on the side the boxes are on and
+  // its partner keeps the resting pose — and a part carrying several non-core
+  // boxes (Dee Jay's sweep tags both leg keys to the sweeping leg) is one limb
+  // segmented, not two limbs.
   //
   // **An active hitbox wins.** On the 9,381 frames that have both, the hitbox
   // and the matching non-core hurtbox are the same limb — 8 units between their
   // centres at the median — so drawing both would draw it twice. That leaves
   // the extension to the 32,820 wind-up and recovery frames, which is where it
   // was wanted.
-  const outboard = (which: readonly (keyof typeof parts)[]): [number, number, number, number] | null => {
-    if (!push) return null;
-    const far = which
-      .flatMap((w) => parts[w])
-      .filter((b) => shared.get(id(b)) === 1 && Math.abs(b.x + b.width / 2 - middle) >= tolerance);
-    const u = union(far);
-    return u ? [u[0], u[1] + origin.y, u[2], u[3] + origin.y] : null;
+  const outboard = (which: readonly (keyof typeof parts)[]): Box[] =>
+    push
+      ? which
+          .flatMap((w) => parts[w])
+          .filter((b) => shared.get(id(b)) === 1 && Math.abs(b.x + b.width / 2 - middle) >= tolerance)
+      : [];
+  /**
+   * The far end of an extended limb: the hand, or the foot.
+   *
+   * The furthest-reaching box of the set, and then the end of *that* box's own
+   * long axis — a box is a segment of the limb, and a segment points the way the
+   * limb runs. Two measurements force both halves of the rule. A limb is boxed
+   * in pieces, so the union of a shoulder box with a horizontal arm box is tall
+   * even though the arm is not: read from the union, Dhalsim's 5HP reach came
+   * out of his shoulder and ended on the floor. And the boxes are mostly
+   * **taller than they are wide** — 77% of the leg ones and 73% of the arm ones,
+   * median 1.8 and 1.6 — so a tip always taken at mid-height put a sweeping foot
+   * halfway up the shin and a rising kick's foot at the knee.
+   */
+  const extremity = (boxes: Box[], from: Point): Point => {
+    const off = (b: Box): number => Math.abs(b.x + b.width / 2 - middle) + b.width / 2;
+    const end = boxes.reduce((a, b) => (off(b) > off(a) ? b : a));
+    const lo = end.y + origin.y;
+    const hi = lo + end.height;
+    const out = end.x + end.width / 2 > middle;
+    return end.width >= end.height
+      ? { x: flip(out ? end.x + end.width : end.x), y: (lo + hi) / 2 }
+      : {
+          x: flip(end.x + end.width / 2),
+          y: Math.abs(lo - from.y) >= Math.abs(hi - from.y) ? lo : hi,
+        };
   };
-  /** The far end of an extended limb's boxes: the hand, or the foot. */
-  const extremity = (u: [number, number, number, number]): Point => ({
-    x: flip((u[0] + u[2]) / 2 > middle ? u[2] : u[0]),
-    y: (u[1] + u[3]) / 2,
-  });
-  const armBox = limbs.some((l) => !l.kick) ? null : outboard(["head", "body"]);
-  const legBox = limbs.some((l) => l.kick) ? null : outboard(["leg"]);
+  const armBoxes = limbs.some((l) => !l.kick) ? [] : outboard(["head", "body"]);
+  const legBoxes = limbs.some((l) => l.kick) ? [] : outboard(["leg"]);
 
   // Everything below is **invented**. An arm at rest has no box of its own, so
   // the hanging hands and the stance are geometry this project made up. The
@@ -509,7 +531,7 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
     // fighting stance is not a straight line and `bendOf`'s perpendicular is
     // undefined in direction for a limb hanging vertically.
     const joint = reachedFor
-      ? bendOf(rest.root, tip)
+      ? bendOf(rest.root, tip, radius * 1.5)
       : {
           x: (rest.root.x + tip.x) / 2 + lead * Math.abs(rest.root.y - tip.y) * 0.12,
           y: (rest.root.y + tip.y) / 2,
@@ -517,16 +539,33 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
     return { root: rest.root, joint, tip, derived: Boolean(reachedFor) };
   };
 
+  // A part with no box at all is invulnerable, not gone (ADR-0020), and the rule
+  // has to reach the extension: on 112 frames across the roster a part vanishes
+  // on the frame right after it carried one, and snapping the limb back to the
+  // stance there would animate a retraction the dump never asked for. Held at
+  // its offset from the joint, like every other part (ADR-0050).
+  const heldReach = (which: "arms" | "legs", gone: boolean, s: 1 | -1, root: Point): Point | null => {
+    if (!gone || !last) return null;
+    const was = last[which].find((l) => l.derived && (l.tip.x >= last.hips.x ? 1 : -1) === s);
+    return was ? { x: root.x + (was.tip.x - was.root.x), y: root.y + (was.tip.y - was.root.y) } : null;
+  };
+
   // The extension goes to the limb on the side of the body the box is on, which
   // is forward 93% of the time and behind on a sweep's bracing arm.
-  const armTip = armBox ? extremity(armBox) : null;
-  const legTip = legBox ? extremity(legBox) : null;
   const side = (p: Point | null): number => (p ? (p.x >= axis ? 1 : -1) : 0);
-  const arms: Limb[] = [-1, 1].map((s) =>
-    limbFrom(restingArm(s as 1 | -1), s === side(armTip) ? armTip : null),
-  );
+  const arms: Limb[] = [-1, 1].map((n) => {
+    const s = n as 1 | -1;
+    const rest = restingArm(s);
+    const tip = armBoxes.length ? extremity(armBoxes, rest.root) : null;
+    return limbFrom(rest, s === side(tip) ? tip : heldReach("arms", faded.head && faded.body, s, rest.root));
+  });
   const legs: Limb[] = standing
-    ? [-1, 1].map((s) => limbFrom(restingLeg(s as 1 | -1), s === side(legTip) ? legTip : null))
+    ? [-1, 1].map((n) => {
+        const s = n as 1 | -1;
+        const rest = restingLeg(s);
+        const tip = legBoxes.length ? extremity(legBoxes, rest.root) : null;
+        return limbFrom(rest, s === side(tip) ? tip : heldReach("legs", faded.leg, s, rest.root));
+      })
     : [];
   // Trailing limb first, so `legs[0]` is the foot the fighter is standing on and
   // the audit's stance measurements do not move when the other leg kicks.
@@ -534,6 +573,24 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
     arms.reverse();
     legs.reverse();
   }
+
+  // A part is invulnerable when *no* hurtbox covers it, not when its own key is
+  // missing. The hit test merges the keys (`hurtboxesAt`), so a leg inside the
+  // body box is hittable however it was tagged — and it usually is: on 28,857 of
+  // the 38,165 frames whose leg key is absent, another part's box covers the
+  // shin, which is why a jump used to draw its legs dimmed as though a neutral
+  // jump were lower-body invulnerable. The head almost never is (90 frames of
+  // 41,998), so the airborne head still fades, honestly: nothing in the dump
+  // reaches it.
+  const live = [...parts.head, ...parts.body, ...parts.leg];
+  const over = (y: number): boolean =>
+    live.some(
+      (b) => footprint >= b.x && footprint <= b.x + b.width && y >= b.y + origin.y && y <= b.y + b.height + origin.y,
+    );
+  const shin = legs.find((l) => !l.derived);
+  if (faded.head && skull) faded.head = !over(skull.y);
+  if (faded.body) faded.body = !over((neckY + hipY) / 2);
+  if (faded.leg && shin) faded.leg = !over((hipY + shin.tip.y) / 2);
 
   return { head: skull, neck, hips, legs, arms, limbs, faded, footprint };
 }
@@ -543,9 +600,10 @@ export function poseOf(fighter: Posed, radius: number, last?: Pose): Pose {
  *
  * Always *below* the straight line, because that is the way both joints fold —
  * an elbow under a punch, a knee under a kick. The bend is a fraction of the
- * limb's own length, so a jab folds a little and a roundhouse folds a lot.
+ * limb's own length, so a jab folds a little and a roundhouse folds a lot, up to
+ * `cap`.
  */
-function bendOf(root: Point, tip: Point): Point {
+function bendOf(root: Point, tip: Point, cap = Infinity): Point {
   const dx = tip.x - root.x;
   const dy = tip.y - root.y;
   const length = Math.hypot(dx, dy);
@@ -554,7 +612,10 @@ function bendOf(root: Point, tip: Point): Point {
   const nx = dy / length;
   const ny = -dx / length;
   const sign = ny > 0 ? -1 : 1;
-  const drop = length * 0.16;
+  // Capped, because how far a joint sits off the line is a property of the body
+  // and not of how far the limb reaches: uncapped, Dhalsim's 361-unit 5HP reach
+  // put its elbow 57 units under the straight line and the arm read as a sag.
+  const drop = Math.min(length * 0.16, cap);
   return { x: (root.x + tip.x) / 2 + nx * drop * sign, y: (root.y + tip.y) / 2 + ny * drop * sign };
 }
 

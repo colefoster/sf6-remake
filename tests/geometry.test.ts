@@ -611,11 +611,14 @@ describe("a pose derived from the boxes", () => {
     const before = poseOf(stub(rising, 8), radius);
     const during = poseOf(stub(rising, 14), radius, before);
     expect(before.faded).toEqual({ head: false, body: false, leg: false });
-    // Head and legs gone, body box still there and carried upward: the figure
-    // rises with the move, and the parts it is invulnerable on are held over
-    // from the last frame that had them rather than dropped — at their distance
-    // below the torso, so the whole figure leaves the ground together.
-    expect(during.faded).toEqual({ head: true, body: false, leg: true });
+    // Head and leg *keys* gone, body box still there and carried upward: the
+    // figure rises with the move, and the parts with no key of their own are
+    // held over from the last frame that had them rather than dropped — at their
+    // distance below the torso, so the whole figure leaves the ground together.
+    // Only the head reads as invulnerable, though: the body box covers where the
+    // legs are drawn, and the hit test merges the keys, so a leg inside the body
+    // box is hittable however it was tagged.
+    expect(during.faded).toEqual({ head: true, body: false, leg: false });
     expect(during.head).not.toBeNull();
     expect(during.legs).toHaveLength(before.legs.length);
     expect(during.legs.map((l) => l.tip.x)).toEqual(before.legs.map((l) => l.tip.x));
@@ -658,7 +661,10 @@ describe("a pose derived from the boxes", () => {
     const spine = grounded.neck.y - grounded.hips.y;
     let last = grounded;
     for (const f of [1, 5, 10, 16]) last = poseOf(stub(air, f), radius, last);
-    expect(last.faded.leg).toBe(true);
+    // The head is the only part nothing reaches — measured across the roster, a
+    // body box covers the shin on 28,857 of the 38,165 frames with no leg key,
+    // and the skull on 90 of 41,998 with no head key.
+    expect(last.faded).toEqual({ head: true, body: false, leg: false });
     expect(last.neck.y - last.hips.y).toBeCloseTo(spine, 5);
     expect(last.hips.y).toBeGreaterThan(grounded.hips.y + 200);
   });

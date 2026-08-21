@@ -110,7 +110,9 @@ its direction off the victim's facing. Only the shape is this project's.
 
 ## Not settled
 
-- **An airborne fighter draws dimmed.** A jump carries no head hurtbox, so
-  `faded.head` sets and ADR-0020's rule fades a part that is not invulnerable.
+- **An airborne fighter draws dimmed.** *Half resolved by ADR-0058*: the legs no
+  longer, because a live body box covers them on 28,857 of the 38,165 frames
+  with no leg key. The head still does, and now with a number saying it is
+  honest — only 90 of 41,998 faded-head frames are covered by anything.
 - **The block spark is sized off damage**, which for a blocked normal is zero,
   so every block bursts at the minimum size.

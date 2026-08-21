@@ -87,6 +87,29 @@ the limb is still out.
 fighter: where the body travels, never where a foot is. `BAS_FORWARD_Loop` moves
 no hurtbox at all.
 
+### A limb is boxed in segments, so its union is not its shape
+
+The first cut read the tip off the *union* of a part's outboard boxes, at mid
+height. Two measurements killed that. The boxes are mostly **taller than wide**
+— 77% of leg boxes and 73% of arm boxes, median aspect 1.8 and 1.6 — so mid
+height put a sweeping foot halfway up the shin. And a limb is boxed in
+*segments*: unioning a shoulder box with a horizontal arm box gives a tall union
+even when the arm is flat, which sent Dhalsim's 5HP out of his shoulder and down
+to the floor.
+
+### The fade was lying about the legs
+
+`faded` marked a part whose *key* was absent, per ADR-0020. But `hurtboxesAt`
+flattens head, body and leg into one array — the hit test does not care which
+part a box was tagged to — so a leg drawn inside a live body box is hittable
+however it was tagged.
+
+Measured: of the frames whose leg key is absent, **28,857 of 38,165 have another
+part's box covering where the leg is drawn.** Those legs were being dimmed while
+fully vulnerable, which is why a neutral jump read as lower-body invulnerable.
+The head is the opposite case and the dimming there is honest: only **90 of
+41,998** faded-head frames are covered by anything.
+
 ## Decision
 
 `Pose` carries `arms: Limb[]` and `legs: Limb[]`; `feet` is gone and `limbs` is
@@ -99,6 +122,18 @@ axis choosing which of the pair gets it. An active hitbox for the same kind of
 limb overrides it. Where no such box exists the limb falls back to a resting
 pose that is **invented and flagged as such**.
 
+The tip is **the furthest-reaching box of the set, then the end of that box's
+own long axis** — the far `x` edge at mid height where it is wider than tall,
+the far `y` edge at mid width where it is taller — not the union's corner. The
+joint's droop is capped at `radius * 1.5`, because how far a knee sits off the
+line is a property of the body and not of how far the limb reaches; uncapped,
+ADR-0057's 16% put Dhalsim's elbow 57 units under a 361-unit arm. An extension
+is **held over** when the part loses its box entirely, the same rule ADR-0020
+gives every other part, which reaches 112 frames across the roster.
+
+**A part fades only when no live hurtbox covers where it is drawn**, rather than
+when its own key is missing.
+
 `drawFigure` only draws now: a derived limb in the body colour, an invented one
 in the player's tint, and the live hitbox limb in warm orange or yellow — the
 kick used to be cyan, which is also P1's tint, so on the left-hand fighter a
@@ -106,14 +141,23 @@ live roundhouse and a resting arm were the same colour.
 
 ## Consequences
 
-- `limb-overlong` **231 → 159 frames**: the punch limb now roots at the leading
-  shoulder rather than the neck.
-- A new `reach-overlong` category audits the derived arms and legs on the same
-  terms — **320 frames, 34 actions**, mostly crouching lows whose reach exceeds
-  a crouched stature. Nothing else in `pose:audit` moved.
+- `limb-overlong` **231 → 119 frames, 13 actions**; `limb-degenerate` **8 → 0**
+  (E.Honda's `ATK_8LK` boxes its kick on the hip it hangs off, and a 4-unit limb
+  is a dot — dropped below `radius`, symmetric with ADR-0051's too-far rule).
+- A new `reach-overlong` audits the derived arms and legs on the same terms:
+  **371 frames, 20 actions.** Nothing else in `pose:audit` moved.
+- **The residual is one character.** Of `reach-overlong`'s 20 actions, 12 are
+  Dhalsim; of `limb-overlong`'s 13, 11 are. Those limbs really are that long.
 - `foot-above-hips` now tests only the planted leg. A *derived* leg above the
   hips is a high kick, which is what the boxes said; unfiltered it read 2,434.
-- Two new tests in `tests/geometry.test.ts`; 257 pass.
+- **Both overlong tests now measure against the fighter's *idle* stature.** How
+  long a limb may be is a property of the body: against the current stature a
+  crouching low read as overlong on 140 frames purely because crouching shortens
+  the ruler. This moves counts without improving anything, and `limb-overlong`
+  159 → 119 is that change rather than a fix.
+- `figure-sheet` takes its camera band per *move* rather than per sheet, so one
+  jump no longer shrinks the grounded moves beside it.
+- Two new tests; two updated where the fade's meaning changed. 257 pass.
 
 ## Not settled
 
@@ -122,8 +166,5 @@ live roundhouse and a resting arm were the same colour.
   says and not what a walk looks like.
 - **The shoulders are invented** (±0.55 of the pushbox half-width), as is the
   resting bend and the stance width ADR-0050 set.
-- **A derived leg on a lunging punch reads flat and armlike** — Marisa's `5HP`,
-  Juri's `2MK`. The box is where the leg is; it just does not read at that angle.
-- **An extension is not held over** across a frame that loses the part, so it
-  falls back to rest rather than holding at its last distance. That is a gap
-  against ADR-0020's rule; no case was found where it shows.
+- **Blanka's somersault** still draws head-down, correctly per ADR-0051 and
+  still odd to look at.

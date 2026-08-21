@@ -41,6 +41,10 @@ for (const entry of listCharacters() as unknown[]) {
   const idle = poseOf(stub(stand, 1), radius);
   const idleSpine = idle.neck.y - idle.hips.y;
   const idleLeg = idle.hips.y - (idle.legs[0]?.tip.y ?? 0);
+  // How long a limb may be is a property of the body, not of how it is standing:
+  // measured against the *current* stature a crouching low reads as overlong on
+  // 140 frames purely because crouching shortens the yardstick.
+  const idleStature = Math.abs((idle.head?.y ?? idle.neck.y) - (idle.legs[0]?.tip.y ?? idle.hips.y));
   /** The leg that is standing, not the one that may be out on a kick. */
   const planted = (p: Pose) => p.legs.find((l) => !l.derived) ?? p.legs[0];
 
@@ -72,11 +76,11 @@ for (const entry of listCharacters() as unknown[]) {
       // tall is a box that was not a limb.
       for (const limb of [...p.arms, ...p.legs].filter((l) => l.derived)) {
         const len = Math.hypot(limb.tip.x - limb.root.x, limb.tip.y - limb.root.y);
-        if (len > stature * 1.35) flag("reach-overlong", at, `len=${len.toFixed(0)} tall=${stature.toFixed(0)}`);
+        if (len > idleStature * 1.35) flag("reach-overlong", at, `len=${len.toFixed(0)} tall=${idleStature.toFixed(0)}`);
       }
       for (const limb of p.limbs) {
         const len = Math.hypot(limb.tip.x - limb.root.x, limb.tip.y - limb.root.y);
-        if (len > stature * 1.35) flag("limb-overlong", at, `len=${len.toFixed(0)} tall=${stature.toFixed(0)}`);
+        if (len > idleStature * 1.35) flag("limb-overlong", at, `len=${len.toFixed(0)} tall=${idleStature.toFixed(0)}`);
         if (len < 6) flag("limb-degenerate", at, `len=${len.toFixed(0)}`);
       }
       last = p;
