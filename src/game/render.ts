@@ -631,6 +631,50 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash 
   }
 }
 
+/**
+ * Lean a struck figure away from the blow.
+ *
+ * **Invented, and the only invented thing in the figure besides the resting
+ * arms.** The recoil is not in the dump: measured across the roster, all 646
+ * reaction actions — every `DMG_*` and `GRD_*` — hold **one static hurtbox
+ * layout for their entire duration**, while 1254 of the 1523 attack actions
+ * move theirs frame to frame. The boxes animate for a swing and are frozen for
+ * a flinch, because the flinch lives in the animation clip and MMDK dumps clip
+ * names, not bones.
+ *
+ * So a figure derived from the boxes cannot recoil, and a training room where a
+ * 900-damage roundhouse leaves the defender standing perfectly still reads as a
+ * hit that did not land. What is real here is the *timing* — the caller drives
+ * `lean` off the hitstun the table published — and the direction. Only the
+ * shape is this project's: the spine pivots at the hips, the feet stay planted,
+ * and the head lags a little behind the chest.
+ */
+export function recoiled(pose: Pose, lean: number, away: 1 | -1): Pose {
+  if (lean <= 0) return pose;
+  const turn = (p: Point, radians: number): Point => {
+    const dx = p.x - pose.hips.x;
+    const dy = p.y - pose.hips.y;
+    return {
+      x: pose.hips.x + dx * Math.cos(radians) + dy * Math.sin(radians),
+      y: pose.hips.y - dx * Math.sin(radians) + dy * Math.cos(radians),
+    };
+  };
+  const spine = away * lean * 0.3;
+  // The head carries a third again, which is the whiplash.
+  const neck = turn(pose.neck, spine);
+  return {
+    ...pose,
+    neck,
+    head: pose.head ? { ...pose.head, ...turn(pose.head, spine * 1.35) } : null,
+    limbs: pose.limbs.map((l) => ({
+      ...l,
+      root: turn(l.root, spine),
+      joint: turn(l.joint, spine),
+      tip: turn(l.tip, spine),
+    })),
+  };
+}
+
 /* ---- impact -------------------------------------------------------------- */
 
 /** How long a spark is drawn for, in match frames. */

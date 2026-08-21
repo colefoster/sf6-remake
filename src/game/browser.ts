@@ -55,6 +55,7 @@ export {
   placeBox,
   shakeAt,
   poseOf,
+  recoiled,
   viewFor,
   viewForAction,
   worldBoxes,

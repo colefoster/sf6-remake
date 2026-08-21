@@ -113,7 +113,7 @@ import {
   DUMMIES, Advantage, punishes,
   viewFor, worldBoxes, poseOf, headRadius, Camera,
   drawStage, drawBoxes, drawFigure, drawGauges, drawProjectile,
-  drawImpact, shakeAt, IMPACT_FRAMES,
+  drawImpact, shakeAt, recoiled, IMPACT_FRAMES,
 } from "./play.js";
 
 const canvas = document.getElementById("stage");
@@ -175,6 +175,8 @@ const advantage = new Advantage();
 const camera = new Camera();
 /** Sparks still playing. Aged by the match clock, not by the frame rate. */
 let impacts = [];
+/** How hard each side is still rocking, one entry per contact. See ADR-0057. */
+let recoils = [];
 let sparked = 0;
 let punish = null;
 
@@ -188,6 +190,7 @@ async function reset() {
   advantage.reset();
   camera.reset();
   impacts = [];
+  recoils = [];
   sparked = 0;
   punish = null;
   logged = 0;
@@ -237,8 +240,19 @@ function tick() {
       victim: hit.attacker === 0 ? 1 : 0,
     });
   }
+  // The recoil outlives the spark and is driven by the hitstun the table
+  // published: a light lands and is shrugged off, a heavy rocks them.
+  for (const hit of match.hits.slice(sparked)) {
+    recoils.push({
+      victim: hit.attacker === 0 ? 1 : 0,
+      born: match.frame,
+      frames: Math.min(18, Math.max(6, hit.stun)),
+      peak: hit.type === "block" ? 0.45 : hit.type === "parry" ? 0.3 : Math.min(1.2, 0.75 + hit.damage / 2400),
+    });
+  }
   sparked = match.hits.length;
   impacts = impacts.filter((i) => match.frame - i.born < IMPACT_FRAMES);
+  recoils = recoils.filter((r) => match.frame - r.born < r.frames);
 
   const before = advantage.value;
   advantage.observe(match);
@@ -313,7 +327,17 @@ function draw() {
     // Struck this frame: white out for as long as the spark runs.
     const struck = impacts.find((k) => k.victim === i && k.type !== "block");
     const flash = struck ? 1 - (match.frame - struck.born) / IMPACT_FRAMES : 0;
-    if (showFigures && poses[i]) drawFigure(ctx, view, poses[i], i, flash);
+    // ...and rock away from it. The figure cannot do this out of the boxes —
+    // every reaction action freezes them — so the lean is drawn on top of the
+    // derived pose rather than found in it. See ADR-0057.
+    const rock = recoils.find((r) => r.victim === i);
+    let pose = poses[i];
+    if (pose && rock) {
+      const age = match.frame - rock.born;
+      const lean = Math.min(1, age / 2) * (1 - age / rock.frames) ** 1.4 * rock.peak;
+      pose = recoiled(pose, lean, fighter.state.facing === 1 ? -1 : 1);
+    }
+    if (showFigures && pose) drawFigure(ctx, view, pose, i, flash);
     // origin marker and facing
     const ox = view.x(fighter.position().x);
     ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";

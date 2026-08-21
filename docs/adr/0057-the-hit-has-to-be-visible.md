@@ -44,6 +44,17 @@ freeze that reads as a dropped frame rather than as impact.
 about position. A spark drawn at the defender's centre lies about which end of
 them got hit — a sweep and an overhead would burst in the same place.
 
+### The recoil is not in the dump, and it is not close
+
+Measured across the roster: **all 646 reaction actions — every `DMG_*` and
+`GRD_*` — hold one static hurtbox layout for their entire duration.** Not one
+of them moves a box. Meanwhile 1254 of the 1523 attack actions move theirs frame
+to frame.
+
+So the boxes animate for a swing and freeze for a flinch, because the flinch is
+in the animation clip and MMDK dumps clip names, not bones. A figure derived
+from the boxes cannot recoil, however the derivation is written.
+
 ### A limb drawn as one straight line is a laser
 
 `poseOf` drew an active hitbox as a single segment from hip (or shoulder) to the
@@ -79,21 +90,26 @@ over its own scaffolding.
 perpendicular by 16% of the limb's length, always below the straight line,
 because that is the way both an elbow and a knee fold.
 
+**The recoil is drawn on, and marked.** `recoiled(pose, lean, away)` pivots the
+spine at the hips with the feet planted and the head lagging the chest. It is
+the second invented thing in the figure, after the resting arms, and for the
+same reason: the dump has nothing to derive it from. What is real is the
+timing — the page drives `lean` off the hitstun the hit table published, and
+its direction off the victim's facing. Only the shape is this project's.
+
 ## Consequences
 
 - A hit now reads without looking at the panel: freeze, shake, spark at the
   point of contact, defender flashes.
 - The starting pair is drawn at 3.3× rather than 1.7×.
-- Six new tests: the camera's framing, separation and jump behaviour, the
-  shake's determinism, the contact point's height, and the limb's joint.
+- Seven new tests: the camera's framing, separation and jump behaviour, the
+  shake's determinism, the contact point's height, the limb's joint, and the
+  reaction-boxes measurement that forces the lean to be invented.
 - `drawFigure` and `viewFor` both gained a trailing optional argument, so
   `web/boxes.html` is unchanged.
 
 ## Not settled
 
-- **The figure still does not react.** The flash says a hit landed; the pose
-  does not, because the reaction animation's boxes barely move and the pose is
-  the boxes. Knockback moves the fighter, nothing bends them.
 - **An airborne fighter draws dimmed.** A jump carries no head hurtbox, so
   `faded.head` sets and ADR-0020's rule fades a part that is not invulnerable.
 - **The block spark is sized off damage**, which for a blocked normal is zero,

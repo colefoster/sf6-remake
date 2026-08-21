@@ -22,11 +22,12 @@ import {
   armorHits,
   atemiRow,
   BAR,
+  hurtPartsAt,
 } from "../src/data/geometry.js";
 import type { ArmorWindow, AtemiRow, GeometryFile } from "../src/data/geometry.js";
 import type { GeometryAction } from "../src/data/geometry.js";
 import type { Fighter } from "../src/game/index.js";
-import { CAMERA_FLOOR, Camera, boundsOf, headRadius, poseOf, shakeAt, viewFor, viewForAction } from "../src/game/render.js";
+import { CAMERA_FLOOR, Camera, boundsOf, headRadius, poseOf, recoiled, shakeAt, viewFor, viewForAction } from "../src/game/render.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { hitDataFor } from "../src/data/geometry.js";
 import { listCharacters, requireCharacter, requireMove } from "../src/data/index.js";
@@ -764,6 +765,36 @@ describe("a pose derived from the boxes", () => {
     const right = poseOf(stub(named("ATK_5HP"), 13), radius, undefined);
     const left = poseOf(stub(named("ATK_5HP"), 13, -1), radius, undefined);
     expect(left.limbs[0]!.tip.x).toBeCloseTo(-right.limbs[0]!.tip.x, 5);
+  });
+
+  it("cannot find a recoil in the boxes, so it leans the figure instead", () => {
+    // The measurement behind ADR-0057's one invented thing: every reaction
+    // action on this fighter holds *one* hurtbox layout for its whole duration,
+    // while its attacks move theirs frame to frame. The flinch is in the
+    // animation clip, and MMDK dumps clip names, not bones.
+    const layouts = (action: GeometryAction) =>
+      new Set(
+        Array.from({ length: Math.min(action.frames ?? 20, 24) }, (_, i) =>
+          JSON.stringify(hurtPartsAt(action, i + 1)),
+        ),
+      ).size;
+    const reactions = geo.actions.filter((a) => /^(DMG|GRD)_/.test(a.name) && a.hurt.length);
+    expect(reactions.length).toBeGreaterThan(10);
+    expect(reactions.every((a) => layouts(a) === 1)).toBe(true);
+    expect(geo.actions.filter((a) => /^ATK_/.test(a.name) && a.hurt.length && layouts(a) > 1).length).toBeGreaterThan(20);
+
+    // So the lean is drawn on: pivoting at the hips, feet planted.
+    const pose = poseOf(stub(named("DMG_MH"), 4), radius);
+    const back = recoiled(pose, 1, -1);
+    expect(recoiled(pose, 0, -1)).toBe(pose);
+    expect(back.hips).toEqual(pose.hips);
+    expect(back.feet).toEqual(pose.feet);
+    expect(back.neck.x).toBeLessThan(pose.neck.x);
+    // The head carries further than the chest — the whiplash.
+    expect(back.head!.x).toBeLessThan(back.neck.x);
+    // Leaning is not shrinking: the spine keeps its length.
+    const spine = (p: typeof pose) => Math.hypot(p.neck.x - p.hips.x, p.neck.y - p.hips.y);
+    expect(spine(back)).toBeCloseTo(spine(pose), 6);
   });
 
   /**
