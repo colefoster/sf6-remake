@@ -1,0 +1,125 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>pose seeds — contact sheets</title>
+<style>
+  body { background: #0b0f14; color: #e5e7eb; font: 13px ui-monospace, monospace; margin: 12px; }
+  canvas { display: block; margin: 12px 0; border: 1px solid #1f2937; }
+</style>
+<div id="out"></div>
+<script type="module">
+  import {
+    authoredPoseOf, resolveKeys, overreach, buildOf, headRadius, drawFigure, originAt, pushboxesAt,
+  } from "/web/play.js";
+
+  const MOVES = ["5LP", "5MP", "5HP", "2LK", "2MK", "2HK", "5HK", "jHK", "236LP", "623LP", "214LK"];
+  const geo = await (await fetch("/data/geometry/ryu.json")).json();
+  const build = buildOf(geo);
+  const radius = headRadius(geo);
+  const out = document.getElementById("out");
+
+  const CELL_W = 240, CELL_H = 320, PAD = 16, HEAD = 44;
+
+  const posed = (action, frame) => ({
+    state: { action, frame, facing: 1 },
+    position: () => ({ x: 0, y: 0 }),
+  });
+
+  /**
+   * A View over one cell. The action's own `originAt` height and the pushbox
+   * axis are subtracted, so every cell puts the fighter's floor on the floor
+   * line and its axis in the same place — the two things `authoredPoseOf`
+   * takes from the dump rather than from the file.
+   */
+  const viewIn = (cx, floorY, scale, axis, originY) => ({
+    width: CELL_W, height: CELL_H, scale, ground: floorY,
+    x: (u) => cx + (u - axis) * scale,
+    y: (u) => floorY - (u - originY) * scale,
+  });
+
+  const SCALE = (CELL_H - 90) / (build.stature * 1.25);
+
+  const drawCell = (ctx, x, y, action, frame, label, sub) => {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, CELL_W, CELL_H); ctx.clip();
+    ctx.strokeStyle = "#1f2937"; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, CELL_W - 1, CELL_H - 1);
+    const floorY = y + CELL_H - 26;
+    ctx.strokeStyle = "#243044";
+    ctx.beginPath(); ctx.moveTo(x + 8, floorY + 0.5); ctx.lineTo(x + CELL_W - 8, floorY + 0.5); ctx.stroke();
+    const push = pushboxesAt(action, frame);
+    const axis = push.length
+      ? (Math.min(...push.map((b) => b.x)) + Math.max(...push.map((b) => b.x + b.width))) / 2
+      : 0;
+    const view = viewIn(x + CELL_W * 0.4, floorY, SCALE, axis, originAt(action, frame).y);
+    const pose = authoredPoseOf(FILE, posed(action, frame), radius, build);
+    if (pose) drawFigure(ctx, view, pose, 0, 0);
+    ctx.fillStyle = "#93a4b8"; ctx.font = "12px ui-monospace, monospace";
+    ctx.fillText(label, x + 10, y + 18);
+    ctx.fillStyle = "#6b7a8d"; ctx.font = "11px ui-monospace, monospace";
+    ctx.fillText(sub, x + 10, y + CELL_H - 8);
+    ctx.restore();
+  };
+
+  let FILE = null;
+  const shots = [];
+
+  const sheetFor = async (move) => {
+    const file = await (await fetch(`/data/poses/ryu/${move}.json`)).json();
+    FILE = file;
+    const action = geo.actions.find((a) => a.name === file.action);
+    const resolved = resolveKeys(file, action);
+    const n = resolved.keys.length;
+    const canvas = document.createElement("canvas");
+    canvas.width = PAD * 2 + n * CELL_W;
+    canvas.height = PAD * 2 + HEAD + CELL_H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0b0f14"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#e5e7eb"; ctx.font = "16px ui-monospace, monospace";
+    ctx.fillText(`ryu  ${move}   ${file.action}   ${action.frames}f`, PAD, PAD + 18);
+    ctx.fillStyle = "#6b7a8d"; ctx.font = "12px ui-monospace, monospace";
+    ctx.fillText(
+      `overreach ${overreach(resolved.keys, build).toFixed(3)}` +
+        (resolved.problems.length ? `   problems: ${resolved.problems.join("; ")}` : ""),
+      PAD, PAD + 36,
+    );
+    resolved.keys.forEach((k, i) => {
+      const at = typeof k.at === "string" ? k.at : `${k.at[0]} ${k.at[1]}`;
+      drawCell(ctx, PAD + i * CELL_W, PAD + HEAD, action, k.frame, `${move}  ${at}`, `frame ${k.frame}`);
+    });
+    document.getElementById("out").appendChild(canvas);
+    shots.push({ name: `${move}.png`, url: canvas.toDataURL("image/png") });
+  };
+
+  for (const m of MOVES) await sheetFor(m);
+
+  // The summary: every move's contact pose side by side.
+  {
+    const cols = 6;
+    const rows = Math.ceil(MOVES.length / cols);
+    const canvas = document.createElement("canvas");
+    canvas.width = PAD * 2 + cols * CELL_W;
+    canvas.height = PAD * 2 + HEAD + rows * CELL_H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0b0f14"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#e5e7eb"; ctx.font = "16px ui-monospace, monospace";
+    ctx.fillText("ryu — the contact frame of all eleven authored moves", PAD, PAD + 18);
+    ctx.fillStyle = "#6b7a8d"; ctx.font = "12px ui-monospace, monospace";
+    ctx.fillText("authored pose, seeded by an agent; the boxes are not drawn", PAD, PAD + 36);
+    for (let i = 0; i < MOVES.length; i++) {
+      const move = MOVES[i];
+      const file = await (await fetch(`/data/poses/ryu/${move}.json`)).json();
+      FILE = file;
+      const action = geo.actions.find((a) => a.name === file.action);
+      const resolved = resolveKeys(file, action);
+      const key = resolved.keys.find((k) => k.at === "contact");
+      const x = PAD + (i % cols) * CELL_W;
+      const y = PAD + HEAD + Math.floor(i / cols) * CELL_H;
+      drawCell(ctx, x, y, action, key.frame, `${move}  contact`, `${file.action}  frame ${key.frame}`);
+    }
+    document.getElementById("out").appendChild(canvas);
+    shots.push({ name: "_contact-summary.png", url: canvas.toDataURL("image/png") });
+  }
+
+  window.SHEETS = shots;
+  window.SHEETS_READY = true;
+</script>
