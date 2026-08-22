@@ -9,6 +9,7 @@
 <script type="module">
   import {
     authoredPoseOf, resolveKeys, overreach, buildOf, headRadius, drawFigure, originAt, pushboxesAt,
+    actionById, poseOf,
   } from "/web/play.js";
 
   const MOVES = ["5LP", "5MP", "5HP", "2LK", "2MK", "2HK", "5HK", "jHK", "236LP", "623LP", "214LK"];
@@ -17,7 +18,7 @@
   const radius = headRadius(geo);
   const out = document.getElementById("out");
 
-  const CELL_W = 240, CELL_H = 320, PAD = 16, HEAD = 44;
+  const CELL_W = 300, CELL_H = 340, PAD = 16, HEAD = 44;
 
   const posed = (action, frame) => ({
     state: { action, frame, facing: 1 },
@@ -36,9 +37,12 @@
     y: (u) => floorY - (u - originY) * scale,
   });
 
-  const SCALE = (CELL_H - 90) / (build.stature * 1.25);
+  // Wide enough that a 0.51-stature kick and a 0.42-stature reach behind both fit
+  // inside the cell: an extended limb clipped at the border is the one thing a
+  // contact sheet must not do.
+  const SCALE = (CELL_H - 90) / (build.stature * 1.45);
 
-  const drawCell = (ctx, x, y, action, frame, label, sub) => {
+  const drawCell = (ctx, x, y, action, frame, label, sub, override) => {
     ctx.save();
     ctx.beginPath(); ctx.rect(x, y, CELL_W, CELL_H); ctx.clip();
     ctx.strokeStyle = "#1f2937"; ctx.lineWidth = 1;
@@ -50,8 +54,10 @@
     const axis = push.length
       ? (Math.min(...push.map((b) => b.x)) + Math.max(...push.map((b) => b.x + b.width))) / 2
       : 0;
-    const view = viewIn(x + CELL_W * 0.4, floorY, SCALE, axis, originAt(action, frame).y);
-    const pose = authoredPoseOf(FILE, posed(action, frame), radius, build);
+    const view = viewIn(x + CELL_W * 0.42, floorY, SCALE, axis, originAt(action, frame).y);
+    const pose = override
+      ? override(posed(action, frame))
+      : authoredPoseOf(FILE, posed(action, frame), radius, build);
     if (pose) drawFigure(ctx, view, pose, 0, 0);
     ctx.fillStyle = "#93a4b8"; ctx.font = "12px ui-monospace, monospace";
     ctx.fillText(label, x + 10, y + 18);
@@ -94,17 +100,32 @@
 
   // The summary: every move's contact pose side by side.
   {
+    // The derived idle takes the first cell. The whole point of the re-author is
+    // that the authored bodies stand beside this one, so the comparison has to
+    // be in the same sheet at the same scale rather than in two windows.
     const cols = 6;
-    const rows = Math.ceil(MOVES.length / cols);
+    const cells = MOVES.length + 1;
+    const rows = Math.ceil(cells / cols);
     const canvas = document.createElement("canvas");
     canvas.width = PAD * 2 + cols * CELL_W;
     canvas.height = PAD * 2 + HEAD + rows * CELL_H;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#0b0f14"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#e5e7eb"; ctx.font = "16px ui-monospace, monospace";
-    ctx.fillText("ryu — the contact frame of all eleven authored moves", PAD, PAD + 18);
+    ctx.fillText("ryu — the derived idle, then the contact frame of all eleven authored moves", PAD, PAD + 18);
     ctx.fillStyle = "#6b7a8d"; ctx.font = "12px ui-monospace, monospace";
-    ctx.fillText("authored pose, seeded by an agent; the boxes are not drawn", PAD, PAD + 36);
+    ctx.fillText(
+      "cell 1 is poseOf on BAS_STD_Loop — derived from the boxes. The other eleven are invention.",
+      PAD, PAD + 36,
+    );
+    {
+      const idle = actionById(geo, geo.calibration.standAction);
+      drawCell(
+        ctx, PAD, PAD + HEAD, idle, 1,
+        "DERIVED idle", `${idle.name}  poseOf, not authored`,
+        (f) => poseOf(f, radius, undefined, build),
+      );
+    }
     for (let i = 0; i < MOVES.length; i++) {
       const move = MOVES[i];
       const file = await (await fetch(`/data/poses/ryu/${move}.json`)).json();
@@ -112,8 +133,8 @@
       const action = geo.actions.find((a) => a.name === file.action);
       const resolved = resolveKeys(file, action);
       const key = resolved.keys.find((k) => k.at === "contact");
-      const x = PAD + (i % cols) * CELL_W;
-      const y = PAD + HEAD + Math.floor(i / cols) * CELL_H;
+      const x = PAD + ((i + 1) % cols) * CELL_W;
+      const y = PAD + HEAD + Math.floor((i + 1) / cols) * CELL_H;
       drawCell(ctx, x, y, action, key.frame, `${move}  contact`, `${file.action}  frame ${key.frame}`);
     }
     document.getElementById("out").appendChild(canvas);

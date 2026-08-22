@@ -12,7 +12,7 @@ import {
   sampleAuthored,
   type PoseFile,
 } from "../src/game/pose-library.js";
-import { buildOf, headRadius, type Posed } from "../src/game/render.js";
+import { buildOf, headRadius, poseOf, type Pose, type Posed } from "../src/game/render.js";
 
 /**
  * The authored pose library (ADR-0067).
@@ -142,9 +142,9 @@ describe("the figure it draws", () => {
     for (const key of keys) expect(sampleAuthored(keys, key.frame)).toBe(key.pose);
     // Frame 12 is a quarter of the way from `activeEnd` (10) to the recovery
     // key (18). Smoothstep of 0.25 is 0.15625, so the retracting leg is still
-    // out at 0.447 of a stature where a linear blend would have it at 0.415.
+    // out at 0.442 of a stature where a linear blend would have it at 0.425.
     const mid = sampleAuthored(keys, 12)!;
-    expect(mid.feet[0]!.x).toBeCloseTo(0.5 + (0.16 - 0.5) * 0.15625, 9);
+    expect(mid.feet[0]!.x).toBeCloseTo(0.47 + (0.29 - 0.47) * 0.15625, 9);
   });
 
   it("mirrors by facing and hangs on the fighter's axis", () => {
@@ -188,16 +188,31 @@ describe("the figure it draws", () => {
     // The spec says a re-solved joint keeps the bone length constant. It does
     // not, and the reason is in `jointOf`: a deep fold is capped at 42% of the
     // bone so a guard's elbow does not stick out past the torso, and a capped
-    // fold draws two segments that no longer sum to the bone. Over the 29 frames
-    // of the kick the leg chain measures 82-90 against a 90-unit bone — never
-    // longer, up to 9% shorter. See ADR-0067.
+    // fold draws two segments that no longer sum to the bone.
+    //
+    // Where the cap bites is the **arm**, not the leg. A guard hand sits about
+    // 0.45 of an arm from its shoulder, which is deep enough to clip; over the
+    // 29 frames of the kick the lead arm measures 55-56 against a 63-unit bone.
+    // The leg never clips, because on the ADR-0060 skeleton a foot on the floor
+    // is already 0.93 of the way out — the re-author's whole constraint — so the
+    // leg chain comes out at exactly the bone on every frame. Never longer is
+    // the property that matters and it holds for both.
     const LEG_BONE = 0.53 * 1.02 * buildOf(ryu).stature * buildOf(ryu).leg;
+    const ARM_BONE = 0.37 * buildOf(ryu).stature * buildOf(ryu).arm;
     expect(LEG_BONE).toBeCloseTo(89.88, 2);
-    const lengths: number[] = [];
-    for (let frame = 1; frame <= 29; frame++) lengths.push(bone(drawn(frame).legs[1]!));
-    expect(Math.max(...lengths)).toBeLessThanOrEqual(LEG_BONE + 1e-9);
-    expect(Math.round(Math.max(...lengths))).toBe(90);
-    expect(Math.round(Math.min(...lengths))).toBe(82);
+    expect(ARM_BONE).toBeCloseTo(63.33, 2);
+    const legs: number[] = [];
+    const arms: number[] = [];
+    for (let frame = 1; frame <= 29; frame++) {
+      legs.push(bone(drawn(frame).legs[1]!));
+      arms.push(bone(drawn(frame).arms[1]!));
+    }
+    expect(Math.max(...legs)).toBeLessThanOrEqual(LEG_BONE + 1e-9);
+    expect(Math.max(...arms)).toBeLessThanOrEqual(ARM_BONE + 1e-9);
+    expect(Math.round(Math.max(...legs))).toBe(90);
+    expect(Math.round(Math.min(...legs))).toBe(90);
+    expect(Math.round(Math.max(...arms))).toBe(56);
+    expect(Math.round(Math.min(...arms))).toBe(55);
   });
 
   it("refuses to draw a fighter it has no stature for", () => {
@@ -207,5 +222,70 @@ describe("the figure it draws", () => {
   it("reports a file bound to the wrong action rather than drawing it silently", () => {
     const wrong: PoseFile = { ...file, action: "ATK_5LP" };
     expect(resolveKeys(wrong, kick).problems[0]).toContain("file names action ATK_5LP");
+  });
+});
+
+
+/**
+ * The neutral the library stands in, against the figure it has to stand beside.
+ *
+ * The two paths into `Pose` were composed independently and silently diverged:
+ * the first seeded library put the pelvis at 0.340 of stature and the chest at
+ * 0.550 while `pose-library.ts` had always assumed ADR-0060's 0.53 leg, so the
+ * authored body was a third shorter in every vertical measure — a long torso on
+ * short legs, exactly the defect ADR-0060 fixed in the derived figure. Nothing
+ * checked it. This does.
+ */
+describe("the authored neutral against the derived idle", () => {
+  const build = buildOf(ryu);
+  const stature = build.stature;
+  const idle = ryu.actions.find((a) => a.id === ryu.calibration!.standAction)!;
+  const derived = poseOf(
+    { state: { action: idle, frame: 1, facing: 1 }, position: () => ({ x: 0, y: 0 }) },
+    headRadius(ryu),
+    undefined,
+    build,
+  );
+  const jab = actionByName(ryu, "ATK_5LP")!;
+  const authored = authoredPoseOf(loadPose("ryu", "5LP")!, posed(jab, 1), headRadius(ryu), build)!;
+
+  it("stands on the same body, within the tolerance the leg bone forces", () => {
+    // 0.04 of stature — 6.6 world units on Ryu's 166 — and the size is not a
+    // taste. The derived idle's lead hip sits 0.5373 of a stature from its lead
+    // foot, which is 0.992 of the 0.5415 leg bone: an authored pose copying that
+    // pelvis height would ship at 0.99 overreach, one nudge from a limb drawn
+    // straight and stretched. Holding overreach under 0.95 caps a foot-on-floor
+    // pelvis at 0.5144 even with the feet directly beneath the hips, so the
+    // authored neutral is 0.500 and the gap is the bone's, not a mistake. The
+    // seeded library it replaced missed by 0.19 of a stature — five times this.
+    const tol = 0.04 * stature;
+    expect(Math.abs(authored.hips.y - derived.hips.y)).toBeLessThan(tol);
+    expect(Math.abs(authored.neck.y - derived.neck.y)).toBeLessThan(tol);
+    expect(Math.abs(authored.head!.y - derived.head!.y)).toBeLessThan(tol);
+  });
+
+  it("splits that body between leg and torso the same way", () => {
+    // The absolute check alone would pass a figure that was uniformly short.
+    // What went wrong was the *proportion*: the seeded neutral put 51.5% of its
+    // height below the pelvis where the derived figure puts 59.1%, and that —
+    // not the total — is what read as a squat. 0.035 admits the 0.021 the
+    // crouch costs and rejects the 0.076 the seeds were out by.
+    const share = (p: Pose): number => p.hips.y / p.head!.y;
+    expect(share(derived)).toBeCloseTo(0.5914, 3);
+    expect(Math.abs(share(authored) - share(derived))).toBeLessThan(0.035);
+  });
+
+  it("keeps every authored file inside the bone, on Ryu's build and on an even one", () => {
+    // The gate the whole re-author was held to. `jointOf` draws a chain straight
+    // when its tip is further off than the chain is long, and that limb is a lie
+    // about the body; 0.95 leaves room for the eased frames between two keys.
+    for (const move of authoredMoves("ryu")) {
+      const one = loadPose("ryu", move)!;
+      const action = actionByName(ryu, one.action)!;
+      const resolved = resolveKeys(one, action);
+      expect(resolved.problems).toEqual([]);
+      expect(overreach(resolved.keys, build)).toBeLessThan(0.95);
+      expect(overreach(resolved.keys)).toBeLessThan(0.95);
+    }
   });
 });
