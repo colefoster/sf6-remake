@@ -1890,9 +1890,27 @@ export function drawProjectile(ctx: Ctx, view: View, box: Box): void {
 /**
  * The figure. A faded part is one the fighter is invulnerable on: held over from
  * the last frame that had it, and drawn thin so the invulnerability reads.
+ *
+ * `invented` is the honesty rule, not a style: body colour `#e5e7eb` means *the
+ * dump put this here*, so a figure with nothing derived in it may not carry a
+ * single body-coloured part. The derived figure inks the spine, the shoulder
+ * line, the pelvis line and the skull in body colour and its limbs by
+ * `Limb.derived`; an authored figure (ADR-0067, `authoredPoseOf`) has
+ * `derived: false` on every limb but those four torso parts were still claiming
+ * a box placed them. With `invented` they go in the player tint with the rest.
+ * See ADR-0068.
  */
-export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash = 0): void {
+export function drawFigure(
+  ctx: Ctx,
+  view: View,
+  pose: Pose,
+  side: 0 | 1,
+  flash = 0,
+  invented = false,
+): void {
   const tint = side === 0 ? P1 : P2;
+  /** The ink a torso part takes: body colour when derived, the tint when not. */
+  const torso = invented ? tint : "#e5e7eb";
   // Struck: the whole figure blows out to white and thickens for the length of
   // the hitstop. Without it a 900-damage roundhouse looked exactly like standing
   // still, because the defender's reaction animation moves its boxes barely at
@@ -1926,18 +1944,18 @@ export function drawFigure(ctx: Ctx, view: View, pose: Pose, side: 0 | 1, flash 
     line(limb.joint, limb.tip, ink, Math.max(1.2, width * 0.72), dim);
   };
 
-  line(pose.neck, pose.hips, "#e5e7eb", body, pose.faded.body);
+  line(pose.neck, pose.hips, torso, body, pose.faded.body);
   // The shoulder line and the pelvis, joining the roots of each pair. Both are
   // torso, both are invented (ADR-0060 places them on the body hurtbox's own
   // width), and without them the arms met the spine at the throat in a Y and the
   // legs met it at the hips in a V — which is what a figure with no shoulders
   // and no pelvis looks like.
-  if (pose.arms.length === 2) line(pose.arms[0]!.root, pose.arms[1]!.root, "#e5e7eb", body, pose.faded.body);
-  if (pose.legs.length === 2) line(pose.legs[0]!.root, pose.legs[1]!.root, "#e5e7eb", body, pose.faded.leg);
+  if (pose.arms.length === 2) line(pose.arms[0]!.root, pose.arms[1]!.root, torso, body, pose.faded.body);
+  if (pose.legs.length === 2) line(pose.legs[0]!.root, pose.legs[1]!.root, torso, body, pose.faded.leg);
   for (const leg of pose.legs) chain(leg, body, pose.faded.leg);
   if (pose.head) {
     ctx.globalAlpha = pose.faded.head ? 0.35 : 1;
-    ctx.strokeStyle = hot > 0 ? HOT : "#e5e7eb";
+    ctx.strokeStyle = hot > 0 ? HOT : torso;
     ctx.lineWidth = body;
     ctx.beginPath();
     ctx.arc(view.x(pose.head.x), view.y(pose.head.y), pose.head.r * view.scale, 0, Math.PI * 2);

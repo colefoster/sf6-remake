@@ -20,6 +20,9 @@
     --throw: #26c99a;
     --opp: #6d7488;
     --plus: #45d17a;
+    /* P1's tint in src/game/render.ts. The authored figure is drawn in it, and
+       so is everything on this page that points at the authored figure. */
+    --authored: #38bdf8;
   }
   * { box-sizing: border-box; }
   body {
@@ -89,7 +92,44 @@
     content: ""; position: absolute; left: 0; right: 0; bottom: -4px;
     height: 3px; border-radius: 2px; background: var(--plus);
   }
+  /* A keyframe of the authored pose, marked along the top edge at its resolved frame. */
+  .strip div.key::before {
+    content: ""; position: absolute; left: 0; right: 0; top: -5px;
+    height: 4px; border-radius: 2px; background: var(--authored);
+  }
   .striplabels { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; }
+  /* The phases the anchors are fractions of, banded across the same span as the strip. */
+  .phases { display: flex; gap: 1px; margin: 6px 0 4px; }
+  .phases div {
+    height: 15px; border-radius: 2px; overflow: hidden; white-space: nowrap;
+    font: 10px ui-monospace, monospace; color: #0e0f13; text-align: center; line-height: 15px;
+  }
+  .phases div.startup { background: #7a6a3a; color: #e8eaf0; }
+  .phases div.active { background: var(--hit); }
+  .phases div.recovery { background: #3d4354; color: #e8eaf0; }
+  .phases div.free { background: #24422f; color: #9fd8b6; }
+  /* The mode line: which of the two questions the figure on the canvas answers. */
+  .modeline {
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+    margin: 10px 0 0; padding: 8px 12px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--panel);
+    font-size: 12.5px; color: var(--dim);
+  }
+  .modeline b { font-size: 13.5px; letter-spacing: .02em; }
+  .modeline.hittable b { color: #e5e7eb; }
+  .modeline.move b { color: var(--authored); }
+  .modeline.fallback { border-color: #4a3f1e; }
+  .keys { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .keys span {
+    font: 11.5px ui-monospace, monospace; padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--dim);
+  }
+  .keys span.on { border-color: var(--authored); color: var(--authored); }
+  .keys span.bad { border-color: #6b2a2a; color: var(--hit); }
+  /* Eleven authored moves among ~300 actions: findable only if they are marked. */
+  nav button.authored .in::after {
+    content: "◆"; color: var(--authored); font-size: 10px; margin-left: 6px; vertical-align: 1px;
+  }
   .readout {
     margin-top: 16px; display: grid; gap: 10px;
     grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -124,6 +164,11 @@
 
     <div class="stage"><canvas id="stage" width="1200" height="620"></canvas></div>
 
+    <div class="modeline hittable" id="modeline">
+      <b id="modename">hittable</b>
+      <span id="modesub"></span>
+    </div>
+
     <div class="controls">
       <button id="play">▶ Play</button>
       <button id="prev">◀</button>
@@ -133,7 +178,9 @@
     </div>
 
     <div class="strip" id="strip"></div>
+    <div class="phases" id="phases"></div>
     <div class="striplabels"><span>frame 1</span><span id="striplast"></span></div>
+    <div class="keys" id="keys"></div>
 
     <div class="controls">
       <label>distance <input type="range" id="dist" min="0" max="400" value="120"> <b id="distval">120u</b></label>
@@ -150,6 +197,20 @@
       <label><input type="checkbox" id="t-push" checked> pushboxes</label>
       <label><input type="checkbox" id="t-path" checked> travel path</label>
       <label><input type="checkbox" id="t-figure" checked> figure</label>
+      <label>figure shows
+        <select id="mode">
+          <option value="hittable">hittable — derived from the boxes</option>
+          <option value="move">move — the authored pose</option>
+        </select>
+      </label>
+      <label>speed
+        <select id="fps">
+          <option value="60">60fps (real time)</option>
+          <option value="30">30fps</option>
+          <option value="20">20fps</option>
+          <option value="10">10fps</option>
+        </select>
+      </label>
       <label>they <select id="guard"><option value="block">block</option><option value="hit">get hit</option></select></label>
       <button id="fit">snap to max range</button>
     </div>
@@ -194,6 +255,7 @@
       <span><i style="background:var(--prox)"></i>proximity guard</span>
       <span><i style="background:var(--push)"></i>pushbox</span>
       <span><i style="background:var(--opp)"></i>opponent</span>
+      <span><i style="background:var(--authored)"></i>authored figure — invention, not derived</span>
     </div>
 
     <footer id="footer"></footer>
@@ -225,6 +287,7 @@ import {
   idleHurtboxes, idlePushboxes, minDistance, mirrored, originAt, proxboxesAt,
   pushboxesAt, hurtPartsAt, reach, shift, throwboxesAt,
   boundsOf, drawBox, drawFigure, headRadius, buildOf, poseOf, viewForAction,
+  authoredPoseOf, indexPoses, overreach, phasesOf, resolveKeys,
 } from "./play.js";
 
 const state = {
@@ -234,7 +297,25 @@ const state = {
   /** The pose chain, rebuilt from frame 1 whenever the frame moves. See ADR-0049. */
   radius: 14,
   build: { arm: 1, leg: 1 },
+  /**
+   * Which of the two figures is drawn. `hittable` is the derived one this page
+   * has always drawn and stays the default: someone who never touches the
+   * control sees the caged, graded figure. `move` is the authored library
+   * (ADR-0067) and falls back to `hittable` on any action with no file — which
+   * is ~290 of them. See ADR-0068.
+   */
+  mode: "hittable",
+  /** Frames per second the play button runs at. The dump's clock is 60. */
+  fps: 60,
+  /** This character's authored files, keyed by the action each binds to. */
+  poses: new Map(),
+  /** The file bound to the selected action, and its keys on this action's clock. */
+  pose: null,
+  resolved: null,
 };
+
+/** The whole library, fetched once: `{ "<character>": [PoseFile, ...] }`. */
+let library = null;
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -242,10 +323,23 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 /* ---------- the fighter this page is looking at ---------- */
 
 /** What `poseOf` and the box placement want: an action, a frame, a place to stand. */
-const subject = () => ({
-  state: { action: state.action, frame: state.frame, facing: 1 },
+const subject = () => subjectAt(state.frame);
+
+const subjectAt = (frame) => ({
+  state: { action: state.action, frame, facing: 1 },
   position: () => ({ x: 0, y: 0 }),
 });
+
+/**
+ * Whether the authored figure is what gets drawn right now.
+ *
+ * `move` mode alone is not enough: the fallback is the common case. Eleven of
+ * this fighter's ~300 actions have a file and the other ~290 fall back to
+ * `hittable` silently on the canvas and loudly in the mode line, because a mode
+ * that quietly drew nothing would be worse than one that quietly drew the wrong
+ * figure.
+ */
+const authoredHere = () => state.mode === "move" && !!state.pose && !!state.resolved?.keys.length;
 
 /** Hurtboxes for the frame, tagged by part so each draws in its own colour. */
 function hurtAt(action, frame) {
@@ -342,12 +436,25 @@ function draw() {
   }
   // The same figure `play.html` draws, from the same derivation. Free, now that
   // there is one renderer: the boxes were already here.
+  //
+  // The boxes above are drawn in both modes and from the real data in both. That
+  // is what keeps an authored figure honest — a pose disagreeing with its own
+  // hitbox is visible while you look at it — and it is the whole authoring aid.
   if (state.show.figure) {
-    let pose;
-    for (let f = 1; f <= frame; f++) {
-      pose = poseOf({ ...subject(), state: { action, frame: f, facing: 1 } }, state.radius, pose, state.build);
+    if (authoredHere()) {
+      // Every part of this is invention, so the whole of it goes in the player's
+      // tint: `invented` is the sixth argument and it is not decoration.
+      const pose = authoredPoseOf(state.pose, subjectAt(frame), state.radius, state.build, {
+        resolved: state.resolved,
+      });
+      if (pose) drawFigure(ctx, view, pose, 0, 0, true);
+    } else {
+      let pose;
+      for (let f = 1; f <= frame; f++) {
+        pose = poseOf(subjectAt(f), state.radius, pose, state.build);
+      }
+      if (pose) drawFigure(ctx, view, pose, 0);
     }
-    if (pose) drawFigure(ctx, view, pose, 0);
   }
 
   // scale bar: one metre, taking the standing hurtbox height as the fighter's height
@@ -535,25 +642,123 @@ function ranges(frames) {
   return out.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", ");
 }
 
+/**
+ * The frame strip, the phase bands under it and the key list under those.
+ *
+ * Rebuilt on a change of action, not on a change of frame: at 60fps re-creating
+ * ninety elements sixty times a second is the difference between a move that
+ * plays and a move that stutters. `markNow` is the per-frame half.
+ */
 function drawStrip() {
   const action = state.action;
   const total = Math.min(action.frames ?? 60, 90);
   const windows = activeWindows(action);
   const strip = $("strip");
   strip.innerHTML = "";
+  // Where each key of the authored file landed, by frame. The anchor name goes
+  // in the tooltip: judging a pose is as much "did it land on contact" as it is
+  // "does it look right", and the resolved frame alone does not say which
+  // anchor asked for it.
+  const keys = new Map();
+  for (const key of state.resolved?.keys ?? []) keys.set(key.frame, key);
+  state.cells = [];
   for (let f = 1; f <= total; f++) {
     const cell = document.createElement("div");
     if (windows.some((w) => f >= w.start && f <= w.end)) cell.className = "active";
     else if (proxboxesAt(action, f).length) cell.className = "prox";
-    if (f === state.frame) cell.classList.add("now");
     const cancel = state.move?.cancel;
     const cancellable = cancel && f >= cancel.start && f <= cancel.end;
     if (cancellable) cell.classList.add("cancel");
-    cell.title = `frame ${f}${cancellable ? " — special-cancellable" : ""}`;
+    const key = keys.get(f);
+    if (key) cell.classList.add("key");
+    cell.title =
+      `frame ${f}${cancellable ? " — special-cancellable" : ""}` +
+      (key ? ` — authored key: ${anchorName(key.at)}` : "");
     cell.onclick = () => setFrame(f);
     strip.append(cell);
+    state.cells.push(cell);
   }
   $("striplast").textContent = `frame ${total}${(action.frames ?? 0) > total ? ` (of ${action.frames})` : ""}`;
+  markNow();
+  drawPhases(total);
+  drawKeyList();
+}
+
+/** The one thing that changes per frame. See `drawStrip`. */
+function markNow() {
+  for (const [i, cell] of (state.cells ?? []).entries()) {
+    cell.classList.toggle("now", i + 1 === state.frame);
+  }
+}
+
+/**
+ * The phases the anchors are fractions of — startup, active, recovery, free —
+ * from the action's own `MainFrame`, active windows and `MarginFrame`.
+ *
+ * A key at `["startup", 0.55]` is 55% of the way along the first band and a key
+ * at `contact` is on the first frame of the second, and neither is legible from
+ * a resolved frame number on its own.
+ */
+function drawPhases(total) {
+  const row = $("phases");
+  row.innerHTML = "";
+  for (const band of phasesOf(state.action)) {
+    if (band.start > total) break;
+    const end = Math.min(band.end, total);
+    const cell = document.createElement("div");
+    cell.className = band.phase;
+    cell.style.flex = String(end - band.start + 1);
+    const span = band.start === end ? `f${band.start}` : `f${band.start}-${end}`;
+    cell.textContent = end - band.start >= 2 ? `${band.phase} ${span}` : "";
+    cell.title = `${band.phase} — ${span}`;
+    row.append(cell);
+  }
+}
+
+const anchorName = (at) => (typeof at === "string" ? at : `${at[0]} ${at[1]}`);
+
+/** Every key of the bound file at its resolved frame, and every anchor that did not resolve. */
+function drawKeyList() {
+  const row = $("keys");
+  row.innerHTML = "";
+  if (!state.pose) return;
+  const pip = (text, cls) => {
+    const el = document.createElement("span");
+    if (cls) el.className = cls;
+    el.textContent = text;
+    row.append(el);
+  };
+  pip(`${state.pose.move} · ${state.resolved.keys.length} keys`);
+  for (const key of state.resolved.keys) {
+    pip(`f${key.frame} ${anchorName(key.at)}`, key.frame === state.frame ? "on" : "");
+  }
+  for (const problem of state.resolved.problems) pip(problem, "bad");
+  pip(`reach ${overreach(state.resolved.keys, state.build).toFixed(3)} of bone`);
+}
+
+/**
+ * Which of the two questions the figure on screen is answering, said in words.
+ *
+ * The spec's rule is that the viewer must always know. It is not enough to
+ * colour the figure differently, because the two modes are only comparable if
+ * the page says which one you are looking at and — when `move` was asked for on
+ * an action with no file — that it did not get it.
+ */
+function updateModeLine() {
+  const line = $("modeline");
+  const authored = authoredHere();
+  const has = !!state.pose;
+  line.className = "modeline " + (authored ? "move" : "hittable") + (state.mode === "move" && !authored ? " fallback" : "");
+  $("modename").textContent = authored ? "move — authored pose" : "hittable — derived from the boxes";
+  $("modesub").textContent = authored
+    ? `Every line of this figure is this project's invention and none of it was read off a box, ` +
+      `which is why the whole of it is in the player's tint. The boxes behind it are the game's. ` +
+      `From data/poses/${state.data.id}/${state.pose.move}.json.`
+    : state.mode === "move"
+      ? `No authored pose for ${state.action.name} — falling back to the derived figure. ` +
+        `${state.poses.size} of this fighter's ${state.data.counts.actions} actions have one, marked ◆ in the list.`
+      : `The figure is derived from this frame's hurtboxes and clamped inside them (ADR-0049). ` +
+        (has ? `This action has an authored pose too — switch the mode to see it.` : "");
 }
 
 /* ---------- ui wiring ---------- */
@@ -565,7 +770,8 @@ function setFrame(f) {
   $("frameno").textContent = `frame ${state.frame}`;
   draw();
   updateReadouts();
-  drawStrip();
+  markNow();
+  drawKeyList();
 }
 
 /**
@@ -604,6 +810,10 @@ function selectAction(action, move) {
   state.action = action;
   state.move = move ?? null;
   state.frame = 1;
+  // Bound once per action, not once per frame: the anchors resolve against the
+  // action's own frame data and that does not change while you scrub.
+  state.pose = state.poses.get(action.name) ?? null;
+  state.resolved = state.pose ? resolveKeys(state.pose, action) : null;
   $("movename").textContent = move ? `${move.input} — ${move.name}` : action.name;
   $("actionname").textContent = `${action.name}  ·  action ${action.id}${action.mot ? `  ·  ${action.mot}` : ""}`;
 
@@ -641,6 +851,15 @@ function selectAction(action, move) {
     );
     badges.append(badge(cancelCosts(move)));
   }
+  if (state.pose) {
+    const bad = state.resolved.problems.length;
+    badges.append(
+      badge(
+        `authored pose: ${state.resolved.keys.length} keys` + (bad ? `, ${bad} unresolved` : ""),
+        bad > 0,
+      ),
+    );
+  }
   if (move) {
     badges.append(badge(`FAT: startup ${move.fat.startup}, active ${move.fat.active}`));
     if (move.match !== "exact") {
@@ -653,7 +872,10 @@ function selectAction(action, move) {
   for (const b of document.querySelectorAll("nav button")) {
     b.setAttribute("aria-current", String(Number(b.dataset.action) === action.id));
   }
+  state.frame = 1;
+  drawStrip();
   setFrame(1);
+  updateModeLine();
 }
 
 function buildNav() {
@@ -695,6 +917,12 @@ function buildNav() {
 function navButton(action, move, primary, secondary) {
   const btn = document.createElement("button");
   btn.dataset.action = String(action.id);
+  // Eleven authored moves among ~300 actions. Without the mark they are not
+  // findable, and `move` mode reads as broken rather than as unauthored.
+  if (state.poses.has(action.name)) {
+    btn.classList.add("authored");
+    btn.title = `authored pose: ${state.poses.get(action.name).move}`;
+  }
   const a = document.createElement("span");
   a.className = "in";
   a.textContent = primary;
@@ -711,8 +939,21 @@ async function loadCharacter(id) {
   state.data = await res.json();
   state.radius = headRadius(state.data);
   state.build = buildOf(state.data);
+  // `web/poses.json` is `scripts/build-play.mjs`'s second output: the authored
+  // library collected into one object, because `src/data/load-poses.ts` reads a
+  // directory and a page cannot. Absent is not an error — it means nothing has
+  // been authored, and every action falls back.
+  if (library === null) {
+    const got = await fetch("poses.json");
+    library = got.ok ? await got.json() : {};
+  }
+  const indexed = indexPoses(library[id] ?? []);
+  state.poses = indexed.byAction;
+  if (indexed.problems.length) console.warn("pose library:", indexed.problems.join("; "));
   const s = state.data.source;
-  $("source").textContent = `${state.data.counts.actions} actions · ${state.data.counts.mapped} moves mapped · ${s.geometry}`;
+  $("source").textContent =
+    `${state.data.counts.actions} actions · ${state.data.counts.mapped} moves mapped · ` +
+    `${state.poses.size} authored pose${state.poses.size === 1 ? "" : "s"} · ${s.geometry}`;
   $("footer").innerHTML =
     `Geometry extracted from MMDK's dump of the game's own collision data; frames from FAT. ` +
     `x = 0 is the character origin, y = 0 the ground, +x forward; ` +
@@ -737,16 +978,40 @@ function applyDistanceLimits() {
   }
 }
 
+/**
+ * Playback, on a clock rather than on a timer.
+ *
+ * This ran at a fixed `setInterval(…, 1000 / 20)`, which is a third of the
+ * game's rate: a 4-frame startup took 200ms and every authored move read as
+ * slower and heavier than it is. The whole point of the authored library is that
+ * the timing is the dump's exactly, so the default here is 60 — one action frame
+ * per display frame on a 60Hz screen — and `requestAnimationFrame` drives it so
+ * a slow draw drops a frame rather than piling up a queue of them.
+ */
 function play() {
   state.playing = !state.playing;
   $("play").textContent = state.playing ? "❚❚ Pause" : "▶ Play";
-  clearInterval(state.timer);
-  if (state.playing) {
-    state.timer = setInterval(() => {
+  cancelAnimationFrame(state.timer);
+  if (!state.playing) return;
+  let last = performance.now();
+  let owed = 0;
+  const step = (now) => {
+    if (!state.playing) return;
+    owed += ((now - last) * state.fps) / 1000;
+    last = now;
+    // Never more than four action frames in one paint: a backgrounded tab hands
+    // back a two-second delta and the move would jump rather than play.
+    const advance = Math.min(4, Math.floor(owed));
+    if (advance > 0) {
+      owed -= advance;
       const total = state.action?.frames ?? 1;
-      setFrame(state.frame >= total ? 1 : state.frame + 1);
-    }, 1000 / 20);
-  }
+      let f = state.frame + advance;
+      if (f > total) f -= total;
+      setFrame(f);
+    }
+    state.timer = requestAnimationFrame(step);
+  };
+  state.timer = requestAnimationFrame(step);
 }
 
 $("scrub").oninput = (e) => setFrame(Number(e.target.value));
@@ -776,6 +1041,14 @@ for (const [key, id] of TOGGLES) {
     draw();
   };
 }
+$("mode").onchange = (e) => {
+  state.mode = e.target.value;
+  draw();
+  updateModeLine();
+};
+$("fps").onchange = (e) => {
+  state.fps = Number(e.target.value);
+};
 $("fit").onclick = () => {
   const far = reach(state.action, opponentBoxes());
   if (far === undefined) return;

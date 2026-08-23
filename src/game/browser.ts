@@ -64,5 +64,5 @@ export {
 export type { BoxKind, Impact, Point, Posed, Pose, View, WorldBoxes } from "./render.js";
 export type { GeometryAction, GeometryFile } from "../data/geometry.js";
 // The authored figure. See ADR-0067; the derived path above is untouched.
-export { authoredPoseOf, clockOf, overreach, resolveAnchor, resolveKeys, sampleAuthored } from "./pose-library.js";
-export type { Anchor, AuthoredKey, AuthoredPose, Clock, Normalised, PoseFile, Resolved, ResolvedKey } from "./pose-library.js";
+export { authoredPoseOf, clockOf, indexPoses, overreach, phasesOf, resolveAnchor, resolveKeys, sampleAuthored } from "./pose-library.js";
+export type { Anchor, AuthoredKey, AuthoredPose, Band, Clock, Normalised, Phase, PoseFile, Resolved, ResolvedKey } from "./pose-library.js";
