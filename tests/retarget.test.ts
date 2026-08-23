@@ -7,7 +7,14 @@ import { describe, it, expect } from "vitest";
 import { actionByName, activeWindows } from "../src/data/geometry.js";
 import { loadGeometry } from "../src/data/load-geometry.js";
 import { loadPose } from "../src/data/load-poses.js";
-import { overreach, resolveKeys, type AuthoredPose, type Normalised } from "../src/game/pose-library.js";
+import {
+  overreach,
+  resolveKeys,
+  shoulderHalfAt,
+  TWIST_MAX,
+  type AuthoredPose,
+  type Normalised,
+} from "../src/game/pose-library.js";
 import {
   extensionPeak,
   fitPose,
@@ -106,9 +113,15 @@ describe("the fixtures stand in for a motion model", () => {
     const lanky = planeOf(clips["lanky-punch"]);
     const peak = extensionPeak(clips["lanky-punch"], lanky);
     const naive = retargetFrame(clips["lanky-punch"], peak, lanky).naive;
-    expect(overreachOf(naive)).toBeGreaterThan(1.3);
+    expect(overreachOf(naive)).toBeGreaterThan(1);
     // And it overreaches on its *standing* frame too, not only at extension.
     expect(overreachOf(retargetFrame(clips["lanky-punch"], 0, lanky).naive)).toBeGreaterThan(1);
+    // 1.386 is what the worst lanky frame read before ADR-0070 gave the figure
+    // a torso twist, and forcing the twist back to 0 recovers 1.364 of it here
+    // — the peak itself has moved, because it is measured on the projection and
+    // the projection changed. The point stands: almost all of the number
+    // ADR-0069 published was the welded shoulder, not the 12% longer arm.
+    expect(overreachOf({ ...naive, twist: 0 })).toBeGreaterThan(1.36);
   });
 });
 
@@ -190,7 +203,7 @@ describe("the projection", () => {
     const at = extensionPeak(clip, plane);
     const flat = projectPose(forwardKinematics(hook, at), hookPlane, { foldLateral: false, travel: 0 }).pose;
     const kept = projectPose(forwardKinematics(hook, at), hookPlane, { travel: 0 }).pose;
-    const shoulder = (p: AuthoredPose): Normalised => ({ x: p.chest.x - 0.133, y: p.chest.y });
+    const shoulder = (p: AuthoredPose): Normalised => ({ x: p.chest.x - shoulderHalfAt(p.twist), y: p.chest.y });
     expect(span(shoulder(flat), flat.hands[1])).toBeLessThan(span(shoulder(kept), kept.hands[1]));
     expect(reachOf(kept).hands[1]).toBeGreaterThan(reachOf(flat).hands[1]);
     // And it is reported, so the cost is never silent.
@@ -211,7 +224,10 @@ describe("the fit", () => {
       frames++;
     }
     expect(frames).toBe(92);
-    expect(worstNaive).toBeGreaterThan(1.3);
+    // 1.386 before ADR-0070. What is left of it is the *legs* — the twist moves
+    // a shoulder and cannot move a hip, so the roundhouse's supporting leg is
+    // now the worst frame in all four clips and the punches no longer are.
+    expect(worstNaive).toBeGreaterThan(1.09);
     expect(worstFitted).toBeLessThanOrEqual(REACH + 1e-9);
   });
 
@@ -219,7 +235,7 @@ describe("the fit", () => {
     const lanky = clips["lanky-punch"];
     const plane = planeOf(lanky);
     const over = retargetFrame(lanky, extensionPeak(lanky, plane), plane);
-    expect(over.fit.before).toBeGreaterThan(1.35);
+    expect(over.fit.before).toBeGreaterThan(1);
     expect(over.fit.after).toBeCloseTo(REACH, 9);
 
     // A pose already inside the bones is returned untouched — the fit is not a
@@ -248,8 +264,9 @@ describe("the fit", () => {
     for (const { naive } of everyFrame()) {
       const fitted = fitPose(naive).pose;
       for (const i of [0, 1] as const) {
-        const shoulder = { x: fitted.chest.x + (i === 0 ? 0.133 : -0.133), y: fitted.chest.y };
-        const was = { x: naive.chest.x + (i === 0 ? 0.133 : -0.133), y: naive.chest.y };
+        const half = (i === 0 ? 1 : -1) * shoulderHalfAt(fitted.twist);
+        const shoulder = { x: fitted.chest.x + half, y: fitted.chest.y };
+        const was = { x: naive.chest.x + half, y: naive.chest.y };
         const a = Math.atan2(naive.hands[i].y - was.y, naive.hands[i].x - was.x);
         const b = Math.atan2(fitted.hands[i].y - shoulder.y, fitted.hands[i].x - shoulder.x);
         // The torso can sink, which rotates the line a little; nothing else may.
@@ -286,18 +303,36 @@ describe("the fit", () => {
     expect(tall.head.y - fit.pose.head.y).toBeCloseTo(fit.sink, 9);
   });
 
-  it("spends the fit on the striking limb and almost nothing else", () => {
+  it("costs the cross nothing at all, now the shoulder can travel", () => {
+    // ADR-0069's headline, reversed. Its contact frame cost `hand.rear` 0.164
+    // of a stature — 27 units on Ryu — because the figure welded the punching
+    // shoulder 0.162 behind where the body had it. With the twist derived the
+    // frame is inside our bones before the fit is asked for anything.
     const clip = clips["straight-punch"];
     const plane = planeOf(clip);
     const at = retargetFrame(clip, extensionPeak(clip, plane), plane);
-    const moved = at.moved;
-    expect(moved["hand.rear"]!).toBeGreaterThan(0.1);
-    expect(moved["hand.lead"]!).toBe(0);
-    expect(moved["foot.lead"]!).toBe(0);
-    expect(moved["foot.rear"]!).toBe(0);
-    expect(moved["pelvis"]!).toBeLessThan(0.03);
+    expect(at.naive.twist!).toBeGreaterThan(90);
+    expect(at.moved["hand.rear"]!).toBe(0);
+    expect(at.moved["hand.lead"]!).toBe(0);
+    expect(at.moved["foot.lead"]!).toBe(0);
+    expect(at.moved["foot.rear"]!).toBe(0);
+    expect(at.moved["pelvis"]!).toBeLessThan(0.03);
+    // Untwisted, the same frame is the 1.345 ADR-0069 published.
+    expect(reachOf({ ...at.naive, twist: 0 }).hands[1]).toBeGreaterThan(1.3);
+    expect(reachOf(at.naive).hands[1]).toBeLessThan(0.95);
     // The measure is symmetric and zero on a pose that needed nothing.
     expect(displacement(at.fitted, at.fitted)["chest"]).toBe(0);
+  });
+
+  it("still spends the fit on the striking limb, on a clip the twist cannot save", () => {
+    // A kick's cost is a hip's, and the twist moves shoulders. The sweep's
+    // scything rear leg is still the one point the fit pays for.
+    const clip = clips["low-sweep"];
+    const plane = planeOf(clip);
+    const at = retargetFrame(clip, extensionPeak(clip, plane), plane);
+    expect(at.moved["foot.rear"]!).toBeGreaterThan(0.05);
+    expect(at.moved["hand.lead"]!).toBe(0);
+    expect(at.moved["hand.rear"]!).toBe(0);
   });
 });
 
@@ -318,7 +353,14 @@ describe("the clip on the action's clock", () => {
       expect(contact.frame).toBe(activeWindows(action)[0]!.start);
       expect(contact.frame).toBe(action.mainFrame! + 1);
       expect(contact.source).toBe(report.peak);
-      expect(contact.before).toBeGreaterThan(1);
+      // `contact` is drawn from the most extended frame of the clip, which is
+      // what `before` being the clip's own maximum says. It is no longer always
+      // past 1: with the twist derived the straight punch fits our bones as it
+      // stands, and only the two kicks still need shortening.
+      const naive = clips[name].frames.map((_, i) =>
+        overreachOf(retargetFrame(clips[name], i, planeOf(clips[name])).naive),
+      );
+      expect(contact.before).toBeCloseTo(Math.max(...naive), 9);
       expect(contact.after).toBeLessThan(0.95);
     }
   });

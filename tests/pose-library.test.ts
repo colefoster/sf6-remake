@@ -12,6 +12,10 @@ import {
   resolveAnchor,
   resolveKeys,
   sampleAuthored,
+  shoulderHalfAt,
+  clampTwist,
+  TWIST_MAX,
+  type AuthoredPose,
   type PoseFile,
 } from "../src/game/pose-library.js";
 import {
@@ -455,5 +459,125 @@ describe("finding the file for an action", () => {
     const { byAction, problems } = indexPoses(twice);
     expect(problems).toEqual([`copy and ${files[0]!.move} both claim ${files[0]!.action}`]);
     expect(byAction.size).toBe(11);
+  });
+});
+
+/**
+ * The torso twist (ADR-0070).
+ *
+ * One authored number per keyframe, and the whole of what it does is decide
+ * where the two arms hang from. It exists because ADR-0069 measured the figure
+ * welding a thrown cross's shoulder **0.162 of a stature** behind where the body
+ * actually had it — 0.44 of an arm — which made the rear hand of a real punch
+ * read 1.345 of our bone when it was reaching 0.909 of it.
+ */
+describe("the torso twist", () => {
+  const build = buildOf(ryu);
+  const punch = actionByName(ryu, "ATK_5HP")!;
+
+  /** A pose with the rear hand thrown as far forward as a cross puts it. */
+  const cross = (twist: number): AuthoredPose => ({
+    ...(twist ? { twist } : {}),
+    pelvis: { x: 0.03, y: 0.475 },
+    chest: { x: 0.055, y: 0.785 },
+    head: { x: 0.075, y: 0.85 },
+    hands: [
+      { x: 0.09, y: 0.655 },
+      { x: 0.455, y: 0.76 },
+    ],
+    feet: [
+      { x: 0.23, y: 0 },
+      { x: -0.185, y: 0 },
+    ],
+  });
+
+  it("lets a rear hand reach where an untwisted figure cannot", () => {
+    const key = (pose: AuthoredPose) => [{ frame: 10, at: "contact" as const, pose }];
+    // The same seven points, twice. The only difference is one number, and it
+    // is the difference between a shippable cross and one 40% past its bone.
+    expect(overreach(key(cross(0)))).toBeGreaterThan(1.4);
+    expect(overreach(key(cross(115)))).toBeLessThan(0.95);
+    // And the drawn figure agrees: the arm hangs from a shoulder that moved.
+    const radius = headRadius(ryu);
+    const at = (twist: number) =>
+      authoredPoseOf(
+        { character: "ryu", move: "t", action: punch.name, keys: [{ at: "contact", pose: cross(twist) }] },
+        posed(punch, 10),
+        radius,
+        build,
+      )!;
+    const rear = (p: Pose) => p.arms[0]!.root.x;
+    expect(at(115).arms[0]!.root.x - at(0).arms[0]!.root.x).toBeCloseTo(
+      (0.133 - 0.133 * Math.cos((115 * Math.PI) / 180)) * build.stature,
+      6,
+    );
+    // Forward, not back: at 115 degrees the rear shoulder has passed the chest.
+    expect(rear(at(115))).toBeGreaterThan(at(115).neck.x);
+    expect(rear(at(0))).toBeLessThan(at(0).neck.x);
+  });
+
+  it("defaults to 0, and an untwisted file is the figure it always was", () => {
+    // The gate on the whole change: eleven files existed before this field and
+    // nine of them do not carry it. Not one of them may move.
+    const withField = cross(0);
+    expect(withField.twist).toBeUndefined();
+    expect(shoulderHalfAt(undefined)).toBe(0.133);
+    expect(shoulderHalfAt(0)).toBe(0.133);
+    const radius = headRadius(ryu);
+    const drawn = (pose: AuthoredPose) =>
+      authoredPoseOf(
+        { character: "ryu", move: "t", action: punch.name, keys: [{ at: "contact", pose }] },
+        posed(punch, 10),
+        radius,
+        build,
+      )!;
+    expect(JSON.stringify(drawn({ ...withField, twist: 0 }))).toBe(JSON.stringify(drawn(withField)));
+    // A blend between two keys that never mention it does not invent it.
+    const keys = [
+      { frame: 1, at: "start" as const, pose: withField },
+      { frame: 11, at: "contact" as const, pose: withField },
+    ];
+    expect(sampleAuthored(keys, 6)!.twist).toBeUndefined();
+    // Where one key states it, it blends like the quantity it is.
+    const twisted = [keys[0]!, { ...keys[1]!, pose: cross(100) }];
+    expect(sampleAuthored(twisted, 6)!.twist).toBeCloseTo(50, 6);
+  });
+
+  it("clamps at the rotation a torso has, and refuses the negative half", () => {
+    expect(TWIST_MAX).toBe(120);
+    expect(clampTwist(undefined)).toBe(0);
+    // Above the clamp is held at the clamp, not wrapped and not let through.
+    expect(clampTwist(180)).toBe(TWIST_MAX);
+    expect(shoulderHalfAt(180)).toBe(shoulderHalfAt(TWIST_MAX));
+    expect(shoulderHalfAt(160)).toBe(shoulderHalfAt(120));
+    // Below zero the shoulder line is already as bladed as a line can be: there
+    // is no rotation that puts the lead shoulder further forward than its own
+    // half-breadth, so -30 is 0 and not a mirror of +30.
+    expect(clampTwist(-30)).toBe(0);
+    expect(shoulderHalfAt(-30)).toBe(0.133);
+    // Past square the cosine goes negative and the two shoulders swap order.
+    expect(shoulderHalfAt(90)).toBeCloseTo(0, 9);
+    expect(shoulderHalfAt(120)).toBeCloseTo(-0.0665, 9);
+    // And the clamp binds the whole library: nothing shipped may exceed it.
+    for (const move of authoredMoves("ryu"))
+      for (const key of loadPose("ryu", move)!.keys) {
+        const twist = key.pose.twist ?? 0;
+        expect(twist).toBeGreaterThanOrEqual(0);
+        expect(twist).toBeLessThanOrEqual(TWIST_MAX);
+      }
+  });
+
+  it("is what makes the three standing punches three different moves", () => {
+    // Before ADR-0070 all three were lead-hand punches ending within 0.037 of a
+    // stature of each other, because the rear hand could not reach past
+    // `chest.x + 0.237` and there was no field for a torso twist.
+    const contact = (move: string) => loadPose("ryu", move)!.keys.find((k) => k.at === "contact")!.pose;
+    expect(contact("5LP").twist ?? 0).toBe(0);
+    expect(contact("5MP").twist).toBe(100);
+    expect(contact("5HP").twist).toBe(115);
+    // The jab is the lead hand and the other two are the rear hand.
+    expect(contact("5LP").hands[0].x).toBeGreaterThan(contact("5LP").hands[1].x + 0.3);
+    for (const move of ["5MP", "5HP"])
+      expect(contact(move).hands[1].x).toBeGreaterThan(contact(move).hands[0].x + 0.3);
   });
 });

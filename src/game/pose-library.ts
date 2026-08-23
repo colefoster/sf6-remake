@@ -53,6 +53,15 @@ export interface AuthoredPose {
   /** Lead foot first. */
   feet: [Normalised, Normalised];
   bend?: { hands?: (1 | -1 | null)[]; feet?: (1 | -1 | null)[] };
+  /**
+   * How far the shoulder girdle has rotated towards the opponent, in **degrees
+   * of azimuth**, about the vertical through `chest`. Absent is 0, which is
+   * exactly the welded shoulder line every file before ADR-0070 drew.
+   *
+   * See {@link shoulderHalfAt} for what it does and {@link TWIST_MAX} for how
+   * far it is allowed to go.
+   */
+  twist?: number;
 }
 
 /**
@@ -308,8 +317,12 @@ export function sampleAuthored(keys: ResolvedKey[], frame: number): AuthoredPose
   // The bend is a discrete choice, not a quantity: blending +1 towards -1 sends
   // an elbow through the straight line half way between two keys.
   const bend = (t < 0.5 ? a.pose.bend : b.pose.bend) ?? null;
+  // The twist is a quantity and blends like one, but only where a file states
+  // it: a library with no twist in it must sample to the object it always did.
+  const twisted = a.pose.twist !== undefined || b.pose.twist !== undefined;
   return {
     ...(bend ? { bend } : {}),
+    ...(twisted ? { twist: lerp(a.pose.twist ?? 0, b.pose.twist ?? 0, t) } : {}),
     pelvis: between(a.pose.pelvis, b.pose.pelvis, t),
     chest: between(a.pose.chest, b.pose.chest, t),
     head: between(a.pose.head, b.pose.head, t),
@@ -346,6 +359,58 @@ const SHOULDER_DROP = 0.3;
 /** Which way an elbow and a knee fold by default: elbow back, knee forward. */
 const ELBOW_FOLD = -0.7;
 const KNEE_FOLD = 0.9;
+
+/* ---- the torso twist ----------------------------------------------------- */
+
+/**
+ * How far the shoulder girdle may rotate, in degrees of azimuth. See
+ * {@link shoulderHalfAt}.
+ *
+ * The zero of this scale is the figure's welded shoulder line: both shoulders
+ * laid out along the fight axis, the lead one fully forward. That is a *more*
+ * bladed torso than any real guard — a boxer's stance carries the shoulder line
+ * about 40° off the target line, and the figure has no way to say so. From
+ * there a cross rotates through square (90°) and finishes with the punching
+ * shoulder ahead of the other; measured on athletes, the shoulder line passes
+ * square by roughly **30°** and no further, because the far shoulder is being
+ * pulled back by an arm that has to stay in the guard. **40° before square to
+ * 30° past it is 70° of usable rotation, and 120° is where the far end of that
+ * lands on this scale.**
+ *
+ * It is also short of the geometric ceiling, which is 180° — the shoulder line
+ * reversed end for end. Nothing anatomical stops the *projection* there; it is
+ * the body that stops first, so the clamp is the body's number and not the
+ * projection's.
+ */
+export const TWIST_MAX = 120;
+
+const DEG = Math.PI / 180;
+
+/** Degrees of twist, held inside the range a torso has. */
+export const clampTwist = (twist: number | undefined): number =>
+  Math.min(TWIST_MAX, Math.max(0, twist ?? 0));
+
+/**
+ * The forward half-separation of the shoulder line, in fractions of stature.
+ *
+ * The shoulder line is a **bone**: biacromial breadth does not change, so the
+ * only thing a twist can do to it in a side view is turn it, and what the side
+ * view sees is `SHOULDER_HALF · cos(twist)`. At 0 the line is along the fight
+ * axis and this is the whole 0.133 the figure has always used. At 90° the torso
+ * is square to the camera, both shoulders project onto `chest.x`, and the arms
+ * hang from the same point. Past 90° the cosine goes negative and the **rear**
+ * shoulder ends up in front of the lead one, which is what a thrown cross
+ * actually looks like and what ADR-0069 measured: on the fixture's contact
+ * frame the real rear shoulder sat 0.028 of a stature *ahead* of the shoulder
+ * midpoint while the figure welded it 0.133 behind.
+ *
+ * Negative twist is not a thing. 0 is already the most bladed the shoulder line
+ * can be — there is no rotation that puts the lead shoulder further forward
+ * than its own half-breadth — so the range is one-sided and
+ * {@link clampTwist} folds anything below 0 up to it.
+ */
+export const shoulderHalfAt = (twist: number | undefined): number =>
+  SHOULDER_HALF * Math.cos(clampTwist(twist) * DEG);
 
 /* ---- playback ------------------------------------------------------------ */
 
@@ -410,10 +475,15 @@ export function authoredPoseOf(
 
   const bendOf = (hint: (1 | -1 | null)[] | undefined, i: number): number => hint?.[i] ?? 1;
 
+  // One authored number, and the only thing it moves is where the two arms hang
+  // from. The girdle turns about `chest`, so the shoulders stay level and stay
+  // symmetric about the spine; nothing else in the figure knows about it.
+  const shoulderHalf = shoulderHalfAt(authored.twist);
+
   /** Lead limb first, then rear — the file's order. */
   const armPair = [0, 1].map((i) => {
     const s = i === 0 ? 1 : -1;
-    const root: Point = { x: neck.x + facing * s * SHOULDER_HALF * stature, y: shoulderY };
+    const root: Point = { x: neck.x + facing * s * shoulderHalf * stature, y: shoulderY };
     return chain(world(authored.hands[i]!), root, armBone, ELBOW_FOLD * bendOf(authored.bend?.hands, i));
   });
   const legPair = [0, 1].map((i) => {
@@ -487,9 +557,13 @@ export function overreach(keys: ResolvedKey[], build: Build = { arm: 1, leg: 1, 
   const span = (a: Normalised, b: Normalised): number => Math.hypot(a.x - b.x, a.y - b.y);
   for (const key of keys) {
     const p = key.pose;
+    // Measured from where the arm actually hangs, twist and all. A rear cross
+    // that reads 1.35 against the welded shoulder reads 0.91 against the turned
+    // one, and the second number is the one the drawn figure has to live with.
+    const half = shoulderHalfAt(p.twist);
     for (const i of [0, 1]) {
       const s = i === 0 ? 1 : -1;
-      const shoulder = { x: p.chest.x + s * SHOULDER_HALF, y: p.chest.y };
+      const shoulder = { x: p.chest.x + s * half, y: p.chest.y };
       const hip = { x: p.pelvis.x + s * PELVIS_HALF, y: p.pelvis.y };
       worst = Math.max(worst, span(shoulder, p.hands[i]!) / (ARM * build.arm));
       worst = Math.max(worst, span(hip, p.feet[i]!) / (LEG * build.leg));
