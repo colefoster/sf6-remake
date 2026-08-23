@@ -154,6 +154,83 @@ export function resolveAnchor(clock: Clock, at: Anchor): number | null {
   return Math.round(clock.activeEnd + t * (clock.neutral - clock.activeEnd));
 }
 
+/* ---- the phases, as a strip can draw them -------------------------------- */
+
+export type Phase = "startup" | "active" | "recovery" | "free";
+
+/** A run of frames in one phase, inclusive at both ends. */
+export interface Band {
+  phase: Phase;
+  start: number;
+  end: number;
+}
+
+/**
+ * The action's frames banded by phase, so a viewer can show *what an anchor is
+ * a fraction of* rather than only where it landed.
+ *
+ * Every boundary here is the dump's — `MainFrame`, the active windows and
+ * `MarginFrame`, through {@link clockOf} — and the bands are exactly the
+ * intervals the anchors interpolate inside. Two edges are worth naming:
+ *
+ * - **A projectile caster has no active window**, so the single frame its
+ *   `ShotKey` fires on is banded `active`. That frame carries no hitbox of its
+ *   own (the fireball's is a different action, ADR-0022) but it is the frame
+ *   `contact` resolves to, and a strip that hid it would hide the anchor.
+ * - **An airborne action has no `MarginFrame`**, so there is no `free` band and
+ *   `recovery` runs to the last frame. The recovery is really the landing
+ *   action's, on its own clock (ADR-0056).
+ */
+export function phasesOf(action: GeometryAction): Band[] {
+  const clock = clockOf(action);
+  const windows = activeWindows(action);
+  const total = action.frames ?? 0;
+  const active = (f: number): boolean =>
+    windows.length
+      ? windows.some((w) => f >= w.start && f <= w.end)
+      : clock.contact !== null && f === clock.contact;
+  const phaseAt = (f: number): Phase => {
+    if (active(f)) return "active";
+    if (clock.contact !== null && f < clock.contact) return "startup";
+    if (clock.neutral !== null && f >= clock.neutral) return "free";
+    return "recovery";
+  };
+  const bands: Band[] = [];
+  for (let f = 1; f <= total; f++) {
+    const phase = phaseAt(f);
+    const last = bands[bands.length - 1];
+    if (last && last.phase === phase) last.end = f;
+    else bands.push({ phase, start: f, end: f });
+  }
+  return bands;
+}
+
+/* ---- finding the file for an action -------------------------------------- */
+
+/**
+ * A character's pose files keyed by the action each one binds to.
+ *
+ * Both pages ask the same question — *does this action have an authored pose?*
+ * — the box viewer to mark eleven actions out of ~300 in its picker, the match
+ * page to decide per fighter per frame whether `move` mode has anything to draw
+ * or must fall back. Keying by action name rather than by the file's `move`
+ * label is what makes the second question answerable at all: at playback the
+ * fighter is in an action and has no idea what input produced it.
+ *
+ * A later file wins a duplicated action, and the loser is reported, because two
+ * files claiming one action is an authoring mistake and not a merge.
+ */
+export function indexPoses(files: PoseFile[]): { byAction: Map<string, PoseFile>; problems: string[] } {
+  const byAction = new Map<string, PoseFile>();
+  const problems: string[] = [];
+  for (const file of files) {
+    const had = byAction.get(file.action);
+    if (had) problems.push(`${file.move} and ${had.move} both claim ${file.action}`);
+    byAction.set(file.action, file);
+  }
+  return { byAction, problems };
+}
+
 export interface ResolvedKey {
   frame: number;
   at: Anchor;

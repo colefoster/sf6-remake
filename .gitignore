@@ -28,3 +28,6 @@ data/raw/mmdk-2024/
 
 # Contact sheets from `npm run figure:sheet` — regenerated, never reviewed as source.
 .scratch/sheets/
+# Collected from data/poses/ by `npm run build:play` so a page can fetch them in
+# one request. The authored source is data/poses/, which is committed.
+web/poses.json

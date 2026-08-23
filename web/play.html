@@ -84,6 +84,11 @@
   <button id="step">step</button>
   <button id="reset">reset</button>
   <button id="boxes" aria-pressed="true">boxes</button>
+  <label>figure <select id="mode">
+    <option value="hittable">hittable — derived</option>
+    <option value="move">move — authored</option>
+  </select></label>
+  <span class="hint" id="modehint"></span>
   <span class="hint">P1 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · <kbd>U</kbd><kbd>I</kbd><kbd>O</kbd> punches · <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> kicks · <kbd>I</kbd>+<kbd>K</kbd> parry &nbsp;|&nbsp; P2 arrows · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> / <kbd>4</kbd><kbd>5</kbd><kbd>6</kbd></span>
 </header>
 
@@ -124,6 +129,7 @@ import {
   viewFor, worldBoxes, poseOf, headRadius, buildOf, Camera,
   drawStage, drawBoxes, drawFigure, drawGauges, drawProjectile,
   drawImpact, shakeAt, recoiled, IMPACT_FRAMES,
+  authoredPoseOf, indexPoses, resolveKeys,
 } from "./play.js";
 
 const canvas = document.getElementById("stage");
@@ -173,6 +179,22 @@ let match = null;
 let paused = false;
 let showBoxes = true;
 let showFigures = true;
+/**
+ * Which figure is drawn: `hittable` is the derived one (ADR-0049) and is the
+ * default, `move` is the authored library (ADR-0067). See ADR-0068.
+ *
+ * The fallback is the common path, not the edge: Ryu has eleven authored moves
+ * and ~300 actions, so every walk, every block, every reaction and every other
+ * attack falls back to the derived figure. It has to be seamless — the mode is a
+ * preference for the authored pose *where one exists*, not a second renderer.
+ */
+let figureMode = "hittable";
+/** Per side: the authored files this fighter has, keyed by action name. */
+let poseLibrary = [new Map(), new Map()];
+/** Per side: `{ action, resolved }`, rebound when a fighter changes action. */
+let bound = [null, null];
+/** The whole library, fetched once. Absent means nothing is authored. */
+let library = null;
 /** Set by the control surface: draw one fighter, at a fixed zoom. */
 let framing = null;
 let logged = 0;
@@ -191,6 +213,41 @@ let recoils = [];
 let sparked = 0;
 let punish = null;
 
+/**
+ * The authored figure for one fighter this frame, or `null` to fall back.
+ *
+ * Null is the answer almost always and that is the design: the mode says *use
+ * the authored pose when there is one*, and there is one for eleven of Ryu's
+ * ~300 actions. A fighter walking, blocking, being hit or throwing a move
+ * nobody has authored draws the derived figure with no seam and no warning,
+ * because the alternative — a fighter that vanishes off `move` mode — would make
+ * the control unusable.
+ *
+ * The keys are re-bound only when the fighter changes action: the anchors
+ * resolve against the action's frame data, which is fixed for the action.
+ */
+function authoredFor(side, fighter) {
+  if (figureMode !== "move") return null;
+  const action = fighter.state.action;
+  const file = poseLibrary[side]?.get(action?.name);
+  if (!file) return null;
+  if (bound[side]?.action !== action) bound[side] = { action, resolved: resolveKeys(file, action) };
+  if (!bound[side].resolved.keys.length) return null;
+  return authoredPoseOf(file, fighter, radii[side], builds[side], {
+    resolved: bound[side].resolved,
+    last: poses[side] ?? undefined,
+  });
+}
+
+/** Which question the figures are answering, and how much of the roster answers it. */
+function updateModeHint() {
+  const counts = poseLibrary.map((m) => m.size);
+  document.getElementById("modehint").textContent =
+    figureMode === "move"
+      ? `authored where one exists — ${counts[0]} moves for P1, ${counts[1]} for P2; everything else is the derived figure`
+      : "derived from the boxes";
+}
+
 async function reset() {
   const a = await geometry(document.getElementById("p1").value);
   const b = await geometry(document.getElementById("p2").value);
@@ -199,6 +256,13 @@ async function reset() {
   builds = [buildOf(a), buildOf(b)];
   poses = [null, null];
   posedAt = -1;
+  if (library === null) {
+    const got = await fetch("./poses.json");
+    library = got.ok ? await got.json() : {};
+  }
+  poseLibrary = [a, b].map((geo) => indexPoses(library[geo.id] ?? []).byAction);
+  bound = [null, null];
+  updateModeHint();
   advantage.reset();
   camera.reset();
   impacts = [];
@@ -225,6 +289,11 @@ document.getElementById("boxes").onclick = (e) => {
 document.getElementById("figures").onclick = (e) => {
   showFigures = !showFigures;
   e.target.setAttribute("aria-pressed", String(showFigures));
+};
+document.getElementById("mode").onchange = (e) => {
+  figureMode = e.target.value;
+  updateModeHint();
+  draw();
 };
 document.getElementById("step").onclick = () => {
   paused = true;
@@ -347,13 +416,21 @@ function draw() {
     // downed pushbox. A light knockdown can put the fighter down while the
     // recoil is still running. See ADR-0066.
     const rock = recoils.find((r) => r.victim === i);
-    let pose = poses[i];
+    // In `move` mode the authored pose replaces the derived one where this
+    // action has a file, and nothing else changes: the boxes above are still the
+    // real boxes, and the recoil and the hitstop below still apply, because both
+    // are properties of the match rather than of the figure.
+    const authored = authoredFor(i, fighter);
+    let pose = authored ?? poses[i];
     if (pose && rock && !pose.prone) {
       const age = match.frame - rock.born;
       const lean = Math.min(1, age / 2) * (1 - age / rock.frames) ** 1.4 * rock.peak;
       pose = recoiled(pose, lean, fighter.state.facing === 1 ? -1 : 1);
     }
-    if (showFigures && pose) drawFigure(ctx, view, pose, i, flash);
+    // The sixth argument is the honesty rule, not a style: an authored figure
+    // has nothing derived in it, so not one part of it may be inked in the body
+    // colour that means "the dump put this here".
+    if (showFigures && pose) drawFigure(ctx, view, pose, i, flash, !!authored);
     // origin marker and facing
     const ox = view.x(fighter.position().x);
     ctx.fillStyle = i === 0 ? "#38bdf8" : "#fb7185";
@@ -613,6 +690,15 @@ const surface = {
     document.getElementById("figures").setAttribute("aria-pressed", String(showFigures));
     draw();
     return showFigures;
+  },
+
+  /** `hittable` or `move`, the same control the header carries. See ADR-0068. */
+  mode(name) {
+    if (name) figureMode = name;
+    document.getElementById("mode").value = figureMode;
+    updateModeHint();
+    draw();
+    return figureMode;
   },
 
   /**

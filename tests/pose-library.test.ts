@@ -6,13 +6,24 @@ import { loadPose, authoredMoves } from "../src/data/load-poses.js";
 import {
   authoredPoseOf,
   clockOf,
+  indexPoses,
   overreach,
+  phasesOf,
   resolveAnchor,
   resolveKeys,
   sampleAuthored,
   type PoseFile,
 } from "../src/game/pose-library.js";
-import { buildOf, headRadius, poseOf, type Pose, type Posed } from "../src/game/render.js";
+import {
+  buildOf,
+  drawFigure,
+  headRadius,
+  poseOf,
+  type Ctx,
+  type Pose,
+  type Posed,
+  type View,
+} from "../src/game/render.js";
 
 /**
  * The authored pose library (ADR-0067).
@@ -287,5 +298,162 @@ describe("the authored neutral against the derived idle", () => {
       expect(overreach(resolved.keys, build)).toBeLessThan(0.95);
       expect(overreach(resolved.keys)).toBeLessThan(0.95);
     }
+  });
+});
+
+/**
+ * The two pages that draw the library (ADR-0068).
+ *
+ * `web/boxes.html` and `web/play.html` are not testable here, but the three
+ * things they lean on are, and each is a thing that would break silently: the
+ * body colour means "derived" and an authored figure must carry none of it, the
+ * phase bands are what makes an anchor legible, and a page finds a file by the
+ * action a fighter is *in* rather than by the input that produced it.
+ */
+describe("the mode toggle", () => {
+  /** Every colour `drawFigure` strokes with, in order. */
+  const inks = (pose: Pose, side: 0 | 1, invented: boolean): string[] => {
+    const out: string[] = [];
+    const ctx: Ctx = {
+      fillStyle: "",
+      strokeStyle: "",
+      lineWidth: 0,
+      globalAlpha: 1,
+      font: "",
+      textAlign: "",
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      arc: () => {},
+      stroke: () => out.push(String(ctx.strokeStyle)),
+      fillRect: () => {},
+      strokeRect: () => {},
+      setLineDash: () => {},
+      fillText: () => {},
+    };
+    const view: View = {
+      width: 100,
+      height: 100,
+      scale: 1,
+      ground: 100,
+      x: (u: number) => u,
+      y: (u: number) => 100 - u,
+    };
+    drawFigure(ctx, view, pose, side, 0, invented);
+    return out;
+  };
+
+  /** ADR-0060's body colour: the ink that means *the dump put this here*. */
+  const BODY = "#e5e7eb";
+
+  it("inks no part of an authored figure in the body colour", () => {
+    // The leak ADR-0067 left open and named: the spine, the shoulder line, the
+    // pelvis line and the skull were hard-coded `#e5e7eb`, so an authored figure
+    // drew four body-coloured parts while promising none.
+    for (const frame of [1, 5, 8, 10, 18, 29, 40, 58]) {
+      const strokes = inks(drawn(frame), 0, true);
+      expect(strokes).not.toContain(BODY);
+      expect(new Set(strokes)).toEqual(new Set(["#38bdf8"]));
+    }
+  });
+
+  it("counts the leak it closed: four strokes of twelve", () => {
+    // What ADR-0067 shipped, drawn the way it was drawn: the spine, the shoulder
+    // line, the pelvis line and the skull — a third of the figure, and the third
+    // the eye goes to first.
+    const was = inks(drawn(8), 0, false);
+    expect(was.filter((c) => c === BODY)).toHaveLength(4);
+    expect(was).toHaveLength(12);
+    expect(inks(drawn(8), 0, true).filter((c) => c === BODY)).toHaveLength(0);
+  });
+
+  it("takes the second player's tint, not one colour for all invention", () => {
+    expect(new Set(inks(drawn(8), 1, true))).toEqual(new Set(["#fb7185"]));
+  });
+
+  it("leaves the derived figure exactly as it was", () => {
+    // The parameter defaults to `false`, and the derived figure is what
+    // `pose:audit` grades. Its spine is still body-coloured.
+    const pose = poseOf(posed(kick, 8), headRadius(ryu), undefined, buildOf(ryu))!;
+    expect(inks(pose, 0, false)).toContain(BODY);
+  });
+});
+
+describe("the phase bands", () => {
+  it("bands an action by its own frame data", () => {
+    const bands = phasesOf(kick);
+    expect(bands.map((b) => [b.phase, b.start, b.end])).toEqual([
+      ["startup", 1, 7],
+      ["active", 8, 10],
+      ["recovery", 11, 28],
+      ["free", 29, 58],
+    ]);
+    // The keys of the shipped 2MK land on 1, 5, 8, 10, 18, 29 — one on the first
+    // frame of `active` and one on the first frame of `free`, which is what
+    // `contact` and `neutral` mean.
+    expect(bands[1]!.start).toBe(resolveAnchor(clockOf(kick), "contact"));
+    expect(bands[3]!.start).toBe(resolveAnchor(clockOf(kick), "neutral"));
+  });
+
+  it("covers every authored action end to end with no gap and no overlap", () => {
+    for (const move of authoredMoves("ryu")) {
+      const action = actionByName(ryu, loadPose("ryu", move)!.action)!;
+      const bands = phasesOf(action);
+      expect(bands[0]!.start).toBe(1);
+      expect(bands[bands.length - 1]!.end).toBe(action.frames);
+      for (let i = 1; i < bands.length; i++) expect(bands[i]!.start).toBe(bands[i - 1]!.end + 1);
+    }
+  });
+
+  it("gives a fireball's caster one active frame, at the shot", () => {
+    // `SPA_HADO` is `MainFrame -1` with no active window at all: the 70 active
+    // frames belong to the projectile's own action (ADR-0022). The frame banded
+    // active here is the one the `ShotKey` fires on, and it is the frame
+    // `contact` resolves to — a strip that hid it would hide the anchor.
+    const hado = actionByName(ryu, "SPA_HADO")!;
+    expect(activeWindows(hado)).toEqual([]);
+    const active = phasesOf(hado).filter((b) => b.phase === "active");
+    expect(active).toEqual([{ phase: "active", start: 16, end: 16 }]);
+    expect(active[0]!.start).toBe(clockOf(hado).contact);
+  });
+
+  it("gives an airborne action no free band, because it has no MarginFrame", () => {
+    // Recovery is the landing action's, on the landing action's own clock
+    // (ADR-0056). There is no frame here for `neutral` to name, so the recovery
+    // band runs to the end rather than a `free` band being invented.
+    for (const name of ["ATK_8HK", "SPA_SYORYU_START"]) {
+      const action = actionByName(ryu, name)!;
+      expect(clockOf(action).neutral).toBeNull();
+      const bands = phasesOf(action);
+      expect(bands.map((b) => b.phase)).not.toContain("free");
+      expect(bands[bands.length - 1]!.phase).toBe("recovery");
+    }
+  });
+});
+
+describe("finding the file for an action", () => {
+  const files = authoredMoves("ryu").map((m) => loadPose("ryu", m)!);
+
+  it("keys the library by action, because that is all a fighter knows at playback", () => {
+    const { byAction, problems } = indexPoses(files);
+    expect(problems).toEqual([]);
+    expect(byAction.size).toBe(11);
+    expect(byAction.get("ATK_2MK_Y2")!.move).toBe("2MK");
+    expect(byAction.get("SPA_HADO")!.move).toBe("236LP");
+  });
+
+  it("falls back on every action nobody authored, which is nearly all of them", () => {
+    // The fallback is the common path, not the edge case. A `move` mode that
+    // drew nothing on the rest would be unusable.
+    const { byAction } = indexPoses(files);
+    expect(ryu.actions.length).toBe(309);
+    expect(ryu.actions.filter((a) => !byAction.has(a.name)).length).toBe(298);
+  });
+
+  it("reports two files claiming one action rather than merging them", () => {
+    const twice = [...files, { ...files[0]!, move: "copy" }];
+    const { byAction, problems } = indexPoses(twice);
+    expect(problems).toEqual([`copy and ${files[0]!.move} both claim ${files[0]!.action}`]);
+    expect(byAction.size).toBe(11);
   });
 });
