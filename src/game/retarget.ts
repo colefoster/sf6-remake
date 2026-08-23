@@ -35,7 +35,7 @@
 
 import type { GeometryAction } from "../data/geometry.js";
 import type { Anchor, AuthoredKey, AuthoredPose, Normalised, PoseFile } from "./pose-library.js";
-import { clockOf, resolveAnchor } from "./pose-library.js";
+import { TWIST_MAX, clockOf, resolveAnchor, shoulderHalfAt } from "./pose-library.js";
 
 /* ---- the figure's bones, mirrored ---------------------------------------- */
 
@@ -48,7 +48,12 @@ import { clockOf, resolveAnchor } from "./pose-library.js";
  * {@link overreach} agrees to within a rounding error. If someone changes a
  * bone there and not here, that test fails.
  */
-const SHOULDER_HALF = 0.133;
+/**
+ * The shoulder line's half-separation is **not** mirrored: since ADR-0070 it is
+ * a function of the pose's own `twist`, so this module imports
+ * {@link shoulderHalfAt} rather than restating 0.133. There is only one place
+ * that number lives.
+ */
 const PELVIS_HALF = 0.072;
 const ARM = 0.37;
 const LEG = 0.53 * 1.02;
@@ -424,6 +429,28 @@ export function projectPose(joints: Vec3[], plane: Plane, options: ProjectOption
     return { at: { x: base.x + dx * k, y: base.y + dy * k }, lateral: share };
   };
 
+  /**
+   * The twist the source body is actually in: the azimuth of its shoulder line,
+   * measured from the fight's forward axis, in degrees.
+   *
+   * This is the one measurement that is taken as an **angle** and not as a
+   * position, and it has to be, because the source's shoulders are not our
+   * shoulders — a lanky fixture is 12% broader across the back and would hand
+   * us a bigger offset for the same rotation. The angle is the body's and the
+   * breadth is ours. `atan2` of the lateral component against the forward one
+   * gives 0 for a fully bladed line, 90 for a square one and up to 180 for one
+   * turned end for end; {@link clampTwist} then holds it to what a torso has.
+   */
+  const twistOf = (): number => {
+    const lead = joints[shoulders[0]]!;
+    const rear = joints[shoulders[1]]!;
+    const along = fwd(lead) - fwd(rear);
+    const across = lat(lead) - lat(rear);
+    if (Math.hypot(along, across) < 1e-9) return 0;
+    return Math.min(TWIST_MAX, Math.max(0, (Math.atan2(Math.abs(across), along) * 180) / Math.PI));
+  };
+  const twist = twistOf();
+
   const hand0 = tip(shoulders[0], wrists[0], 0);
   const hand1 = tip(shoulders[1], wrists[1], 0);
   const drop = plane.ankleRise / stature;
@@ -432,6 +459,7 @@ export function projectPose(joints: Vec3[], plane: Plane, options: ProjectOption
 
   return {
     pose: {
+      twist,
       pelvis,
       chest,
       head: flat(joints[J.head]!),
@@ -447,7 +475,7 @@ export function projectPose(joints: Vec3[], plane: Plane, options: ProjectOption
 const span = (a: Normalised, b: Normalised): number => Math.hypot(a.x - b.x, a.y - b.y);
 
 const shoulderOf = (p: AuthoredPose, i: number): Normalised => ({
-  x: p.chest.x + (i === 0 ? 1 : -1) * SHOULDER_HALF,
+  x: p.chest.x + (i === 0 ? 1 : -1) * shoulderHalfAt(p.twist),
   y: p.chest.y,
 });
 const hipOf = (p: AuthoredPose, i: number): Normalised => ({
@@ -544,6 +572,9 @@ export function fitPose(naive: AuthoredPose): Fitted {
   const down = (p: Normalised): Normalised => ({ x: p.x, y: p.y - sink });
   const pose: AuthoredPose = {
     ...(naive.bend ? { bend: naive.bend } : {}),
+    // The twist is the source body's own rotation and the fit has no business
+    // changing it — it is *what makes the clip fit*, not a cost of fitting.
+    ...(naive.twist !== undefined ? { twist: naive.twist } : {}),
     pelvis: down(naive.pelvis),
     chest: down(naive.chest),
     head: down(naive.head),
@@ -666,6 +697,8 @@ const roundPose = (p: AuthoredPose, places: number): AuthoredPose => {
   const r = (n: Normalised): Normalised => ({ x: round(n.x, places), y: round(n.y, places) });
   return {
     ...(p.bend ? { bend: p.bend } : {}),
+    // Degrees, and one decimal is finer than a body can hold a pose.
+    ...(p.twist !== undefined ? { twist: round(p.twist, 1) } : {}),
     pelvis: r(p.pelvis),
     chest: r(p.chest),
     head: r(p.head),
