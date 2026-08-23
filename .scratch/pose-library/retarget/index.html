@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8"><title>retarget contact sheet — ryu 5MP</title>
+<style>
+  :root { --bg:#14161a; --panel:#1c1f25; --rule:#3a4048; --ink:#dfe3e8; --dim:#8b939c; }
+  body { margin:0; padding:32px; background:var(--bg); color:var(--ink);
+         font:14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  h1 { font-size:18px; margin:0 0 4px; font-weight:600; }
+  .lede { color:var(--dim); margin:0 0 28px; max-width:70ch; }
+  .row { display:flex; gap:20px; flex-wrap:wrap; }
+  .cell { width:340px; }
+  .cell h2 { font-size:14px; margin:0 0 2px; font-weight:600; }
+  .cell .sub, .cell .note { color:var(--dim); font-size:12px; margin:0 0 8px; }
+  .cell .sub { min-height:3em; }
+  .cell .note { margin:8px 0 0; min-height:3em; }
+  .over { font-size:13px; }
+  .over b { font-weight:600; }
+  .pass { color:#5fbf7f; } .fail { color:#e0603a; }
+  table { border-collapse:collapse; margin:28px 0 0; font-size:13px; }
+  th, td { text-align:left; padding:3px 16px 3px 0; border-bottom:1px solid var(--rule); }
+  th { color:var(--dim); font-weight:600; }
+  td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  h3 { font-size:14px; margin:32px 0 0; }
+</style>
+<h1>ryu 5MP — hand-authored, naive projection, fitted retarget</h1>
+<p class="lede">One frame: <code>ATK_5MP</code> frame 6, the first active frame. The clip is
+<code>smplx-straight-punch</code>, a rear-hand cross from a bladed stance at 1.723&nbsp;m. The gate is
+<code>overreach &lt; 0.95</code>.</p>
+<div class="row">
+<div class="cell">
+  <h2>hand-authored</h2>
+  <p class="sub">data/poses/ryu/5MP.json, contact frame 6</p>
+  <svg viewBox="0 0 340 380" width="340" height="380">
+  <rect width="340" height="380" fill="var(--panel)"/>
+  <line x1="0" y1="354" x2="340" y2="354" stroke="var(--rule)" stroke-width="1"/>
+  <line x1="112.2" y1="0" x2="112.2" y2="380" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
+  <polyline points="116.9,198.4 121.6,102.5" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="163.1,112.1 217.3,109.7 271.5,107.2" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="139.4,198.4 153.1,276.2 166.9,354.0" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="80.0,112.1 89.9,131.5 99.7,151.0" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="94.4,198.4 79.9,276.2 65.3,354.0" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="80.0,112.1 163.1,112.1" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="126.3" cy="81.6" r="32.0" fill="none" stroke="#3aa0e0" stroke-width="4"/>
+  <circle cx="271.5" cy="107.2" r="3.5" fill="#3aa0e0"/><circle cx="99.7" cy="151.0" r="3.5" fill="#3aa0e0"/><circle cx="166.9" cy="354.0" r="3.5" fill="#3aa0e0"/><circle cx="65.3" cy="354.0" r="3.5" fill="#3aa0e0"/>
+</svg>
+  <p class="over">overreach <b class="pass">0.939</b></p>
+  <p class="note">The eleven shipped files. Authored inside the gate by eye.</p>
+</div>
+<div class="cell">
+  <h2>naive projection</h2>
+  <p class="sub">smplx-straight-punch clip frame 8, joints copied straight in</p>
+  <svg viewBox="0 0 340 380" width="340" height="380">
+  <rect width="340" height="380" fill="var(--panel)"/>
+  <line x1="0" y1="354" x2="340" y2="354" stroke="var(--rule)" stroke-width="1"/>
+  <line x1="112.2" y1="0" x2="112.2" y2="380" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
+  <polyline points="136.1,185.4 138.3,102.0" fill="none" stroke="#e0603a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="179.9,111.6 179.6,127.8 179.4,144.0" fill="none" stroke="#e0603a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="158.6,185.4 150.4,267.5 142.2,349.6" fill="none" stroke="#e0603a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="96.8,111.6 174.4,110.8 252.1,109.9" fill="none" stroke="#e0603a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="113.6,185.4 83.5,256.8 53.4,328.2" fill="none" stroke="#e0603a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="96.8,111.6 179.9,111.6" fill="none" stroke="#e0603a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="136.1" cy="76.6" r="32.0" fill="none" stroke="#e0603a" stroke-width="4"/>
+  <circle cx="179.4" cy="144.0" r="3.5" fill="#e0603a"/><circle cx="252.1" cy="109.9" r="3.5" fill="#e0603a"/><circle cx="142.2" cy="349.6" r="3.5" fill="#e0603a"/><circle cx="53.4" cy="328.2" r="3.5" fill="#e0603a"/>
+</svg>
+  <p class="over">overreach <b class="fail">1.345</b></p>
+  <p class="note">Every point is the SMPL-X joint's, projected onto the fight plane. The rear arm asks for 1.34 of itself.</p>
+</div>
+<div class="cell">
+  <h2>fitted retarget</h2>
+  <p class="sub">same clip frame, sunk 0.020 and clipped to 0.94</p>
+  <svg viewBox="0 0 340 380" width="340" height="380">
+  <rect width="340" height="380" fill="var(--panel)"/>
+  <line x1="0" y1="354" x2="340" y2="354" stroke="var(--rule)" stroke-width="1"/>
+  <line x1="112.2" y1="0" x2="112.2" y2="380" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
+  <polyline points="136.1,191.7 138.3,108.4" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="179.9,117.9 179.6,131.0 179.4,144.0" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="158.6,191.7 150.4,270.7 142.2,349.6" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="96.8,117.9 151.1,113.7 205.4,109.4" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="113.6,191.7 83.5,260.0 53.4,328.2" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="96.8,117.9 179.9,117.9" fill="none" stroke="#3aa0e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="136.1" cy="83.0" r="32.0" fill="none" stroke="#3aa0e0" stroke-width="4"/>
+  <circle cx="179.4" cy="144.0" r="3.5" fill="#3aa0e0"/><circle cx="205.4" cy="109.4" r="3.5" fill="#3aa0e0"/><circle cx="142.2" cy="349.6" r="3.5" fill="#3aa0e0"/><circle cx="53.4" cy="328.2" r="3.5" fill="#3aa0e0"/>
+</svg>
+  <p class="over">overreach <b class="pass">0.940</b></p>
+  <p class="note">Same line from the shoulder, shortened to the bone. The punch survives; its reach does not.</p>
+</div>
+</div>
+<h3>what the fit cost, naive &rarr; fitted</h3>
+<table><tr><th>point</th><th>stature</th><th>Ryu units</th></tr><tr><td>pelvis</td><td class="n">0.020</td><td class="n">3.4</td></tr><tr><td>chest</td><td class="n">0.020</td><td class="n">3.4</td></tr><tr><td>head</td><td class="n">0.020</td><td class="n">3.4</td></tr><tr><td>hand.lead</td><td class="n">0.000</td><td class="n">0.0</td></tr><tr><td>hand.rear</td><td class="n">0.149</td><td class="n">24.8</td></tr><tr><td>foot.lead</td><td class="n">0.000</td><td class="n">0.0</td></tr><tr><td>foot.rear</td><td class="n">0.000</td><td class="n">0.0</td></tr></table>
+<h3>the whole clip, resampled onto ATK_5MP's own clock</h3>
+<table><tr><th>anchor</th><th>action f</th><th>clip f</th><th>before</th><th>after</th><th>sink</th></tr><tr><td>start</td><td class="n">1</td><td class="n">0</td><td class="n">0.970</td><td class="n">0.940</td><td class="n">0.016</td></tr><tr><td>startup 0.5</td><td class="n">3</td><td class="n">3</td><td class="n">0.965</td><td class="n">0.940</td><td class="n">0.013</td></tr><tr><td>contact</td><td class="n">6</td><td class="n">8</td><td class="n">1.345</td><td class="n">0.940</td><td class="n">0.020</td></tr><tr><td>activeEnd</td><td class="n">9</td><td class="n">11</td><td class="n">1.329</td><td class="n">0.940</td><td class="n">0.020</td></tr><tr><td>recovery 0.4</td><td class="n">13</td><td class="n">14</td><td class="n">1.056</td><td class="n">0.940</td><td class="n">0.018</td></tr><tr><td>neutral</td><td class="n">20</td><td class="n">20</td><td class="n">0.970</td><td class="n">0.940</td><td class="n">0.016</td></tr></table>
