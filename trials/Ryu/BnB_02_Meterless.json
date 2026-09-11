@@ -1,0 +1,50 @@
+[
+  {
+    "id": 605,
+    "motion": "MP",
+    "expected_combo": 1,
+    "delay_from_prev": 0,
+    "counter_type": 0,
+    "expected_hp": 10000,
+    "victim_pose": 0,
+    "is_holdable": false,
+    "facing_left": false,
+    "recorded_by": 0,
+    "_xt_meta": {
+      "schema": 2,
+      "title": "BnB_02_Meterless",
+      "author": "Cole / Codex",
+      "control_mode": "classic",
+      "note": "SuperCombo Ryu BnB candidate. Live verification pending. Timing estimates; no demo recording. Start close with full HP.",
+      "tags": [
+        "bnb",
+        "candidate"
+      ],
+      "source_url": "https://wiki.supercombo.gg/w/Street_Fighter_6/Ryu/Combos",
+      "verification": "pending",
+      "timing": "estimated"
+    }
+  },
+  {
+    "id": 627,
+    "motion": "2+MP",
+    "expected_combo": 2,
+    "delay_from_prev": 30,
+    "counter_type": 0,
+    "expected_hp": 10000,
+    "victim_pose": 0,
+    "is_holdable": false,
+    "facing_left": false
+  },
+  {
+    "id": 934,
+    "motion": "623+HP",
+    "expected_combo": 3,
+    "delay_from_prev": 20,
+    "counter_type": 0,
+    "expected_hp": 10000,
+    "victim_pose": 0,
+    "is_holdable": false,
+    "facing_left": false
+  }
+]
